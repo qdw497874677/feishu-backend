@@ -1,0 +1,70 @@
+{
+  "experiences": [
+    {
+      "id": "exp_20260117_170001",
+      "title": "飞书 Webhook HMAC-SHA256 签名验证实现",
+      "content": "## 问题描述\n\n当前实现无签名验证，任何人都可以伪造 Webhook 请求。无时间戳验证，无重放攻击防护。\n\n## 解决方案\n\n### 1. Domain 层定义验证接口\n```java\npublic interface WebhookValidator {\n    WebhookValidationResult validate(Map<String, String> headers, String body);\n}\n```\n\n### 2. Infrastructure 层实现 HMAC-SHA256 验证\n```java\n@Component\npublic class WebhookValidatorImpl implements WebhookValidator {\n    private static final long TIMESTAMP_TOLERANCE_SECONDS = 300; // 5分钟\n    \n    @Override\n    public WebhookValidationResult validate(Map<String, String> headers, String body) {\n        // 1. 验证必需请求头\n        // 2. 时间戳验证（5分钟窗口）\n        // 3. HMAC-SHA256 签名计算\n        // 4. 签名比对\n    }\n}\n```\n\n### 3. Adapter 层集成验证\n在 FeishuWebhookController 中注入 WebhookValidator 并在处理请求前调用验证。\n\n## 关键要点\n- HMAC-SHA256 算法符合飞书官方文档要求\n- 5 分钟时间窗口平衡安全性和可用性\n- Nonce 随机值防止重放攻击\n- 使用 Base64 编码签名结果",
+      "category": "安全",
+      "tags": ["webhook", "hmac", "签名验证", "security", "防重放"],
+      "context": "P0 高优先级安全改进",
+      "scope": "项目经验",
+      "source": "主动总结",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-17T17:00:01.000Z",
+      "updated_at": "2026-01-17T17:00:01.000Z"
+    },
+    {
+      "id": "exp_20260117_170002",
+      "title": "COLA 架构依赖倒置优化",
+      "content": "## 问题描述\n\n应用层（ReceiveMessageCmdExe）直接注入 FeishuGateway，虽然注入的是接口，但业务逻辑直接在应用层，缺少领域服务层封装。\n\n## 解决方案\n\n### 1. 引入领域服务\n创建 BotMessageService 在 Domain 层，封装消息处理的业务逻辑：\n- 生成原始回复（领域逻辑）\n- 通过扩展点增强回复\n- 发送回复（通过 Gateway）\n- 更新消息状态\n\n### 2. 重构应用层\nReceiveMessageCmdExe 只负责：\n- 参数校验\n- 对象构造（Message, Sender）\n- 调用领域服务（BotMessageService.handleMessage）\n\n## 关键要点\n- 遵循 COLA 分层原则：应用层只做编排和校验\n- 领域服务封装业务逻辑，提高可测试性\n- 保持依赖倒置：Domain 定义接口，Infrastructure 实现",
+      "category": "架构",
+      "tags": ["COLA", "依赖倒置", "领域服务", "DDD"],
+      "context": "P0 架构优化",
+      "scope": "项目经验",
+      "source": "主动总结",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-17T17:00:02.000Z",
+      "updated_at": "2026-01-17T17:00:02.000Z"
+    },
+    {
+      "id": "exp_20260117_170003",
+      "title": "单元测试框架搭建与测试实现",
+      "content": "## 问题描述\n\n项目有 20 个 Java 文件，但 0 个测试文件。缺少测试框架配置和测试覆盖率统计。\n\n## 解决方案\n\n### 1. 配置测试框架（pom.xml）\n添加以下依赖：\n- JUnit 5 BOM (5.10.1)\n- Mockito (5.8.0) + JUnit Jupiter Extension\n- AssertJ (3.24.2)\n- Spring Boot Test Starter\n\n### 2. 编写测试类\n\n#### Domain 层测试\n- MessageTest: 测试消息生成、状态更新、属性获取\n- SenderTest: 测试发送者对象创建、equals/hashCode\n\n#### Infrastructure 层测试\n- WebhookValidatorImplTest: 测试有效签名、签名缺失、时间戳验证\n#### App 层测试\n- ReceiveMessageCmdExeTest: 测试命令执行、空内容异常\n#### Adapter 层测试\n- FeishuWebhookControllerTest: 测试 Webhook 处理、签名拒绝\n#### 集成测试\n- WebhookIntegrationTest: 端到端 Webhook 流程测试\n\n## 关键要点\n- 使用 JUnit 5 + Mockito + AssertJ 现代测试栈\n- @DisplayName 提供清晰的测试描述\n- @ExtendWith(MockitoExtension.class) 简化 Mock\n- AssertJ 流式 API 提高可读性\n- 覆盖率目标：> 80%",
+      "category": "代码质量",
+      "tags": ["单元测试", "JUnit5", "Mockito", "AssertJ", "测试覆盖"],
+      "context": "P0 测试框架建设",
+      "scope": "项目经验",
+      "source": "主动总结",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-17T17:00:03.000Z",
+      "updated_at": "2026-01-17T17:00:03.000Z"
+    },
+    {
+      "id": "exp_20260117_170004",
+      "title": "飞书 SDK 集成与最佳实践",
+      "content": "## SDK 初始化\n```java\nClient client = Client.newBuilder(appId, appSecret)\n    .openBaseUrl(BaseUrlEnum.FeiShu)  // 飞书域名\n    .build();\n```\n\n## 发送文本消息\n```java\nCreateMessageReq req = CreateMessageReq.newBuilder()\n    .receiveIdType(\"open_id\")\n    .createMessageReqBody(CreateMessageReqBody.newBuilder()\n        .receiveId(receiveOpenId)\n        .msgType(\"text\")\n        .content(MessageText.newBuilder().text(content).build())\n        .build())\n    .build();\n```\n\n## 关键要点\n- SDK 自动管理 access_token，无需手动处理\n- SDK 返回 code != 0 表示失败，需要检查 getMsg()\n- 建议实现自动重试机制处理网络波动\n- 注意消息长度限制（文本 5000 字）\n- 合理设置超时时间避免长时间阻塞",
+      "category": "第三方集成",
+      "tags": ["飞书SDK", "Lark", "API集成", "最佳实践"],
+      "context": "飞书机器人开发",
+      "scope": "项目经验",
+      "source": "主动总结",
+      "status": "已解决",
+      "resolution_level": "经验总结",
+      "reproducibility": "复现",
+      "created_at": "2026-01-17T17:00:04.000Z",
+      "updated_at": "2026-01-17T17:00:04.000Z"
+    }
+  ],
+  "categories": [
+    "安全",
+    "架构",
+    "代码质量",
+    "第三方集成"
+  ]
+}
