@@ -1,12 +1,13 @@
 package com.qdw.feishu.domain.message;
 
-import com.qdw.feishu.domain.gateway.Sender;
 import lombok.AllArgsConstructor;
+import lombok.Data;
 
 /**
  * 发送者值对象
  */
 @AllArgsConstructor
+@Data
 public class Sender {
 
     private String openId;
