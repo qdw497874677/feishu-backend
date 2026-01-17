@@ -2,7 +2,6 @@ package com.qdw.feishu.domain.message;
 
 import com.alibaba.cola.domain.Entity;
 import com.alibaba.cola.exception.BizException;
-import com.qdw.feishu.domain.gateway.Sender;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
