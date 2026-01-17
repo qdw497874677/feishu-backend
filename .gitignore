@@ -25,3 +25,6 @@ application-prod.yml
 # Temporary
 *.tmp
 *.temp
+
+# Git Worktrees
+.worktrees/
