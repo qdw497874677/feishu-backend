@@ -1,6 +1,5 @@
 package com.qdw.feishu.domain.message;
 
-import com.alibaba.cola.domain.Entity;
 import com.alibaba.cola.exception.BizException;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,8 +13,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @NoArgsConstructor
-@Entity
-public class Message extends Entity {
+public class Message {
 
     /** 消息ID */
     private String messageId;

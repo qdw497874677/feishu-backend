@@ -1,6 +1,5 @@
 package com.qdw.feishu.app.message;
 
-import com.alibaba.cola.dto.Response;
 import com.alibaba.cola.catchlog.CatchAndLog;
 import com.alibaba.cola.extension.ExtensionExecutor;
 import com.qdw.feishu.client.message.MessageServiceI;
@@ -29,7 +28,7 @@ public class ReceiveMessageCmdExe implements MessageServiceI {
     private FeishuGateway feishuGateway;
 
     @Override
-    public Response execute(ReceiveMessageCmd cmd) {
+    public SendResult execute(ReceiveMessageCmd cmd) {
         log.info("Executing ReceiveMessageCmd: {}", cmd);
 
         try {
@@ -73,7 +72,9 @@ public class ReceiveMessageCmdExe implements MessageServiceI {
                 log.error("Failed to send reply: {}", result.getErrorMessage());
             }
 
-            return Response.of(result);
+            return result;
+
+            return result;
 
         } catch (MessageBizException e) {
             log.error("Business error: {}", e.getMessage(), e);

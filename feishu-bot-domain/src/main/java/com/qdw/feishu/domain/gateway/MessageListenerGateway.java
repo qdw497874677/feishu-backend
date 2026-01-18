@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.gateway;
 
+import com.qdw.feishu.domain.message.Message;
 import java.util.function.Consumer;
 
 /**

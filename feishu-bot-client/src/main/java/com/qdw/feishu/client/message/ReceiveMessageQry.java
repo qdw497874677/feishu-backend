@@ -8,8 +8,7 @@ import lombok.Data;
  * 用于查询消息历史记录
  */
 @Data
-@Query
-public class ReceiveMessageQry {
+public class ReceiveMessageQry extends Query {
 
     private String messageId;
 
