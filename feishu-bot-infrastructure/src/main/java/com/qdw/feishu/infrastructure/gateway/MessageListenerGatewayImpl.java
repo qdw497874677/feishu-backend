@@ -3,10 +3,13 @@ package com.qdw.feishu.infrastructure.gateway;
 import com.lark.oapi.Client;
 import com.lark.oapi.core.event.EventDispatcher;
 import com.qdw.feishu.domain.gateway.MessageListenerGateway;
+import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -21,71 +24,123 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     private final FeishuProperties properties;
 
     private EventDispatcher eventDispatcher;
-    private volatile ConnectionStatus connectionStatus = ConnectionStatus.DISCONNECTED;
-    private volatile boolean running = false;
+    private final AtomicReference<ConnectionStatus> connectionStatus;
+    private final AtomicBoolean running;
+    private Consumer<Message> messageHandler;
 
     public MessageListenerGatewayImpl(Client client, FeishuProperties properties) {
         this.client = client;
         this.properties = properties;
+        this.connectionStatus = new AtomicReference<>(ConnectionStatus.DISCONNECTED);
+        this.running = new AtomicBoolean(false);
     }
 
     @Override
-    public void startListening(Consumer<Message> messageHandler) {
-        if (connectionStatus == ConnectionStatus.CONNECTED || connectionStatus == ConnectionStatus.CONNECTING) {
-            log.warn("Listener already started, status: {}", connectionStatus);
+    public synchronized void startListening(Consumer<Message> messageHandler) {
+        ConnectionStatus currentStatus = connectionStatus.get();
+        if (currentStatus == ConnectionStatus.CONNECTED || currentStatus == ConnectionStatus.CONNECTING) {
+            log.warn("Listener already started, status: {}", currentStatus);
             return;
         }
 
-        running = true;
-        connectionStatus = ConnectionStatus.CONNECTING;
+        this.messageHandler = messageHandler;
+        running.set(true);
+        connectionStatus.set(ConnectionStatus.CONNECTING);
 
         try {
             eventDispatcher = client.event();
+            registerMessageHandler();
             eventDispatcher.start();
-            connectionStatus = ConnectionStatus.CONNECTED;
+            connectionStatus.set(ConnectionStatus.CONNECTED);
             log.info("Feishu event listener started successfully");
         } catch (Exception e) {
-            connectionStatus = ConnectionStatus.DISCONNECTED;
+            connectionStatus.set(ConnectionStatus.DISCONNECTED);
+            running.set(false);
             log.error("Failed to start event listener", e);
             throw new RuntimeException("Failed to start event listener", e);
         }
     }
 
     @Override
-    public void stopListening() {
-        running = false;
+    public synchronized void stopListening() {
+        running.set(false);
         if (eventDispatcher != null) {
             eventDispatcher.stop();
         }
-        connectionStatus = ConnectionStatus.DISCONNECTED;
+        connectionStatus.set(ConnectionStatus.DISCONNECTED);
+        messageHandler = null;
         log.info("Feishu event listener stopped");
     }
 
     @Override
     public ConnectionStatus getConnectionStatus() {
-        return connectionStatus;
+        return connectionStatus.get();
     }
 
-    private void reconnect() {
-        if (!running) {
+    private void registerMessageHandler() {
+        if (messageHandler == null) {
+            log.warn("Message handler not provided, skipping registration");
             return;
         }
 
-        connectionStatus = ConnectionStatus.RECONNECTING;
+        try {
+            eventDispatcher.onP2MessageReceiveV1((event) -> {
+                Message message = convertToMessage(event);
+                if (messageHandler != null) {
+                    messageHandler.accept(message);
+                }
+            });
+            log.info("Message handler registered successfully");
+        } catch (Exception e) {
+            log.error("Failed to register message handler", e);
+            throw new RuntimeException("Failed to register message handler", e);
+        }
+    }
+
+    private Message convertToMessage(com.lark.oapi.service.im.v1.event.P2MessageReceiveV1 event) {
+        return new Message(
+            event.getEvent().getMessage().getMessageId(),
+            event.getEvent().getMessage().getContent(),
+            com.qdw.feishu.domain.message.Sender.builder()
+                .openId(event.getEvent().getSender().getSenderType().equals("user") ? 
+                    event.getEvent().getSender().getSenderId() : 
+                    event.getEvent().getSender().getSenderId())
+                .build()
+        );
+    }
+
+    private synchronized void reconnect() {
+        if (!running.get()) {
+            return;
+        }
+
+        connectionStatus.set(ConnectionStatus.RECONNECTING);
         int attempt = 0;
         int delay = 1000;
+        int maxAttempts = 10;
 
-        while (running) {
+        while (running.get() && attempt < maxAttempts) {
             try {
                 attempt++;
                 Thread.sleep(delay);
-                log.info("Reconnect attempt {}/{}", attempt, 10);
+                log.info("Reconnect attempt {}/{}", attempt, maxAttempts);
+
+                startListening(this.messageHandler);
                 log.info("Reconnect succeeded after {} attempts", attempt);
+                break;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Reconnect interrupted");
                 break;
             } catch (Exception e) {
                 delay = Math.min(delay * 2, 30000);
-                log.error("Reconnect failed, next attempt in {}ms", delay);
+                log.error("Reconnect failed, next attempt in {}ms", delay, e);
             }
+        }
+
+        if (attempt >= maxAttempts) {
+            log.error("Reconnect failed after {} attempts, stopping", maxAttempts);
+            stopListening();
         }
     }
 }
