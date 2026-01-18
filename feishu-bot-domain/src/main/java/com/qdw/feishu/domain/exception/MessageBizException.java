@@ -10,7 +10,7 @@ public class MessageBizException extends BizException {
         super(errCode, errMsg);
     }
 
-    public MessageBizException(String errCode, String errMsg, Object... errMsgParams) {
-        super(errCode, errMsg, errMsgParams);
-    }
+public MessageBizException(String errMsg) {
+    super("MESSAGE_BIZ_ERROR", errMsg);
+}
 }
