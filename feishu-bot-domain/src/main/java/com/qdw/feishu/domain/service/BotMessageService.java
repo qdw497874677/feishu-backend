@@ -14,11 +14,9 @@ import org.springframework.stereotype.Service;
 public class BotMessageService {
 
     private final FeishuGateway feishuGateway;
-    private final com.qdw.feishu.domain.router.CommandRouter commandRouter;
 
-    public BotMessageService(FeishuGateway feishuGateway, com.qdw.feishu.domain.router.CommandRouter commandRouter) {
+    public BotMessageService(FeishuGateway feishuGateway) {
         this.feishuGateway = feishuGateway;
-        this.commandRouter = commandRouter;
     }
 
     private String getOpenIdFromSender(Object sender) {
@@ -32,20 +30,8 @@ public class BotMessageService {
         return "";
     }
 
-    public SendResult handleMessage(Message message) {
+    public SendResult sendReply(Message message, String reply) {
         try {
-            message.validate();
-
-            String reply = null;
-            if (message.getContent().trim().startsWith("/")) {
-                reply = commandRouter.route(message);
-                log.info("Command routed, reply: {}", reply);
-            }
-
-            if (reply == null) {
-                reply = message.generateReply();
-            }
-
             Object sender = message.getSender().getOpenId();
             String openId = getOpenIdFromSender(sender);
 
@@ -63,5 +49,11 @@ public class BotMessageService {
         } catch (Exception e) {
             throw new MessageSysException("MESSAGE_HANDLE_FAILED", "消息处理失败", e);
         }
+    }
+
+    @Deprecated
+    public SendResult handleMessage(Message message) {
+        String reply = message.generateReply();
+        return sendReply(message, reply);
     }
 }

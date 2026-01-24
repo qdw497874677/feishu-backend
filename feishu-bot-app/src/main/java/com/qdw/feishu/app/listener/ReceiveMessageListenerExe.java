@@ -1,5 +1,6 @@
 package com.qdw.feishu.app.listener;
 
+import com.qdw.feishu.app.router.CommandRouter;
 import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
@@ -17,9 +18,11 @@ import org.springframework.stereotype.Component;
 public class ReceiveMessageListenerExe {
 
     private final BotMessageService botMessageService;
+    private final CommandRouter commandRouter;
 
-    public ReceiveMessageListenerExe(BotMessageService botMessageService) {
+    public ReceiveMessageListenerExe(BotMessageService botMessageService, CommandRouter commandRouter) {
         this.botMessageService = botMessageService;
+        this.commandRouter = commandRouter;
     }
 
     /**
@@ -31,7 +34,14 @@ public class ReceiveMessageListenerExe {
         try {
             log.info("Processing message from sender: {}", message.getSender());
 
-            botMessageService.handleMessage(message);
+            message.validate();
+
+            String reply = commandRouter.route(message);
+            if (reply == null) {
+                reply = message.generateReply();
+            }
+
+            botMessageService.sendReply(message, reply);
 
             log.info("Message processed successfully");
         } catch (MessageBizException e) {
