@@ -1,6 +1,6 @@
 package com.qdw.feishu.app.time;
 
-import com.qdw.feishu.app.executor.CommandExecutorI;
+import com.qdw.feishu.domain.executor.CommandExecutorI;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

@@ -5,17 +5,21 @@ import com.qdw.feishu.domain.exception.MessageSysException;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
+import com.qdw.feishu.domain.router.CommandRouter;
 import com.lark.oapi.service.im.v1.model.UserId;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class BotMessageService {
 
     private final FeishuGateway feishuGateway;
+    private final CommandRouter commandRouter;
 
-    public BotMessageService(FeishuGateway feishuGateway) {
+    public BotMessageService(FeishuGateway feishuGateway, CommandRouter commandRouter) {
         this.feishuGateway = feishuGateway;
+        this.commandRouter = commandRouter;
     }
 
     private String getOpenIdFromSender(Object sender) {
@@ -33,7 +37,15 @@ public class BotMessageService {
         try {
             message.validate();
 
-            String reply = message.generateReply();
+            String reply = null;
+            if (message.getContent().trim().startsWith("/")) {
+                reply = commandRouter.route(message);
+                log.info("Command routed, reply: {}", reply);
+            }
+
+            if (reply == null) {
+                reply = message.generateReply();
+            }
 
             Object sender = message.getSender().getOpenId();
             String openId = getOpenIdFromSender(sender);
