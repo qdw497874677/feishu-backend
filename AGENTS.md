@@ -1,28 +1,33 @@
 # 飞书机器人长连接实现 - 开发日志
 
-## 📋 项目规范
+---
 
-### ⚠️ 重要：仅使用长连接模式
+## ⚠️ 核心规范（必须遵守）
 
-**本项目严格禁止使用 WebHook 模式，必须使用飞书长连接（WebSocket）模式。**
+### 🔴 严禁使用 WebHook 模式
 
-- ❌ **禁止**：WebHook 模式（需要公网 IP，不稳定）
-- ✅ **强制**：长连接模式（WebSocket，稳定可靠）
+**本项目只允许使用飞书长连接（WebSocket）模式，严格禁止使用 WebHook 模式！**
 
-**原因**：
-- WebHook 需要服务器具备公网 IP 和域名，部署复杂
-- 长连接通过 WebSocket 实时推送消息，无需回调端点
-- 长连接在消息延迟和稳定性上优于 WebHook
+| 模式 | 状态 | 原因 |
+|------|------|------|
+| WebHook | ❌ **严禁使用** | 需要公网 IP 和域名，部署复杂，不稳定 |
+| 长连接 | ✅ **唯一允许** | WebSocket 实时推送，无需回调端点，稳定可靠 |
+
+**重要说明**：
+- ✅ 所有新代码必须基于长连接模式
+- ❌ `FeishuWebhookController.java` 已标记为弃用，请勿修改或依赖
+- ❌ 禁止添加任何 WebHook 相关的新代码
+- ✅ 消息接收和发送统一使用 `MessageListenerGateway` 和 `FeishuGateway`
 
 ---
 
-### 🏗️ COLA 架构规范
+### 🏗️ 必须遵循 COLA 架构规范
 
-本项目采用 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA) 架构。
+本项目严格遵循 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA) 架构。
 
-#### 模块职责
+#### 新建代码放置规则
 
-**新建代码时，请严格按照以下规则选择模块：**
+**所有新代码必须严格按照以下规则选择模块！**
 
 | 模块 | 职责 | 新建代码类型 | 示例 |
 |------|------|-------------|------|
@@ -88,6 +93,16 @@
 └─ 启动配置/主类
    └─ → feishu-bot-start
 ```
+
+#### ⚠️ 注意事项
+
+- **禁止跨层依赖**：下层不能依赖上层
+- **接口定义在 domain**：domain 定义接口，infrastructure 实现
+- **横向隔离**：同层模块之间不能直接依赖
+- **长连接相关**：
+  - `MessageListenerGateway` 接口定义在 `domain`
+  - `MessageListenerGatewayImpl` 实现在 `infrastructure`
+  - `FeishuEventListener` 启动监听器在 `adapter`
 
 ---
 
@@ -202,7 +217,7 @@ logging:
 
 ## 🚀 启动命令
 
-### 长连接模式（唯一推荐模式）
+### 长连接模式（唯一允许模式）
 
 ```bash
 cd /root/workspace/feishu-backend/feishu-bot-start
@@ -215,15 +230,19 @@ FEISHU_LISTENER_ENABLED=true \
 mvn spring-boot:run
 ```
 
+**⚠️ 注意：本项目不支持 WebHook 模式启动，只能使用长连接模式！**
+
 ---
 
 ## 📁 关键文件位置
 
+**注意：以下文件位置严格遵循 COLA 架构规范**
+
 ```
 feishu-bot-domain/src/main/java/com/qdw/feishu/domain/
 ├── gateway/
-│   ├── FeishuGateway.java           # 飞书网关接口
-│   └── MessageListenerGateway.java  # 长连接网关接口
+│   ├── FeishuGateway.java           # 飞书网关接口（domain 定义）
+│   └── MessageListenerGateway.java  # 长连接网关接口（domain 定义）
 ├── message/
 │   ├── Message.java                 # 消息实体
 │   ├── Sender.java                  # 发送者（需要 @NoArgsConstructor）
@@ -235,13 +254,13 @@ feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/
 ├── config/
 │   └── FeishuProperties.java       # 飞书配置属性
 └── gateway/
-    ├── FeishuGatewayImpl.java      # 飞书网关实现
-    └── MessageListenerGatewayImpl.java # 长连接实现
+    ├── FeishuGatewayImpl.java      # 飞书网关实现（infrastructure 实现）
+    └── MessageListenerGatewayImpl.java # 长连接实现（infrastructure 实现）
 
 feishu-bot-adapter/src/main/java/com/qdw/feishu/adapter/
 ├── listener/
 │   └── FeishuEventListener.java    # 飞书事件监听器（启动长连接）
-└── FeishuWebhookController.java    # WebHook 控制器（已弃用）
+└── FeishuWebhookController.java    # ⚠️ WebHook 控制器（已弃用，勿修改）
 ```
 
 ---
@@ -255,6 +274,15 @@ feishu-bot-adapter/src/main/java/com/qdw/feishu/adapter/
 | `app_id is invalid` | 凭证配置错误 | 检查 `FEISHU_APPID` 和 `FEISHU_APPSECRET` |
 | `No qualifying bean of type 'BotMessageService'` | 未注册为 Bean | 添加 `@Service` 注解 |
 | 中文显示为 `?` | 编码配置不正确 | 配置系统 locale、JVM 参数和日志编码 |
+
+### ⚠️ 架构规范违规
+
+| 违规行为 | 后果 | 正确做法 |
+|---------|------|----------|
+| 在 `domain` 中引用 `infrastructure` | 违反 COLA 原则，代码无法编译 | `domain` 定义接口，`infrastructure` 实现接口 |
+| 在 `app` 中直接使用 SDK | 耦合外部依赖，难以测试 | 通过 `Gateway` 接口调用 |
+| 使用 WebHook 模式 | 不符合项目规范，代码将被拒绝 | 必须使用长连接模式 |
+| 跨模块直接依赖 | 违反分层原则 | 通过 DTO 或网关接口交互 |
 
 ---
 
