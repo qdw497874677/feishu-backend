@@ -2,8 +2,9 @@ package com.qdw.feishu.adapter;
 
 import com.alibaba.cola.dto.Response;
 import com.alibaba.cola.exception.SysException;
-import com.qdw.feishu.client.message.ReceiveMessageCmd;
-import com.qdw.feishu.app.message.ReceiveMessageCmdExe;
+import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.service.BotMessageService;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +40,7 @@ public class FeishuWebhookController {
     private FeishuProperties feishuProperties;
 
     @Autowired
-    private ReceiveMessageCmdExe receiveMessageCmdExe;
+    private BotMessageService botMessageService;
 
     private final Gson gson = new Gson();
 
@@ -136,15 +137,15 @@ public class FeishuWebhookController {
      */
     private void handleReceivedMessage(String messageId, String content, String senderOpenId, String senderUserId, String senderName) {
         try {
-            ReceiveMessageCmd cmd = new ReceiveMessageCmd();
-            cmd.setMessageId(messageId);
-            cmd.setContent(content);
-            cmd.setSenderOpenId(senderOpenId);
-            cmd.setSenderUserId(senderUserId);
-            cmd.setSenderName(senderName);
+            Sender sender = new Sender();
+            sender.setUserId(senderOpenId);
+            sender.setOpenId(senderOpenId);
+            sender.setName(senderName);
+
+            Message message = new Message(messageId, content, sender);
 
             log.info("Processing message from {}: {}", senderName, content);
-            receiveMessageCmdExe.execute(cmd);
+            botMessageService.handleMessage(message);
 
         } catch (Exception e) {
             log.error("Error handling received message", e);

@@ -1,7 +1,13 @@
 package com.qdw.feishu.infrastructure.gateway;
 
-import com.lark.oapi.Client;
-import com.lark.oapi.core.event.EventDispatcher;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.lark.oapi.core.utils.Jsons;
+import com.lark.oapi.event.EventDispatcher;
+import com.lark.oapi.service.im.ImService;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1Data;
+import com.lark.oapi.ws.Client;
 import com.qdw.feishu.domain.gateway.MessageListenerGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
@@ -12,27 +18,38 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-/**
- * 飞书消息监听网关实现
- * 使用 SDK 的 EventDispatcher 建立长连接
- */
 @Slf4j
 @Component
 public class MessageListenerGatewayImpl implements MessageListenerGateway {
 
-    private final Client client;
     private final FeishuProperties properties;
+    private final EventDispatcher eventDispatcher;
+    private Client wsClient;
+    private final Gson gson = new Gson();
 
-    private EventDispatcher eventDispatcher;
     private final AtomicReference<ConnectionStatus> connectionStatus;
     private final AtomicBoolean running;
     private Consumer<Message> messageHandler;
 
-    public MessageListenerGatewayImpl(Client client, FeishuProperties properties) {
-        this.client = client;
+    public MessageListenerGatewayImpl(FeishuProperties properties) {
         this.properties = properties;
         this.connectionStatus = new AtomicReference<>(ConnectionStatus.DISCONNECTED);
         this.running = new AtomicBoolean(false);
+
+        this.eventDispatcher = EventDispatcher.newBuilder(
+            properties.getVerificationToken(),
+            properties.getEncryptKey()
+        ).onP2MessageReceiveV1(new ImService.P2MessageReceiveV1Handler() {
+            @Override
+            public void handle(P2MessageReceiveV1 event) throws Exception {
+                log.info("Received message event: {}", Jsons.DEFAULT.toJson(event));
+
+                if (messageHandler != null) {
+                    Message message = convertToMessage(event);
+                    messageHandler.accept(message);
+                }
+            }
+        }).build();
     }
 
     @Override
@@ -48,28 +65,43 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         connectionStatus.set(ConnectionStatus.CONNECTING);
 
         try {
-            eventDispatcher = client.event();
-            registerMessageHandler();
-            eventDispatcher.start();
-            connectionStatus.set(ConnectionStatus.CONNECTED);
-            log.info("Feishu event listener started successfully");
+            wsClient = new Client.Builder(
+                properties.getAppid(),
+                properties.getAppsecret()
+            ).eventHandler(eventDispatcher)
+             .build();
+
+            log.info("Starting WebSocket connection to Feishu...");
+
+            new Thread(() -> {
+                try {
+                    connectionStatus.set(ConnectionStatus.CONNECTED);
+                    wsClient.start();
+                } catch (Exception e) {
+                    log.error("WebSocket connection failed", e);
+                    connectionStatus.set(ConnectionStatus.DISCONNECTED);
+                    running.set(false);
+                }
+            }, "feishu-ws-listener").start();
+
+            log.info("Feishu WebSocket listener started successfully");
+
         } catch (Exception e) {
             connectionStatus.set(ConnectionStatus.DISCONNECTED);
             running.set(false);
-            log.error("Failed to start event listener", e);
-            throw new RuntimeException("Failed to start event listener", e);
+            log.error("Failed to start WebSocket listener", e);
+            throw new RuntimeException("Failed to start WebSocket listener", e);
         }
     }
 
     @Override
     public synchronized void stopListening() {
         running.set(false);
-        if (eventDispatcher != null) {
-            eventDispatcher.stop();
-        }
         connectionStatus.set(ConnectionStatus.DISCONNECTED);
         messageHandler = null;
-        log.info("Feishu event listener stopped");
+
+        wsClient = null;
+        log.info("Feishu WebSocket listener stopped");
     }
 
     @Override
@@ -77,70 +109,31 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         return connectionStatus.get();
     }
 
-    private void registerMessageHandler() {
-        if (messageHandler == null) {
-            log.warn("Message handler not provided, skipping registration");
-            return;
-        }
+    private Message convertToMessage(P2MessageReceiveV1 event) {
+        P2MessageReceiveV1Data data = event.getEvent();
 
-        try {
-            eventDispatcher.onP2MessageReceiveV1((event) -> {
-                Message message = convertToMessage(event);
-                if (messageHandler != null) {
-                    messageHandler.accept(message);
-                }
-            });
-            log.info("Message handler registered successfully");
-        } catch (Exception e) {
-            log.error("Failed to register message handler", e);
-            throw new RuntimeException("Failed to register message handler", e);
-        }
-    }
+        String content = data.getMessage().getContent();
 
-    private Message convertToMessage(com.lark.oapi.service.im.v1.event.P2MessageReceiveV1 event) {
-        return new Message(
-            event.getEvent().getMessage().getMessageId(),
-            event.getEvent().getMessage().getContent(),
-            com.qdw.feishu.domain.message.Sender.builder()
-                .openId(event.getEvent().getSender().getSenderType().equals("user") ? 
-                    event.getEvent().getSender().getSenderId() : 
-                    event.getEvent().getSender().getSenderId())
-                .build()
-        );
-    }
-
-    private synchronized void reconnect() {
-        if (!running.get()) {
-            return;
-        }
-
-        connectionStatus.set(ConnectionStatus.RECONNECTING);
-        int attempt = 0;
-        int delay = 1000;
-        int maxAttempts = 10;
-
-        while (running.get() && attempt < maxAttempts) {
+        // 解析 JSON 格式的消息内容
+        String textContent = content;
+        if (content != null && content.startsWith("{")) {
             try {
-                attempt++;
-                Thread.sleep(delay);
-                log.info("Reconnect attempt {}/{}", attempt, maxAttempts);
-
-                startListening(this.messageHandler);
-                log.info("Reconnect succeeded after {} attempts", attempt);
-                break;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Reconnect interrupted");
-                break;
+                com.google.gson.JsonObject json = gson.fromJson(content, com.google.gson.JsonObject.class);
+                if (json.has("text")) {
+                    textContent = json.get("text").getAsString();
+                }
             } catch (Exception e) {
-                delay = Math.min(delay * 2, 30000);
-                log.error("Reconnect failed, next attempt in {}ms", delay, e);
+                log.warn("Failed to parse message content, using original: {}", content, e);
             }
         }
 
-        if (attempt >= maxAttempts) {
-            log.error("Reconnect failed after {} attempts, stopping", maxAttempts);
-            stopListening();
-        }
+        com.qdw.feishu.domain.message.Sender sender = new com.qdw.feishu.domain.message.Sender();
+        sender.setUserId(data.getSender().getSenderId());
+
+        return new Message(
+            data.getMessage().getMessageId(),
+            textContent,
+            sender
+        );
     }
 }

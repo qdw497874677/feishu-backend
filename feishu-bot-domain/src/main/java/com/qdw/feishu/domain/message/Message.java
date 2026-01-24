@@ -66,6 +66,7 @@ public class Message {
      */
     public String generateReply() {
         // 领域逻辑可以根据消息类型生成不同的回复
-        return String.format("你说: %s", this.content);
+        // 返回原消息的回显
+        return this.content;
     }
 }

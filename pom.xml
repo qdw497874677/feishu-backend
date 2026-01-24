@@ -23,7 +23,7 @@
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <cola.components.version>5.0.0</cola.components.version>
-        <feishu.sdk.version>2.4.22</feishu.sdk.version>
+        <feishu.sdk.version>1.0.18-rc8</feishu.sdk.version>
         <lombok.version>1.18.30</lombok.version>
         <slf4j.version>2.0.9</slf4j.version>
     </properties>

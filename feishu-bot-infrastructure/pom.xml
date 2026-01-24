@@ -14,6 +14,13 @@
     <description>Feishu Bot Infrastructure Layer</description>
 
     <dependencies>
+        <!-- Domain Module -->
+        <dependency>
+            <groupId>com.qdw.feishu</groupId>
+            <artifactId>feishu-bot-domain</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
         <!-- COLA Components -->
         <dependency>
             <groupId>com.alibaba.cola</groupId>
@@ -25,11 +32,11 @@
             <artifactId>cola-component-exception</artifactId>
         </dependency>
 
-        <!-- Feishu SDK -->
+        <!-- Feishu SDK (oapi-sdk) -->
         <dependency>
             <groupId>com.larksuite.oapi</groupId>
-            <artifactId>larksuite-oapi</artifactId>
-            <version>${feishu.sdk.version}</version>
+            <artifactId>oapi-sdk</artifactId>
+            <version>2.5.2</version>
         </dependency>
 
         <!-- Spring Context -->

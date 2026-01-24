@@ -26,13 +26,10 @@ public interface MessageListenerGateway {
      */
     ConnectionStatus getConnectionStatus();
 
-    /**
-     * 连接状态枚举
-     */
     enum ConnectionStatus {
-        DISCONNECTED,   // 已断开
-        CONNECTING,     // 连接中
-        CONNECTED,      // 已连接
-        RECONNECTING    // 重连中
+        DISCONNECTED,
+        CONNECTING,
+        CONNECTED,
+        RECONNECTING
     }
 }

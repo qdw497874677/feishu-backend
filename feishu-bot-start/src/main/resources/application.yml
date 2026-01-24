@@ -9,9 +9,9 @@ feishu:
   appsecret: ${FEISHU_APPSECRET:your_app_secret}
   encrypt-key: ${FEISHU_ENCRYPT_KEY:your_encrypt_key}
   verification-token: ${FEISHU_VERIFICATION_TOKEN:your_verification_token}
-  mode: listener  # listener 模式
+  mode: ${FEISHU_MODE:webhook}
   listener:
-    enabled: ${FEISHU_LISTENER_ENABLED:true}
+    enabled: ${FEISHU_LISTENER_ENABLED:false}
     heartbeat-interval: 30  # 秒
     reconnect:
       initial-delay: 1000  # 毫秒
@@ -29,6 +29,8 @@ logging:
     com.alibaba.cola: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  charset:
+    console: UTF-8
 
 # Spring 配置
 spring:

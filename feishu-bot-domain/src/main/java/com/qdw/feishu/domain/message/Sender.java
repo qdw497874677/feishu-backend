@@ -1,16 +1,25 @@
 package com.qdw.feishu.domain.message;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import com.lark.oapi.service.im.v1.model.UserId;
 
-/**
- * 发送者值对象
- */
-@AllArgsConstructor
 @Data
+@NoArgsConstructor
 public class Sender {
 
+    private Object userId;
     private String openId;
-    private String userId;
     private String name;
+
+    public String getOpenId() {
+        if (userId instanceof UserId) {
+            UserId uid = (UserId) userId;
+            return uid.getOpenId() != null ? uid.getOpenId() : "";
+        }
+        if (userId instanceof String) {
+            return (String) userId;
+        }
+        return "";
+    }
 }

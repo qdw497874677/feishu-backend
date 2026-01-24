@@ -6,30 +6,22 @@ import com.lark.oapi.core.enums.BaseUrlEnum;
 import com.lark.oapi.service.im.v1.model.CreateMessageReq;
 import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
 import com.lark.oapi.service.im.v1.model.CreateMessageResp;
-import com.lark.oapi.service.im.v1.model.MessageText;
+import com.lark.oapi.service.im.v1.model.ext.MessageText;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.UserInfo;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
-/**
- * 飞书 Gateway 实现
- * 
- * 封装对飞书 SDK 的调用
- * 技术细节（SDK、HTTP、异常）被隔离在基础设施层
- */
 @Slf4j
 @Component
 public class FeishuGatewayImpl implements FeishuGateway {
 
-    private final Client client;
+    private final com.lark.oapi.Client httpClient;
 
     public FeishuGatewayImpl(@Value("${feishu.appid}") String appId,
-                           @Value("${feishu.appsecret}") String appSecret) {
-        // 创建 SDK 客户端
-        this.client = Client.newBuilder(appId, appSecret)
+                            @Value("${feishu.appsecret}") String appSecret) {
+        this.httpClient = com.lark.oapi.Client.newBuilder(appId, appSecret)
             .openBaseUrl(BaseUrlEnum.FeiShu)
             .build();
         log.info("Feishu SDK Client initialized with appId: {}", appId);
@@ -40,19 +32,17 @@ public class FeishuGatewayImpl implements FeishuGateway {
         log.info("Sending reply to: {}, content: {}", receiveOpenId, content);
 
         try {
-            // 使用 SDK 发送消息
+            // 构建消息请求，使用 JSON 格式的 content
             CreateMessageReq req = CreateMessageReq.newBuilder()
                 .receiveIdType("open_id")
                 .createMessageReqBody(CreateMessageReqBody.newBuilder()
                     .receiveId(receiveOpenId)
                     .msgType("text")
-                    .content(MessageText.newBuilder()
-                        .text(content)
-                        .build())
+                    .content(MessageText.newBuilder().text(content).build())
                     .build())
-                .build());
+                .build();
 
-            CreateMessageResp resp = client.im().message().create(req);
+            CreateMessageResp resp = httpClient.im().message().create(req);
 
             if (resp.getCode() != 0) {
                 log.error("Failed to send message: {}", resp.getMsg());
@@ -63,13 +53,12 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
         } catch (Exception e) {
             log.error("Exception sending message", e);
-            throw new SysException("SEND_ERROR", "发送消息异常", e);
+            throw new SysException("SEND_ERROR", "send message failed", e);
         }
     }
 
     @Override
     public UserInfo getUserInfo(String openId) {
-        // TODO: 实现获取用户信息
         log.info("Getting user info for: {}", openId);
         return new UserInfo(openId, "unknown", "Unknown User");
     }

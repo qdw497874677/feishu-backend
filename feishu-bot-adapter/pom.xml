@@ -39,5 +39,18 @@
             <artifactId>feishu-bot-app</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!-- Gson -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+
+        <!-- Infrastructure Module -->
+        <dependency>
+            <groupId>com.qdw.feishu</groupId>
+            <artifactId>feishu-bot-infrastructure</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>
