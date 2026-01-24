@@ -1,5 +1,96 @@
 # 飞书机器人长连接实现 - 开发日志
 
+## 📋 项目规范
+
+### ⚠️ 重要：仅使用长连接模式
+
+**本项目严格禁止使用 WebHook 模式，必须使用飞书长连接（WebSocket）模式。**
+
+- ❌ **禁止**：WebHook 模式（需要公网 IP，不稳定）
+- ✅ **强制**：长连接模式（WebSocket，稳定可靠）
+
+**原因**：
+- WebHook 需要服务器具备公网 IP 和域名，部署复杂
+- 长连接通过 WebSocket 实时推送消息，无需回调端点
+- 长连接在消息延迟和稳定性上优于 WebHook
+
+---
+
+### 🏗️ COLA 架构规范
+
+本项目采用 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA) 架构。
+
+#### 模块职责
+
+**新建代码时，请严格按照以下规则选择模块：**
+
+| 模块 | 职责 | 新建代码类型 | 示例 |
+|------|------|-------------|------|
+| **feishu-bot-domain** | 领域模型、业务逻辑、领域服务、网关接口 | `@Entity`, `@ValueObject`, `DomainService`, `Gateway Interface` | `Message.java`, `BotMessageService.java`, `FeishuGateway.java` |
+| **feishu-bot-app** | 应用服务、用例编排、命令/查询 | `@AppService`, `Cmd`, `Qry`, `CmdExe`, `QryExe` | `ReceiveMessageCmd.java`, `ReceiveMessageCmdExe.java` |
+| **feishu-bot-infrastructure** | 基础设施实现、外部系统集成 | Gateway 实现、Config、Repository 实现 | `FeishuGatewayImpl.java`, `FeishuProperties.java`, `MessageListenerGatewayImpl.java` |
+| **feishu-bot-adapter** | 适配层、外部接口、事件监听 | Controller、Listener、Event Handler | `FeishuEventListener.java`, `GlobalExceptionHandler.java` |
+| **feishu-bot-client** | DTO 对象、对外接口定义 | `@DTO`, `@Request`, `@Response` | `ReceiveMessageCmd.java` |
+| **feishu-bot-start** | 启动模块、配置 | `Application.java`, `application.yml`, `pom.xml` (父) | - |
+
+#### COLA 分层依赖原则
+
+```
+┌─────────────────────────────────────┐
+│         feishu-bot-start          │  ← 启动入口
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│        feishu-bot-adapter         │  ← 适配层
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│         feishu-bot-app            │  ← 应用层
+└──────────────┬──────────────────────┘
+               │
+       ┌───────┴───────┐
+       │               │
+┌──────▼──────┐  ┌─────▼─────┐
+│  feishu-bot-  │  │feishu-bot-│
+│   domain     │  │  client   │  ← 领域层 + DTO 层
+└──────┬───────┘  └───────────┘
+       │
+┌──────▼──────────────────────────┐
+│  feishu-bot-infrastructure     │  ← 基础设施层
+└─────────────────────────────────┘
+```
+
+**依赖规则**：
+- 上层可以依赖下层
+- 下层不能依赖上层（反转依赖：domain 定义接口，infrastructure 实现）
+- 横向模块之间不能直接依赖
+
+#### 代码放置决策树
+
+```
+需要添加什么代码？
+│
+├─ 实体/值对象/领域服务/领域事件
+│  └─ → feishu-bot-domain
+│
+├─ 命令/查询/用例执行器
+│  └─ → feishu-bot-app
+│
+├─ 数据库/外部 API 实现/配置类
+│  └─ → feishu-bot-infrastructure
+│
+├─ Controller/EventListener/事件处理
+│  └─ → feishu-bot-adapter
+│
+├─ DTO/请求响应对象
+│  └─ → feishu-bot-client
+│
+└─ 启动配置/主类
+   └─ → feishu-bot-start
+```
+
+---
+
 ## ✅ 最终状态（2026-01-24）
 
 **长连接机器人已成功上线并正常工作！**
@@ -111,7 +202,7 @@ logging:
 
 ## 🚀 启动命令
 
-### 长连接模式
+### 长连接模式（唯一推荐模式）
 
 ```bash
 cd /root/workspace/feishu-backend/feishu-bot-start
@@ -121,13 +212,6 @@ FEISHU_APPID="your_app_id" \
 FEISHU_APPSECRET="your_app_secret" \
 FEISHU_MODE="listener" \
 FEISHU_LISTENER_ENABLED=true \
-mvn spring-boot:run
-```
-
-### WebHook 模式
-
-```bash
-cd /root/workspace/feishu-backend/feishu-bot-start
 mvn spring-boot:run
 ```
 
@@ -157,7 +241,7 @@ feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/
 feishu-bot-adapter/src/main/java/com/qdw/feishu/adapter/
 ├── listener/
 │   └── FeishuEventListener.java    # 飞书事件监听器（启动长连接）
-└── FeishuWebhookController.java    # WebHook 控制器
+└── FeishuWebhookController.java    # WebHook 控制器（已弃用）
 ```
 
 ---
@@ -194,9 +278,6 @@ tail -f /tmp/feishu-run.log | grep -E "(Received|Processing|Sending|Error)"
 
 # 验证 WebSocket 连接
 grep "connected to wss://" /tmp/feishu-run.log
-
-# 测试 WebHook 端点
-curl -X POST http://localhost:8080/webhook/health
 ```
 
 ---
