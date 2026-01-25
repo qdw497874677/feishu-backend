@@ -20,6 +20,8 @@ feishu:
     timeout:
       connect: 10000       # 连接超时
       read: 60000          # 读取超时
+  reply:
+    mode: DEFAULT  # 可选值: DEFAULT, TOPIC
 
 # 日志配置
 logging:
