@@ -75,15 +75,29 @@ public class FeishuGatewayImpl implements FeishuGateway {
             textContent.put("text", content);
             String jsonContent = objectMapper.writeValueAsString(textContent);
 
-            CreateMessageReq req = CreateMessageReq.newBuilder()
-                .receiveIdType("open_id")
+            CreateMessageReq.Builder reqBuilder = CreateMessageReq.newBuilder()
+                .receiveIdType("chat_id")
                 .createMessageReqBody(CreateMessageReqBody.newBuilder()
                     .receiveId(message.getChatId())
                     .msgType("text")
                     .content(jsonContent)
-                    .build())
-                .build();
+                    .build());
 
+            if (topicId != null && !topicId.isEmpty()) {
+                log.info("Replying to topic: {}", topicId);
+
+                CreateMessageReqBody.Builder bodyBuilder = CreateMessageReqBody.newBuilder()
+                    .receiveId(message.getChatId())
+                    .msgType("text")
+                    .content(jsonContent);
+
+                reqBuilder.createMessageReqBody(bodyBuilder.build());
+
+                log.warn("Topic reply not fully implemented: SDK v2.5.2 does not support root_id field.");
+                log.warn("To enable topic reply, upgrade SDK or implement custom request builder.");
+            }
+
+            CreateMessageReq req = reqBuilder.build();
             CreateMessageResp resp = httpClient.im().message().create(req);
 
             if (resp.getCode() != 0) {
