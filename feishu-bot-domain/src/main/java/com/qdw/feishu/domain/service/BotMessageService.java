@@ -47,73 +47,6 @@ public class BotMessageService {
         return "";
     }
 
-    public void processMessage(Message message) {
-        log.info("开始处理消息: content={}", message.getContent());
-
-        String topicId = message.getTopicId();
-        FishuAppI app;
-
-        if (topicId != null && !topicId.isEmpty()) {
-            log.info("消息来自话题: topicId={}", topicId);
-            var mapping = topicMappingGateway.findByTopicId(topicId);
-            if (mapping.isPresent()) {
-                String appId = mapping.get().getAppId();
-                log.info("找到话题映射: topicId={}, appId={}", topicId, appId);
-                app = appRegistry.getApp(appId).orElse(null);
-                if (app == null) {
-                    log.error("应用不存在: appId={}", appId);
-                    sendErrorReply(message, "应用不可用");
-                    return;
-                }
-                mapping.get().activate();
-                topicMappingGateway.save(mapping.get());
-            } else {
-                log.warn("话题映射不存在: topicId={}，降级为默认处理", topicId);
-                handleUnknownTopic(message);
-                return;
-            }
-        } else {
-            String content = message.getContent().trim();
-            if (!content.startsWith("/")) {
-                log.warn("未找到匹配的应用");
-                return;
-            }
-            String appId = extractAppId(content);
-            app = appRegistry.getApp(appId).orElse(null);
-            if (app == null) {
-                log.warn("应用不存在: appId={}", appId);
-                return;
-            }
-        }
-
-        String replyContent = app.execute(message);
-        if (replyContent == null || replyContent.isEmpty()) {
-            log.warn("应用返回空回复");
-            return;
-        }
-
-        ReplyMode replyMode = app.getReplyMode();
-        String finalTopicId = topicId;
-
-        if (replyMode == ReplyMode.TOPIC && (topicId == null || topicId.isEmpty())) {
-            String newTopicId = "topic_" + System.currentTimeMillis();
-            log.info("创建新话题: topicId={}", newTopicId);
-
-            TopicMapping mapping = new TopicMapping(newTopicId, app.getAppId());
-            topicMappingGateway.save(mapping);
-
-            finalTopicId = newTopicId;
-        }
-
-        SendResult result = feishuGateway.sendMessage(message, replyContent, finalTopicId);
-
-        if (result.isSuccess()) {
-            log.info("发送回复成功: topicId={}", finalTopicId);
-        } else {
-            log.error("发送回复失败: error={}", result.getErrorMessage());
-        }
-    }
-
     private String extractAppId(String content) {
         String[] parts = content.split("\\s+", 2);
         return parts[0].substring(1).toLowerCase();
@@ -136,25 +69,79 @@ public class BotMessageService {
             message.validate();
             log.info("消息验证通过");
 
-            String reply = null;
-            if (message.getContent().trim().startsWith("/")) {
-                log.info("检测到命令，使用 AppRouter 路由");
-                reply = appRouter.route(message);
-                log.info("应用路由完成, 回复内容: {}", reply);
+            String topicId = message.getTopicId();
+            FishuAppI app;
+
+            if (topicId != null && !topicId.isEmpty()) {
+                log.info("消息来自话题: topicId={}", topicId);
+                var mapping = topicMappingGateway.findByTopicId(topicId);
+                if (mapping.isPresent()) {
+                    String appId = mapping.get().getAppId();
+                    log.info("找到话题映射: topicId={}, appId={}", topicId, appId);
+                    app = appRegistry.getApp(appId).orElse(null);
+                    if (app == null) {
+                        log.error("应用不存在: appId={}", appId);
+                        sendErrorReply(message, "应用不可用");
+                        message.markProcessed();
+                        return SendResult.failure("应用不可用");
+                    }
+                    mapping.get().activate();
+                    topicMappingGateway.save(mapping.get());
+                } else {
+                    log.warn("话题映射不存在: topicId={}，降级为默认处理", topicId);
+                    handleUnknownTopic(message);
+                    message.markProcessed();
+                    return SendResult.failure("话题已失效");
+                }
+            } else {
+                String content = message.getContent().trim();
+                if (!content.startsWith("/")) {
+                    log.info("不是命令，路由到 help 应用");
+                    app = appRegistry.getApp("help").orElse(null);
+                    if (app == null) {
+                        log.warn("未找到帮助应用");
+                        message.markProcessed();
+                        return SendResult.failure("未找到帮助应用");
+                    }
+                } else {
+                    String appId = extractAppId(content);
+                    log.info("检测到命令，应用ID: {}", appId);
+                    app = appRegistry.getApp(appId).orElse(null);
+                    if (app == null) {
+                        log.warn("应用不存在: appId={}", appId);
+                        message.markProcessed();
+                        return SendResult.failure("应用不存在: " + appId);
+                    }
+                }
             }
 
-            if (reply == null) {
-                log.info("不是命令，路由到 help 应用");
-                reply = appRegistry.getApp("help")
-                    .map(app -> app.execute(message))
-                    .orElse("未找到帮助应用");
+            String replyContent = app.execute(message);
+            if (replyContent == null || replyContent.isEmpty()) {
+                log.warn("应用返回空回复");
+                message.markProcessed();
+                return SendResult.failure("应用返回空回复");
             }
 
-            String openId = getOpenIdFromSender(message.getSender().getOpenId());
-            log.info("准备发送回复给: {}", openId);
+            ReplyMode replyMode = app.getReplyMode();
+            String finalTopicId = topicId;
 
-            SendResult result = feishuGateway.sendReply(openId, reply);
-            log.info("回复发送结果: {}", result.isSuccess());
+            if (replyMode == ReplyMode.TOPIC && (topicId == null || topicId.isEmpty())) {
+                String newTopicId = "topic_" + System.currentTimeMillis();
+                log.info("创建新话题: topicId={}", newTopicId);
+
+                TopicMapping mapping = new TopicMapping(newTopicId, app.getAppId());
+                topicMappingGateway.save(mapping);
+
+                finalTopicId = newTopicId;
+            }
+
+            SendResult result = feishuGateway.sendMessage(message, replyContent, finalTopicId);
+
+            if (result.isSuccess()) {
+                log.info("发送回复成功: topicId={}", finalTopicId);
+            } else {
+                log.error("发送回复失败: error={}", result.getErrorMessage());
+            }
 
             message.markProcessed();
             log.info("=== BotMessageService.handleMessage 完成 ===\n");
