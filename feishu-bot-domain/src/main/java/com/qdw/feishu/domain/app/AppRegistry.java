@@ -1,6 +1,9 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.config.FeishuReplyProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -11,6 +14,10 @@ import java.util.stream.Collectors;
 public class AppRegistry {
 
     private final Map<String, FishuAppI> apps;
+
+    @Autowired
+    @Lazy
+    private FeishuReplyProperties replyProperties;
 
     public AppRegistry(List<FishuAppI> allApps) {
         log.info("=== AppRegistry 初始化开始 ===");
@@ -42,5 +49,9 @@ public class AppRegistry {
             .map(app -> String.format("%s - %s", 
                 app.getTriggerCommand(), app.getDescription()))
             .collect(Collectors.joining("\n"));
+    }
+
+    public ReplyMode getDefaultReplyMode() {
+        return replyProperties.getMode();
     }
 }

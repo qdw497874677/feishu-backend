@@ -1,4 +1,4 @@
-package com.qdw.feishu.infrastructure.config;
+package com.qdw.feishu.domain.config;
 
 import com.qdw.feishu.domain.app.ReplyMode;
 import lombok.Data;
