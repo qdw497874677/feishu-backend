@@ -49,16 +49,26 @@ public class BotMessageService {
 
     private String extractAppId(String content) {
         String[] parts = content.split("\\s+", 2);
-        return parts[0].substring(1).toLowerCase();
+        String appId = parts[0].substring(1).toLowerCase();
+        if (appId.isEmpty()) {
+            return null;
+        }
+        return appId;
     }
 
     private void handleUnknownTopic(Message message) {
         String errorReply = "话题已失效，请重新发送命令触发应用。";
-        feishuGateway.sendMessage(message, errorReply, null);
+        SendResult result = feishuGateway.sendMessage(message, errorReply, null);
+        if (!result.isSuccess()) {
+            log.warn("Failed to send error reply: {}", result.getErrorMessage());
+        }
     }
 
     private void sendErrorReply(Message message, String error) {
-        feishuGateway.sendMessage(message, "错误: " + error, null);
+        SendResult result = feishuGateway.sendMessage(message, "错误: " + error, null);
+        if (!result.isSuccess()) {
+            log.warn("Failed to send error reply: {}", result.getErrorMessage());
+        }
     }
 
     public SendResult handleMessage(Message message) {
@@ -76,7 +86,8 @@ public class BotMessageService {
                 log.info("消息来自话题: topicId={}", topicId);
                 var mapping = topicMappingGateway.findByTopicId(topicId);
                 if (mapping.isPresent()) {
-                    String appId = mapping.get().getAppId();
+                    TopicMapping topicMapping = mapping.get();
+                    String appId = topicMapping.getAppId();
                     log.info("找到话题映射: topicId={}, appId={}", topicId, appId);
                     app = appRegistry.getApp(appId).orElse(null);
                     if (app == null) {
@@ -85,8 +96,8 @@ public class BotMessageService {
                         message.markProcessed();
                         return SendResult.failure("应用不可用");
                     }
-                    mapping.get().activate();
-                    topicMappingGateway.save(mapping.get());
+                    topicMapping.activate();
+                    topicMappingGateway.save(topicMapping);
                 } else {
                     log.warn("话题映射不存在: topicId={}，降级为默认处理", topicId);
                     handleUnknownTopic(message);
@@ -126,7 +137,7 @@ public class BotMessageService {
             String finalTopicId = topicId;
 
             if (replyMode == ReplyMode.TOPIC && (topicId == null || topicId.isEmpty())) {
-                String newTopicId = "topic_" + System.currentTimeMillis();
+                String newTopicId = "topic_" + java.util.UUID.randomUUID().toString().substring(0, 16);
                 log.info("创建新话题: topicId={}", newTopicId);
 
                 TopicMapping mapping = new TopicMapping(newTopicId, app.getAppId());
