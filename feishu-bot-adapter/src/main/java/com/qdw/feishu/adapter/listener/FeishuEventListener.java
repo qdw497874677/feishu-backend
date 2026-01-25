@@ -38,20 +38,25 @@ public class FeishuEventListener implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        log.info("=== FeishuEventListener 启动开始 ===");
+        log.info("模式: {}", properties.getMode());
+        log.info("监听器启用状态: {}", properties.isListenerEnabled());
+
         if (!properties.getListener().isEnabled()) {
-            log.info("Feishu listener is disabled, skipping initialization");
+            log.warn("Feishu listener is disabled, skipping initialization");
             return;
         }
 
-        log.info("Initializing Feishu event listener...");
+        log.info("开始初始化飞书事件监听器...");
 
         Consumer<Message> messageHandler = this.receiveMessageListenerExe::execute;
 
         try {
             messageListenerGateway.startListening(messageHandler);
-            log.info("Feishu event listener started successfully");
+            log.info("✅ 飞书事件监听器启动成功");
+            log.info("=== FeishuEventListener 启动完成 ===\n");
         } catch (Exception e) {
-            log.error("Failed to start Feishu event listener", e);
+            log.error("❌ 飞书事件监听器启动失败", e);
             throw new RuntimeException("Failed to start Feishu event listener", e);
         }
     }

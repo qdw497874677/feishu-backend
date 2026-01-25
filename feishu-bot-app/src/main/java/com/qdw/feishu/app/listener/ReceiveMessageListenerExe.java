@@ -31,23 +31,21 @@ public class ReceiveMessageListenerExe {
      */
     @Async
     public void execute(Message message) {
+        log.info("=== 收到新消息 ===");
+        log.info("发送者: {}", message.getSender());
+        log.info("消息内容: {}", message.getContent());
+        log.info("消息ID: {}", message.getMessageId());
+
         try {
-            log.info("Processing message from sender: {}", message.getSender());
-
-            message.validate();
-
-            String reply = commandRouter.route(message);
-            if (reply == null) {
-                reply = message.generateReply();
-            }
-
-            botMessageService.sendReply(message, reply);
-
-            log.info("Message processed successfully");
+            log.info("开始处理消息...");
+            botMessageService.handleMessage(message);
+            log.info("消息处理成功");
         } catch (MessageBizException e) {
-            log.warn("Business exception while processing message: {}", e.getMessage());
+            log.warn("业务异常: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Unexpected error while processing message", e);
+            log.error("消息处理失败", e);
         }
+
+        log.info("=== 消息处理流程结束 ===\n");
     }
 }

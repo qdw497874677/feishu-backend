@@ -1,129 +1,182 @@
-# Feishu Bot Backend - COLA Architecture
+# 飞书机器人后端项目
 
-基于 COLA (Clean Object-Oriented and Layered Architecture) 框架的飞书机器人后端项目。
+基于 COLA 架构的飞书机器人后端，使用长连接模式接收和回复消息。
 
-## 架构设计
+---
 
-```
-Adapter Layer (适配器层)
-  └── FeishuWebhookController
-       └── 处理飞书 Webhook 事件
+## 📄 文档索引
 
-App Layer (应用层)
-  └── ReceiveMessageCmdExe
-       └── 编排业务逻辑，参数校验
+| 文档 | 用途 | 适合人群 |
+|------|------|----------|
+| [AGENTS.md](./AGENTS.md) | 项目核心规范、COLA 架构、启动命令 | **所有开发者** |
+| [APP_GUIDE.md](./APP_GUIDE.md) | 应用开发快速开始、创建应用 | **应用开发者** |
 
-Domain Layer (领域层)
-  ├── Message (消息实体)
-  ├── BotMessageSender (领域服务)
-  ├── FeishuGateway (网关接口)
-  └── ReplyExtensionPt (扩展点)
-       └── 支持插件化的回复策略
+---
 
-Infrastructure Layer (基础设施层)
-  ├── FeishuGatewayImpl
-  │    └── 封装飞书 SDK 调用
-  └── FeishuProperties
-       └── 配置管理
-```
+## 🎯 快速开始
 
-## 快速开始
-
-### 环境要求
-- JDK 17+
-- Maven 3.6+
-
-### 配置环境变量
+### 启动项目
 
 ```bash
-export FEISHU_APPID=your_app_id
-export FEISHU_APPSECRET=your_app_secret
-export FEISHU_VERIFICATION_TOKEN=your_verification_token
-export FEISHU_ENCRYPT_KEY=your_encrypt_key
-```
-
-### 编译和运行
-
-```bash
-# 编译项目
-mvn clean install -DskipTests
-
-# 运行应用
 cd feishu-bot-start
+
+LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
+FEISHU_MODE=listener \
+FEISHU_LISTENER_ENABLED=true \
 mvn spring-boot:run
 ```
 
-### 测试接口
+### 创建新应用
 
-```bash
-# 健康检查
-curl http://localhost:8080/webhook/health
+查看 [APP_GUIDE.md](./APP_GUIDE.md)，3 步完成应用开发：
 
-# 模拟飞书 Webhook
-curl -X POST http://localhost:8080/webhook/feishu \
-  -H "Content-Type: application/json" \
-  -d '{"type":"im.message.receive_v1","event":{"message":{"content":"Hello Feishu Bot"}}}'
+1. 创建类 → 添加 `@Component` → 实现 `FishuAppI`
+2. 构建项目
+3. 重启应用（自动注册）
+
+---
+
+## 📁 项目结构
+
+```
+feishu-bot/                         # 父 POM
+├── feishu-bot-client/              # DTO 层
+├── feishu-bot-domain/             # 领域层（应用在这里）
+├── feishu-bot-app/                # 应用层
+├── feishu-bot-infrastructure/      # 基础设施层
+├── feishu-bot-adapter/           # 适配层
+└── feishu-bot-start/              # 启动模块
 ```
 
-## 项目模块
+---
 
-| 模块 | 说明 | 主要类 |
-|--------|------|--------|
-| **feishu-bot-adapter** | 适配器层 | FeishuWebhookController |
-| **feishu-bot-client** | 客户端层 | MessageServiceI, ReceiveMessageCmd |
-| **feishu-bot-app** | 应用层 | ReceiveMessageCmdExe |
-| **feishu-bot-domain** | 领域层 | Message, FeishuGateway, ReplyExtensionPt |
-| **feishu-bot-infrastructure** | 基础设施层 | FeishuGatewayImpl, FeishuProperties |
-| **feishu-bot-start** | 启动模块 | Application, application.yml |
+## ⚠️ 核心规范
 
-## COLA 架构优势
+### 严禁使用 WebHook
 
-✅ **职责清晰**: 每层有明确的单一职责
-✅ **依赖倒置**: 领域层定义接口，基础设施层实现
-✅ **高内聚**: 相关的类组织在同一个包内
-✅ **低耦合**: 层之间通过 DTO 交互，不直接依赖实现
-✅ **易扩展**: 扩展点机制，支持新功能无需修改核心
-✅ **可测试**: 依赖抽象，便于 Mock 和测试
+本项目**只允许使用长连接模式**，严格禁止使用 WebHook 模式。
 
-## 扩展点示例
+- ❌ WebHook：需要公网 IP 和域名，部署复杂，不稳定
+- ✅ 长连接：WebSocket 实时推送，无需回调端点，稳定可靠
 
-实现不同的回复策略：
+**重要说明**：
+- ✅ 所有新代码必须基于长连接模式
+- ❌ 禁止添加任何 WebHook 相关的新代码
+- ✅ 消息接收和发送统一使用 `MessageListenerGateway` 和 `FeishuGateway`
 
-```java
-@Extension(bizId = "feishu-bot", useCase = "ai")
-@Component
-public class AiReplyExtension implements ReplyExtensionPt {
-    @Override
-    public String enhanceReply(String originalReply, Message message) {
-        // 调用 AI 生成回复
-        return aiGateway.generateReply(message.getContent());
-    }
-}
+### COLA 架构
 
-@Extension(bizId = "feishu-bot", useCase = "keyword")
-@Component
-public class KeywordReplyExtension implements ReplyExtensionPt {
-    @Override
-    public String enhanceReply(String originalReply, Message message) {
-        String content = message.getContent().toLowerCase();
-        if (content.contains("你好") {
-            return "你好！我是飞书机器人 🤖";
-        }
-        return originalReply;
-    }
-}
+遵循 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA) 架构。
+
+**依赖关系**：
+```
+start → adapter → app → domain + client → infrastructure
 ```
 
-## 技术栈
+**分层职责**：
+- `feishu-bot-domain`：领域模型、业务逻辑、领域服务、网关接口、应用实现
+- `feishu-bot-app`：应用服务、用例编排、命令/查询
+- `feishu-bot-infrastructure`：基础设施实现、外部系统集成
+- `feishu-bot-adapter`：适配层、外部接口、事件监听
+- `feishu-bot-client`：DTO 对象、对外接口定义
+- `feishu-bot-start`：启动模块、配置
 
-- **JDK**: 17
+---
+
+## 🎨 已实现功能
+
+### 应用系统
+
+| 应用ID | 应用名称 | 触发命令 | 状态 |
+|---------|---------|-----------|------|
+| `time` | 时间查询 | `/time` | ✅ 已实现 |
+
+### 核心功能
+
+- ✅ WebSocket 长连接接收消息
+- ✅ 自动应用注册和路由
+- ✅ 消息发送和回复
+- ✅ UTF-8 中文编码支持
+- ✅ 异常处理和日志记录
+
+---
+
+## 🚀 技术栈
+
+- **JDK**: 17+
 - **Spring Boot**: 3.2.1
-- **COLA**: 5.0.0
-- **Feishu SDK**: larksuite-oapi 2.4.22
-- **Lombok**: 1.18.30
-- **SLF4J**: 2.0.9
-- **Maven**: 3.9.x
+- **飞书 SDK**: 2.5.2
+- **架构**: COLA
+- **构建工具**: Maven
 
-## License
+---
 
-Copyright © 2026
+## 📊 项目状态
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 核心规范 | ✅ 已定义 | AGENTS.md |
+| 应用系统 | ✅ 已实现 | AppRegistry, AppRouter, TimeApp |
+| 长连接 | ✅ 正常运行 | WebSocket 监听器 |
+| 废弃代码 | ✅ 已清理 | 删除 CommandRouter, WebHook, 扩展点 |
+| 编码支持 | ✅ 已修复 | UTF-8 中英文显示正常 |
+
+---
+
+## 🔍 常见问题
+
+### Q: 如何创建新应用？
+
+**A:** 查看 [APP_GUIDE.md](./APP_GUIDE.md)，3 步完成：
+1. 创建类（添加 `@Component` 和实现 `FishuAppI`）
+2. 构建项目
+3. 重启应用（自动注册）
+
+### Q: 应用没有生效？
+
+**A:** 检查：
+1. 类添加了 `@Component` 注解
+2. 实现了 `FishuAppI` 接口
+3. `appId` 是唯一的（如 `time`, `weather`）
+4. 启动日志显示应用已注册
+
+### Q: 如何查看日志？
+
+**A:**
+```bash
+tail -f /tmp/feishu-start.log
+```
+
+### Q: 如何停止应用？
+
+**A:**
+```bash
+ps aux | grep "spring-boot:run" | grep -v grep | awk '{print $2}' | xargs kill -9
+```
+
+---
+
+## 📚 参考资料
+
+- [应用开发规范](./APP_GUIDE.md) - 详细的应用开发指南
+- [项目规范](./AGENTS.md) - 核心规范、架构、启动命令
+- [飞书 IM SDK 文档](https://open.feishu.cn/document/serverSdk/im sdk)
+- [飞书 WebSocket 文档](https://open.feishu.cn/document/serverSdk/event-sdk)
+- [COLA 架构](https://github.com/alibaba/COLA)
+- [飞书 SDK GitHub](https://github.com/larksuite/oapi-sdk-java)
+
+---
+
+## 📝 开发日志
+
+### 2026-01-25
+
+- ✅ 重构应用系统：引入 `FishuAppI`、`AppRegistry`、`AppRouter`
+- ✅ 创建 `TimeApp` 作为示例应用
+- ✅ 删除废弃代码：`CommandRouter`、`WebHook`、扩展点
+- ✅ 优化项目文档：精简并明确规范
+- ✅ 长连接正常工作，消息接收和回复正常
+
+---
+
+**最后更新**: 2026-01-25

@@ -14,8 +14,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  */
 @SpringBootApplication(
     scanBasePackages = {
-        "com.qdw.feishu",    // 业务包
-        "com.alibaba.cola"      // COLA 组件包
+        "com.qdw.feishu",
+        "com.alibaba.cola",
+        "com.qdw.feishu.domain"
     }
 )
 public class Application {
