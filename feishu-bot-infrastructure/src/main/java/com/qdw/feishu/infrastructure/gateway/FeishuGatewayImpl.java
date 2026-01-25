@@ -9,6 +9,7 @@ import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
 import com.lark.oapi.service.im.v1.model.CreateMessageResp;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.UserInfo;
+import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,12 +35,7 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
     @Override
     public SendResult sendReply(String receiveOpenId, String content) {
-        return sendMessage(receiveOpenId, content, null);
-    }
-
-    @Override
-    public SendResult sendMessage(String receiveOpenId, String content, String topicId) {
-        log.info("Sending message to: {}, content: {}, topicId: {}", receiveOpenId, content, topicId);
+        log.info("Sending reply to: {}, content: {}", receiveOpenId, content);
 
         try {
             Map<String, String> textContent = new HashMap<>();
@@ -50,6 +46,39 @@ public class FeishuGatewayImpl implements FeishuGateway {
                 .receiveIdType("open_id")
                 .createMessageReqBody(CreateMessageReqBody.newBuilder()
                     .receiveId(receiveOpenId)
+                    .msgType("text")
+                    .content(jsonContent)
+                    .build())
+                .build();
+
+            CreateMessageResp resp = httpClient.im().message().create(req);
+
+            if (resp.getCode() != 0) {
+                log.error("Failed to send message: {}", resp.getMsg());
+                throw new SysException("SEND_FAILED", resp.getMsg());
+            }
+
+            return SendResult.success(resp.getData().getMessageId());
+
+        } catch (Exception e) {
+            log.error("Exception sending message", e);
+            throw new SysException("SEND_ERROR", "send message failed", e);
+        }
+    }
+
+    @Override
+    public SendResult sendMessage(Message message, String content, String topicId) {
+        log.info("Sending message to chatId: {}, content: {}, topicId: {}", message.getChatId(), content, topicId);
+
+        try {
+            Map<String, String> textContent = new HashMap<>();
+            textContent.put("text", content);
+            String jsonContent = objectMapper.writeValueAsString(textContent);
+
+            CreateMessageReq req = CreateMessageReq.newBuilder()
+                .receiveIdType("open_id")
+                .createMessageReqBody(CreateMessageReqBody.newBuilder()
+                    .receiveId(message.getChatId())
                     .msgType("text")
                     .content(jsonContent)
                     .build())

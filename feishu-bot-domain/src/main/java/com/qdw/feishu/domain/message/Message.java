@@ -24,6 +24,9 @@ public class Message {
     /** 话题ID，如果消息在话题中 */
     private String topicId;
 
+    /** 会话ID（群聊或私聊的 ID） */
+    private String chatId;
+
     /** 发送者信息 */
     private Sender sender;
 
