@@ -34,7 +34,12 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
     @Override
     public SendResult sendReply(String receiveOpenId, String content) {
-        log.info("Sending reply to: {}, content: {}", receiveOpenId, content);
+        return sendMessage(receiveOpenId, content, null);
+    }
+
+    @Override
+    public SendResult sendMessage(String receiveOpenId, String content, String topicId) {
+        log.info("Sending message to: {}, content: {}, topicId: {}", receiveOpenId, content, topicId);
 
         try {
             Map<String, String> textContent = new HashMap<>();
@@ -57,6 +62,7 @@ public class FeishuGatewayImpl implements FeishuGateway {
                 throw new SysException("SEND_FAILED", resp.getMsg());
             }
 
+            log.info("Send message success: messageId={}, topicId={}", resp.getData().getMessageId(), topicId);
             return SendResult.success(resp.getData().getMessageId());
 
         } catch (Exception e) {
