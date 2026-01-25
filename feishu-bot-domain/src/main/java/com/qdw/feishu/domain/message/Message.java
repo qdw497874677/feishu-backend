@@ -21,6 +21,9 @@ public class Message {
     /** 消息内容 */
     private String content;
 
+    /** 话题ID，如果消息在话题中 */
+    private String topicId;
+
     /** 发送者信息 */
     private Sender sender;
 
