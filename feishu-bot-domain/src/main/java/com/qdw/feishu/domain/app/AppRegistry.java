@@ -52,6 +52,6 @@ public class AppRegistry {
     }
 
     public ReplyMode getDefaultReplyMode() {
-        return replyProperties.getMode();
+        return replyProperties != null ? replyProperties.getMode() : ReplyMode.DEFAULT;
     }
 }
