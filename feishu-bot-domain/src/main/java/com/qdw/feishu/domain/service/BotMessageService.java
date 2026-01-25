@@ -54,8 +54,10 @@ public class BotMessageService {
             }
 
             if (reply == null) {
-                log.info("不是命令，使用默认回复");
-                reply = message.generateReply();
+                log.info("不是命令，路由到 help 应用");
+                reply = appRegistry.getApp("help")
+                    .map(app -> app.execute(message))
+                    .orElse("未找到帮助应用");
             }
 
             String openId = getOpenIdFromSender(message.getSender().getOpenId());

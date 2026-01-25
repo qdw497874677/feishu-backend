@@ -231,6 +231,94 @@
       "created_at": "2026-01-19T15:36:04.402971",
       "updated_at": "2026-01-19T15:36:04.402978",
       "content_file": "exp_20260119_153604_402924.md"
+    },
+    {
+      "id": "exp_20260125_210045_001",
+      "title": "Spring 循环依赖问题解决方案",
+      "category": "技术问题",
+      "tags": [
+        "Spring",
+        "循环依赖",
+        "@Lazy",
+        "Bean注册",
+        "依赖注入"
+      ],
+      "parent_id": null,
+      "children_ids": [],
+      "scope": "项目经验",
+      "source": "debugging",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-25T21:00:45.000Z",
+      "updated_at": "2026-01-25T21:00:45.000Z",
+      "content": "## 问题描述\n\nHelpApp 需要注入 AppRegistry 以获取所有应用列表，但 AppRegistry 在初始化时扫描所有 FishuAppI（包括 HelpApp），形成循环依赖：\n\n```\nAppRegistry → 扫描 FishuAppI → HelpApp → AppRegistry\n```\n\n启动时报错：\n```\nRequested bean is currently in creation: Is there an unresolvable circular reference?\n```\n\n## 解决方案\n\n使用 `@Lazy` 注解延迟注入 AppRegistry：\n\n```java\n@Component\npublic class HelpApp implements FishuAppI {\n\n    @Autowired\n    @Lazy\n    private AppRegistry appRegistry;\n}\n```\n\n## 关键要点\n\n- **@Lazy 延迟注入**：Spring 会创建 HelpApp 的代理对象，真正的 AppRegistry 在第一次使用时才注入\n- **适用场景**：Bean A 需要 Bean B，但 Bean B 需要 Bean A（或间接依赖）\n- **替代方案**：使用 ApplicationContext 手动获取 Bean，但 @Lazy 更优雅\n- **注意**：延迟注入会增加第一次调用的开销，但通常可以忽略"
+    },
+    {
+      "id": "exp_20260125_210045_002",
+      "title": "飞书消息发送 JSON 格式处理优化",
+      "category": "第三方集成",
+      "tags": [
+        "飞书",
+        "SDK",
+        "JSON",
+        "消息格式",
+        "序列化"
+      ],
+      "parent_id": null,
+      "children_ids": [],
+      "scope": "项目经验",
+      "source": "debugging",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-25T21:00:45.000Z",
+      "updated_at": "2026-01-25T21:00:45.000Z",
+      "content": "## 问题描述\n\n发送消息时报错：\n```\nYour request contains an invalid request parameter, \next=invalid message content, \next=content is not a string in json format.\n```\n\n## 错误原因\n\n飞书 API 的 `content` 参数需要是 JSON 字符串，而不是 MessageText 对象。\n\n## 解决方案\n\n### 方案一：手动 JSON 构建（不推荐）\n```java\nString jsonContent = \"{\\\"text\\\":\\\"\" + escapeJson(content) + \"\\\"}\";\n\nprivate String escapeJson(String text) {\n    return text.replace(\"\\\\\", \"\\\\\\\\\")\n               .replace(\"\\\"\", \"\\\\\\\"\")\n               .replace(\"\\n\", \"\\\\n\")\n               .replace(\"\\r\", \"\\\\r\")\n               .replace(\"\\t\", \"\\\\t\");\n}\n```\n\n### 方案二：SDK 自动序列化（推荐）✅\n```java\n.content(MessageText.newBuilder().text(content).build().toString())\n```\n\n## 关键要点\n\n- **SDK 自动处理**：MessageText.toString() 会自动生成正确的 JSON 格式\n- **无需手动转义**：SDK 内部处理所有特殊字符（引号、换行等）\n- **代码更简洁**：一行代码替代 10+ 行转义逻辑\n- **更不容易出错**：避免遗漏某些特殊字符的转义"
+    },
+    {
+      "id": "exp_20260125_210045_003",
+      "title": "飞书机器人帮助信息移动端可读性优化",
+      "category": "用户体验",
+      "tags": [
+        "飞书",
+        "移动端",
+        "可读性",
+        "用户体验",
+        "消息格式"
+      ],
+      "parent_id": null,
+      "children_ids": [],
+      "scope": "项目经验",
+      "source": "user-feedback",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-25T21:00:45.000Z",
+      "updated_at": "2026-01-25T21:00:45.000Z",
+      "content": "## 问题描述\n\nHelpApp 返回的内容在手机端飞书中可读性差：\n- 表情符号在部分机型显示为方块\n- 分隔线占用过多屏幕空间\n- 内容重复（命令列表 + 详细说明）\n- 空行过多\n\n## 解决方案\n\n### 优化前\n```text\n🤖 飞书机器人命令帮助\n\n📋 可用应用列表：\n─────────────────────────────\n• /time - 时间查询\n• /help - 帮助信息\n\n💡 使用说明：\n─────────────────────────────\n\n📌 时间查询 - 查询当前系统时间\n   用法：/time\n   说明：返回当前时间\n\n📌 帮助信息 - 显示所有可用命令和使用说明\n   用法：/help\n   说明：显示所有可用应用的命令和使用说明\n\n─────────────────────────────\n💡 提示：发送任意非命令消息也会显示此帮助信息\n```\n\n### 优化后\n```text\n飞书机器人命令帮助\n\n/time - 时间查询\n  查询当前系统时间\n\n/help - 帮助信息\n  显示所有可用命令和使用说明\n\n💡 提示：发送任意非命令消息也会显示此帮助信息\n```\n\n## 优化要点\n\n- **移除表情符号**：避免兼容性问题，保持简洁\n- **移除分隔线**：使用空行分隔，更清爽\n- **合并重复内容**：命令列表和说明合并，避免重复\n- **减少空行**：只保留必要的分隔\n- **保留提示信息**：底部提示帮助用户理解功能\n\n## 适用场景\n\n- 移动端用户为主的应用\n- 需要快速浏览的帮助信息\n- 需要兼容多种机型和系统版本"
+    },
+    {
+      "id": "exp_20260125_210900_001",
+      "title": "飞书消息发送 JSON 格式最佳实践",
+      "category": "第三方集成",
+      "tags": [
+        "飞书",
+        "JSON",
+        "Jackson",
+        "消息格式",
+        "最佳实践"
+      ],
+      "parent_id": null,
+      "children_ids": [],
+      "scope": "项目经验",
+      "source": "debugging",
+      "status": "已解决",
+      "resolution_level": "根本解决",
+      "reproducibility": "复现",
+      "created_at": "2026-01-25T21:09:00.000Z",
+      "updated_at": "2026-01-25T21:09:00.000Z",
+      "content": "## 问题描述\n\n使用 MessageText.toString() 发送消息时报错：\n```\nYour request contains an invalid request parameter, \next=invalid message content, \next=content is not a string in json format.\n```\n\n## 错误原因\n\nMessageText.toString() 返回的是对象本身，而不是 JSON 字符串。\n\n## 正确解决方案（推荐）✅\n\n使用 Jackson ObjectMapper 构建标准 JSON 字符串：\n\n```java\nimport com.fasterxml.jackson.databind.ObjectMapper;\nimport java.util.HashMap;\nimport java.util.Map;\n\n@Slf4j\n@Component\npublic class FeishuGatewayImpl implements FeishuGateway {\n\n    private final ObjectMapper objectMapper;\n\n    public FeishuGatewayImpl() {\n        this.objectMapper = new ObjectMapper();\n    }\n\n    @Override\n    public SendResult sendReply(String receiveOpenId, String content) {\n        Map<String, String> textContent = new HashMap<>();\n        textContent.put(\"text\", content);\n        String jsonContent = objectMapper.writeValueAsString(textContent);\n\n        CreateMessageReq req = CreateMessageReq.newBuilder()\n            .receiveIdType(\"open_id\")\n            .createMessageReqBody(CreateMessageReqBody.newBuilder()\n                .receiveId(receiveOpenId)\n                .msgType(\"text\")\n                .content(jsonContent)\n                .build())\n            .build();\n        // ...\n    }\n}\n```\n\n## 关键要点\n\n- **Jackson ObjectMapper**：Spring Boot 默认包含，无需额外依赖\n- **自动转义**：Jackson 自动处理所有特殊字符（引号、换行等）\n- **标准 JSON**：生成的 JSON 符合飞书 API 要求\n- **代码简洁**：一行代码替代复杂的转义逻辑\n- **稳定可靠**：成熟的 JSON 库，经过广泛测试\n\n## 依赖配置\n\n```xml\n<dependency>\n    <groupId>com.fasterxml.jackson.core</groupId>\n    <artifactId>jackson-databind</artifactId>\n</dependency>\n```\n\n**注意**：Spring Boot Starter 通常已包含，无需手动添加。"
     }
   ],
   "categories": [

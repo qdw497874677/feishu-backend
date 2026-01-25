@@ -51,6 +51,13 @@ mvn clean install -Dmaven.test.skip=true
 
 ### 3️⃣ 启动应用
 
+**Dev 环境（开发环境）**：
+```bash
+cd feishu-bot-start
+LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+**其他环境**：
 ```bash
 cd feishu-bot-start
 FEISHU_MODE=listener FEISHU_LISTENER_ENABLED=true mvn spring-boot:run
@@ -82,6 +89,7 @@ FEISHU_MODE=listener FEISHU_LISTENER_ENABLED=true mvn spring-boot:run
 | 不要修改 `AppRegistry` 或 `AppRouter` | 无需手动修改 |
 | 不要修改配置文件 | 应用会自动发现 |
 | 不要使用 WebHook | 项目只允许长连接模式 |
+| 不要直接在构造函数中注入 AppRegistry | 会造成循环依赖，使用 `@Lazy` |
 
 ---
 
@@ -278,9 +286,10 @@ public class ConfigurableApp implements FishuAppI {
 
 ## 📊 已实现应用
 
-| 应用ID | 应用名称 | 文件位置 | 状态 |
-|---------|---------|-----------|------|
-| `time` | 时间查询 | `TimeApp.java` | ✅ 已实现 |
+| 应用ID | 应用名称 | 文件位置 | 状态 | 特殊说明 |
+|---------|---------|-----------|------|----------|
+| `time` | 时间查询 | `TimeApp.java` | ✅ 已实现 | - |
+| `help` | 帮助信息 | `HelpApp.java` | ✅ 已实现 | 使用 `@Lazy` 注入 AppRegistry |
 
 ---
 
@@ -303,6 +312,41 @@ public class ConfigurableApp implements FishuAppI {
 - ✅ 遵循 COLA 架构：所有应用在 `feishu-bot-domain` 模块
 - ✅ Spring 自动发现和注册
 - ✅ 无需手动配置
+
+### 循环依赖处理
+
+**场景**：如果应用需要注入 `AppRegistry` 以获取其他应用信息（如 HelpApp）
+
+**问题**：形成循环依赖 `AppRegistry → HelpApp → AppRegistry`
+
+**解决方案**：使用 `@Lazy` 注解
+
+```java
+@Component
+public class HelpApp implements FishuAppI {
+
+    @Autowired
+    @Lazy
+    private AppRegistry appRegistry;
+}
+```
+
+### 消息返回格式
+
+**移动端优化**：
+- ✅ 移除表情符号（兼容性）
+- ✅ 减少分隔线和空行（节省空间）
+- ✅ 合并重复内容（避免冗余）
+- ✅ 简洁明了的信息结构
+
+**示例**：
+```text
+/weather - 天气查询
+  查询指定城市的天气
+
+/help - 帮助信息
+  显示所有可用命令和使用说明
+```
 
 ---
 
