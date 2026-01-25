@@ -19,4 +19,8 @@ public interface FishuAppI {
     default String getTriggerCommand() {
         return "/" + getAppId();
     }
+
+    default ReplyMode getReplyMode() {
+        return ReplyMode.DEFAULT;
+    }
 }
