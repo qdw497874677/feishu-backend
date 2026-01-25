@@ -23,6 +23,7 @@ public class TopicMappingGatewayImpl implements TopicMappingGateway {
 
     @Override
     public Optional<TopicMapping> findByTopicId(String topicId) {
+        log.debug("查找话题映射: topicId={}", topicId);
         return Optional.ofNullable(mappings.get(topicId));
     }
 
