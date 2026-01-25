@@ -23,9 +23,17 @@ public class FeishuProperties {
     private String appsecret;
 
     /**
-     * 加密 Key
+     * 加密 Key (注意：getter 方法名为 getEncryptKey，匹配字段 encryptKey)
      */
     private String encryptKey;
+
+    public String getEncryptKey() {
+        return encryptKey;
+    }
+
+    public void setEncryptKey(String encryptKey) {
+        this.encryptKey = encryptKey;
+    }
 
     /**
      * 验证 Token
@@ -42,8 +50,34 @@ public class FeishuProperties {
      */
     private Listener listener = new Listener();
 
-    @Data
+    public Listener getListener() {
+        return listener;
+    }
+
+    public void setListener(Listener listener) {
+        this.listener = listener;
+    }
+
+    public boolean isListenerEnabled() {
+        return listener != null && listener.isEnabled();
+    }
+
+    public void setListenerEnabled(boolean enabled) {
+        if (this.listener == null) {
+            this.listener = new Listener();
+        }
+        this.listener.setEnabled(enabled);
+    }
+
     public static class Listener {
         private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 }
