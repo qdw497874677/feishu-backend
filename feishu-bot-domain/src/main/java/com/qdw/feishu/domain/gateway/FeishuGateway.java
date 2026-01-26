@@ -25,7 +25,7 @@ public interface FeishuGateway {
      *
      * @param message 消息对象
      * @param content 回复内容
-     * @param topicId 话题 ID（可选，如果提供则回复到话题）
+     * @param topicId 话题 ID（可选，如果提供则回复到话题；如果为 null 则创建话题）
      * @return 发送结果
      */
     SendResult sendMessage(Message message, String content, String topicId);
