@@ -62,11 +62,6 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.qdw.feishu.Application</mainClass>
-                    <arguments>
-                        <argument>-Dfile.encoding=UTF-8</argument>
-                        <argument>-Dconsole.encoding=UTF-8</argument>
-                        <argument>-Dsun.jnu.encoding=UTF-8</argument>
-                    </arguments>
                 </configuration>
             </plugin>
         </plugins>

@@ -36,6 +36,11 @@ public class TimeApp implements FishuAppI {
     }
 
     @Override
+    public ReplyMode getReplyMode() {
+        return ReplyMode.TOPIC;
+    }
+
+    @Override
     public String execute(Message message) {
         log.info("=== TimeApp.execute 开始 ===");
         log.info("应用 ID: {}", getAppId());

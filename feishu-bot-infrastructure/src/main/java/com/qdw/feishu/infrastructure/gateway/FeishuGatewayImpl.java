@@ -4,11 +4,14 @@ import com.alibaba.cola.exception.SysException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lark.oapi.Client;
 import com.lark.oapi.core.enums.BaseUrlEnum;
+import com.lark.oapi.core.response.RawResponse;
+import com.lark.oapi.core.token.AccessTokenType;
 import com.lark.oapi.service.im.v1.model.CreateMessageReq;
 import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
 import com.lark.oapi.service.im.v1.model.CreateMessageResp;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.UserInfo;
+import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -63,6 +66,94 @@ public class FeishuGatewayImpl implements FeishuGateway {
             log.error("Exception sending message", e);
             throw new SysException("SEND_ERROR", "send message failed", e);
         }
+    }
+
+    @Override
+    public SendResult sendMessage(Message message, String content, String topicId) {
+        log.info("Sending message to chatId: {}, content: {}, topicId: {}", message.getChatId(), content, topicId);
+
+        try {
+            if (topicId != null && !topicId.isEmpty()) {
+                log.info("Replying to existing thread: {}", topicId);
+                return sendReplyToThread(topicId, content);
+            } else {
+                log.info("Creating new thread by replying to chat message");
+                return createThreadByReply(message.getChatId(), message.getMessageId(), content);
+            }
+
+        } catch (Exception e) {
+            log.error("Exception sending message", e);
+            throw new SysException("SEND_ERROR", "send message failed", e);
+        }
+    }
+
+    private SendResult createThreadByReply(String chatId, String messageId, String content) throws Exception {
+        Map<String, String> textContent = new HashMap<>();
+        textContent.put("text", content);
+        String jsonContent = objectMapper.writeValueAsString(textContent);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("msg_type", "text");
+        requestBody.put("content", jsonContent);
+        requestBody.put("uuid", messageId);
+        requestBody.put("reply_in_thread", "true");
+
+        RawResponse response = httpClient.post("/open-apis/im/v1/messages/" + messageId + "/reply", requestBody, AccessTokenType.Tenant, null);
+
+        if (response.getStatusCode() != 200) {
+            String errorMsg = "Failed to create thread: HTTP " + response.getStatusCode();
+            log.error(errorMsg);
+            throw new SysException("SEND_FAILED", errorMsg);
+        }
+
+        String responseBody = new String(response.getBody(), "UTF-8");
+        Map<String, Object> responseData = objectMapper.readValue(responseBody, Map.class);
+        int code = (int) responseData.get("code");
+        if (code != 0) {
+            String errorMsg = (String) responseData.get("msg");
+            log.error("Failed to create thread: {}", errorMsg);
+            throw new SysException("SEND_FAILED", errorMsg);
+        }
+
+        Map<String, Object> data = (Map<String, Object>) responseData.get("data");
+        String returnedMessageId = (String) data.get("message_id");
+        String threadId = (String) data.get("thread_id");
+        log.info("Thread created success: messageId={}, threadId={}", returnedMessageId, threadId);
+        return SendResult.success(returnedMessageId, threadId);
+    }
+
+    private SendResult sendReplyToThread(String threadId, String content) throws Exception {
+        Map<String, String> textContent = new HashMap<>();
+        textContent.put("text", content);
+        String jsonContent = objectMapper.writeValueAsString(textContent);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("receive_id_type", "thread_id");
+        requestBody.put("receive_id", threadId);
+        requestBody.put("msg_type", "text");
+        requestBody.put("content", jsonContent);
+
+        RawResponse response = httpClient.post("/open-apis/im/v1/messages", requestBody, AccessTokenType.Tenant, null);
+
+        if (response.getStatusCode() != 200) {
+            String errorMsg = "Failed to send thread reply: HTTP " + response.getStatusCode();
+            log.error(errorMsg);
+            throw new SysException("SEND_FAILED", errorMsg);
+        }
+
+        String responseBody = new String(response.getBody(), "UTF-8");
+        Map<String, Object> responseData = objectMapper.readValue(responseBody, Map.class);
+        int code = (int) responseData.get("code");
+        if (code != 0) {
+            String errorMsg = (String) responseData.get("msg");
+            log.error("Failed to send thread reply: {}", errorMsg);
+            throw new SysException("SEND_FAILED", errorMsg);
+        }
+
+        Map<String, Object> data = (Map<String, Object>) responseData.get("data");
+        String messageId = (String) data.get("message_id");
+        log.info("Thread reply success: messageId={}, threadId={}", messageId, threadId);
+        return SendResult.success(messageId, threadId);
     }
 
     @Override

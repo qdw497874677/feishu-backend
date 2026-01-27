@@ -130,10 +130,36 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         com.qdw.feishu.domain.message.Sender sender = new com.qdw.feishu.domain.message.Sender();
         sender.setUserId(data.getSender().getSenderId());
 
-        return new Message(
+        // 提取 topicId（如果消息来自话题）
+        // 由于 SDK v2.5.2 可能不直接支持 getRootId()，从原始 JSON 中提取
+        // TODO: 性能优化 - 当前先序列化再反序列化，可考虑直接访问 SDK 内部数据或升级 SDK
+        String topicId = null;
+        try {
+            // 尝试从事件的原始数据中获取 rootId
+            String eventJson = Jsons.DEFAULT.toJson(data);
+            com.google.gson.JsonObject eventObj = gson.fromJson(eventJson, com.google.gson.JsonObject.class);
+            if (eventObj.has("root_id") && !eventObj.get("root_id").isJsonNull()) {
+                topicId = eventObj.get("root_id").getAsString();
+                log.debug("消息 topicId: {}", topicId);
+            } else {
+                log.debug("消息没有 topicId (root_id)");
+            }
+        } catch (Exception e) {
+            log.debug("解析 topicId 失败: {}", e.getMessage());
+        }
+
+        Message message = new Message(
             data.getMessage().getMessageId(),
             textContent,
             sender
         );
+
+        // 设置 topicId
+        message.setTopicId(topicId);
+
+        // 设置 chatId
+        message.setChatId(data.getMessage().getChatId());
+
+        return message;
     }
 }
