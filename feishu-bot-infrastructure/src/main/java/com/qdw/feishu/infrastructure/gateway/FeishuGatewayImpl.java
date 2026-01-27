@@ -1,29 +1,34 @@
 package com.qdw.feishu.infrastructure.gateway;
 
 import com.alibaba.cola.exception.SysException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lark.oapi.Client;
 import com.lark.oapi.core.enums.BaseUrlEnum;
 import com.lark.oapi.service.im.v1.model.CreateMessageReq;
 import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
 import com.lark.oapi.service.im.v1.model.CreateMessageResp;
-import com.lark.oapi.service.im.v1.model.ext.MessageText;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.UserInfo;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
 @Slf4j
 @Component
 public class FeishuGatewayImpl implements FeishuGateway {
 
     private final com.lark.oapi.Client httpClient;
+    private final ObjectMapper objectMapper;
 
     public FeishuGatewayImpl(@Value("${feishu.appid}") String appId,
                             @Value("${feishu.appsecret}") String appSecret) {
         this.httpClient = com.lark.oapi.Client.newBuilder(appId, appSecret)
             .openBaseUrl(BaseUrlEnum.FeiShu)
             .build();
+        this.objectMapper = new ObjectMapper();
         log.info("Feishu SDK Client initialized with appId: {}", appId);
     }
 
@@ -32,13 +37,16 @@ public class FeishuGatewayImpl implements FeishuGateway {
         log.info("Sending reply to: {}, content: {}", receiveOpenId, content);
 
         try {
-            // 构建消息请求，使用 JSON 格式的 content
+            Map<String, String> textContent = new HashMap<>();
+            textContent.put("text", content);
+            String jsonContent = objectMapper.writeValueAsString(textContent);
+
             CreateMessageReq req = CreateMessageReq.newBuilder()
                 .receiveIdType("open_id")
                 .createMessageReqBody(CreateMessageReqBody.newBuilder()
                     .receiveId(receiveOpenId)
                     .msgType("text")
-                    .content(MessageText.newBuilder().text(content).build())
+                    .content(jsonContent)
                     .build())
                 .build();
 

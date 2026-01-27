@@ -103,6 +103,23 @@
 
 ## 🚀 启动命令
 
+### Dev 环境（开发环境）
+
+Dev 环境已预配置飞书凭证，直接启动即可：
+
+```bash
+cd feishu-bot-start
+
+LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+**Dev 环境配置**：
+- appid: `cli_a8f66e3df8fb100d`
+- appsecret: 已配置
+- mode: `listener`
+- listener.enabled: `true`
+
 ### 长连接模式（唯一允许模式）
 
 ```bash
