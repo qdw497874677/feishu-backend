@@ -157,6 +157,9 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         // 设置 topicId
         message.setTopicId(topicId);
 
+        // 设置 chatId
+        message.setChatId(data.getMessage().getChatId());
+
         return message;
     }
 }

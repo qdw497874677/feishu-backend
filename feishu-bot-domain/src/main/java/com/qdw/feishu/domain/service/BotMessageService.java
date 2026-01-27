@@ -137,19 +137,20 @@ public class BotMessageService {
             String finalTopicId = topicId;
 
             if (replyMode == ReplyMode.TOPIC && (topicId == null || topicId.isEmpty())) {
-                String newTopicId = "topic_" + java.util.UUID.randomUUID().toString().substring(0, 16);
-                log.info("创建新话题: topicId={}", newTopicId);
-
-                TopicMapping mapping = new TopicMapping(newTopicId, app.getAppId());
-                topicMappingGateway.save(mapping);
-
-                finalTopicId = newTopicId;
+                log.info("使用话题模式回复: 创建新话题");
             }
 
             SendResult result = feishuGateway.sendMessage(message, replyContent, finalTopicId);
 
             if (result.isSuccess()) {
                 log.info("发送回复成功: topicId={}", finalTopicId);
+
+                String actualThreadId = result.getThreadId();
+                if (replyMode == ReplyMode.TOPIC && actualThreadId != null && !actualThreadId.isEmpty()) {
+                    log.info("获取到飞书返回的 threadId: {}", actualThreadId);
+                    TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
+                    topicMappingGateway.save(mapping);
+                }
             } else {
                 log.error("发送回复失败: error={}", result.getErrorMessage());
             }

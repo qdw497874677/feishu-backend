@@ -74,11 +74,11 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
         try {
             if (topicId != null && !topicId.isEmpty()) {
-                log.info("Replying to thread: {}", topicId);
-                return sendThreadReply(message.getChatId(), content, topicId);
+                log.info("Replying to existing thread: {}", topicId);
+                return sendReplyToThread(topicId, content);
             } else {
-                log.info("Creating thread in chat");
-                return createThread(message.getChatId(), content);
+                log.info("Creating new thread by replying to chat message");
+                return createThreadByReply(message.getChatId(), message.getMessageId(), content);
             }
 
         } catch (Exception e) {
@@ -87,19 +87,18 @@ public class FeishuGatewayImpl implements FeishuGateway {
         }
     }
 
-    private SendResult createThread(String chatId, String content) throws Exception {
+    private SendResult createThreadByReply(String chatId, String messageId, String content) throws Exception {
         Map<String, String> textContent = new HashMap<>();
         textContent.put("text", content);
         String jsonContent = objectMapper.writeValueAsString(textContent);
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("receive_id_type", "chat_id");
-        requestBody.put("receive_id", chatId);
         requestBody.put("msg_type", "text");
         requestBody.put("content", jsonContent);
+        requestBody.put("uuid", messageId);
         requestBody.put("reply_in_thread", "true");
 
-        RawResponse response = httpClient.post("/open-apis/im/v1/messages", requestBody, AccessTokenType.Tenant, null);
+        RawResponse response = httpClient.post("/open-apis/im/v1/messages/" + messageId + "/reply", requestBody, AccessTokenType.Tenant, null);
 
         if (response.getStatusCode() != 200) {
             String errorMsg = "Failed to create thread: HTTP " + response.getStatusCode();
@@ -117,12 +116,13 @@ public class FeishuGatewayImpl implements FeishuGateway {
         }
 
         Map<String, Object> data = (Map<String, Object>) responseData.get("data");
-        String messageId = (String) data.get("message_id");
-        log.info("Thread created success: messageId={}", messageId);
-        return SendResult.success(messageId);
+        String returnedMessageId = (String) data.get("message_id");
+        String threadId = (String) data.get("thread_id");
+        log.info("Thread created success: messageId={}, threadId={}", returnedMessageId, threadId);
+        return SendResult.success(returnedMessageId, threadId);
     }
 
-    private SendResult sendThreadReply(String chatId, String content, String threadId) throws Exception {
+    private SendResult sendReplyToThread(String threadId, String content) throws Exception {
         Map<String, String> textContent = new HashMap<>();
         textContent.put("text", content);
         String jsonContent = objectMapper.writeValueAsString(textContent);
@@ -153,7 +153,7 @@ public class FeishuGatewayImpl implements FeishuGateway {
         Map<String, Object> data = (Map<String, Object>) responseData.get("data");
         String messageId = (String) data.get("message_id");
         log.info("Thread reply success: messageId={}, threadId={}", messageId, threadId);
-        return SendResult.success(messageId);
+        return SendResult.success(messageId, threadId);
     }
 
     @Override
