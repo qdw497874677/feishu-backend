@@ -15,6 +15,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class Message {
 
+    /** 事件ID（用于去重）*/
+    private String eventId;
+
     /** 消息ID */
     private String messageId;
 
