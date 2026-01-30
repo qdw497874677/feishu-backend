@@ -45,10 +45,10 @@ public class HelpApp implements FishuAppI {
 
         appRegistry.getAllApps().forEach(app -> {
             helpText.append(String.format("%s - %s\n", 
-                app.getTriggerCommand(), 
-                app.getAppName()));
+                    app.getTriggerCommand(), 
+                    app.getAppName()));
             helpText.append(String.format("  %s\n\n", 
-                app.getDescription()));
+                    app.getDescription()));
         });
 
         helpText.append("💡 提示：发送任意非命令消息也会显示此帮助信息");
@@ -58,5 +58,10 @@ public class HelpApp implements FishuAppI {
         log.info("=== HelpApp.execute 结束 ===");
 
         return result;
+    }
+
+    @Override
+    public ReplyMode getReplyMode() {
+        return ReplyMode.DIRECT;
     }
 }

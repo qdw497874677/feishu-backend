@@ -134,16 +134,26 @@ public class BotMessageService {
             }
 
             ReplyMode replyMode = app.getReplyMode();
-            String finalTopicId = topicId;
+            SendResult result;
 
-            if (replyMode == ReplyMode.TOPIC && (topicId == null || topicId.isEmpty())) {
-                log.info("使用话题模式回复: 创建新话题");
+            if (replyMode == ReplyMode.DIRECT) {
+                log.info("使用直接回复模式：不创建话题");
+                result = feishuGateway.sendDirectReply(message, replyContent);
+            } else if (replyMode == ReplyMode.TOPIC) {
+                if (topicId != null && !topicId.isEmpty()) {
+                    log.info("使用话题模式回复：回复到现有话题");
+                    result = feishuGateway.sendMessage(message, replyContent, topicId);
+                } else {
+                    log.info("使用话题模式回复：创建新话题");
+                    result = feishuGateway.sendMessage(message, replyContent, null);
+                }
+            } else {
+                log.info("使用默认回复模式");
+                result = feishuGateway.sendMessage(message, replyContent, topicId);
             }
 
-            SendResult result = feishuGateway.sendMessage(message, replyContent, finalTopicId);
-
             if (result.isSuccess()) {
-                log.info("发送回复成功: topicId={}", finalTopicId);
+                log.info("发送回复成功: topicId={}", result.getThreadId());
 
                 String actualThreadId = result.getThreadId();
                 if (replyMode == ReplyMode.TOPIC && actualThreadId != null && !actualThreadId.isEmpty()) {

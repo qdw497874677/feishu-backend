@@ -122,11 +122,20 @@ public class FeishuGatewayImpl implements FeishuGateway {
         return executeWithRetry("sendMessage", () -> {
             try {
                 if (topicId != null && !topicId.isEmpty()) {
+                    // 回复到现有话题：直接使用 rootId 回复话题根消息
                     log.info("Replying to existing thread: topicId={}", topicId);
-                    return sendReplyToTopic(topicId, content);
+                    String rootId = message.getRootId();
+                    if (rootId != null && !rootId.isEmpty()) {
+                        log.info("Using rootId to reply to thread: rootId={}", rootId);
+                        return sendReplyToMessage(rootId, content);
+                    } else {
+                        log.warn("No rootId found in message, cannot reply to thread properly");
+                        return sendReplyToTopic(topicId, content);
+                    }
                 } else {
-                    log.info("Sending message (no topic): messageId={}", message.getMessageId());
-                    return sendMessageToChat(message.getChatId(), content);
+                    // 创建新话题：使用 reply API + replyInThread=true 回复原消息
+                    log.info("Creating new thread by replying to original message: messageId={}", message.getMessageId());
+                    return sendReplyToMessage(message.getMessageId(), content);
                 }
             } catch (Exception e) {
                 log.error("Exception sending message", e);
@@ -157,11 +166,14 @@ public class FeishuGatewayImpl implements FeishuGateway {
                 CreateMessageResp resp = httpClient.im().message().create(req);
 
                 if (resp.getCode() != 0) {
-                    log.error("Failed to send direct reply: code={}, msg={}", resp.getCode(), resp.getMsg());
+                    log.error("Failed to send message: code={}, msg={}", resp.getCode(), resp.getMsg());
                     throw new SysException("SEND_FAILED", resp.getMsg());
                 }
 
-                return SendResult.success(resp.getData().getMessageId());
+                String msgId = resp.getData().getMessageId();
+                String threadId = resp.getData().getThreadId();
+                log.info("飞书 API 返回: messageId={}, threadId={}", msgId, threadId);
+                return SendResult.success(msgId, threadId);
 
             } catch (Exception e) {
                 log.error("Exception sending direct reply", e);

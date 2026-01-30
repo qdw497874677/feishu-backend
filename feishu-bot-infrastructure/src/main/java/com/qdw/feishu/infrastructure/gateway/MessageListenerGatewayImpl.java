@@ -139,35 +139,38 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
             log.error("Failed to extract eventId", e);
         }
 
-        // 提取 topicId（如果消息来自话题）
+        // 提取 topicId 和 rootId（如果消息来自话题）
         // 使用正则表达式从原始 JSON 中直接提取
         String topicId = null;
+        String rootId = null;
         try {
             // 将事件转换为 JSON 字符串
             String eventJson = Jsons.DEFAULT.toJson(event);
 
-            // 尝试提取 thread_id
+            // 提取 thread_id
             java.util.regex.Pattern threadIdPattern = java.util.regex.Pattern.compile("\"thread_id\"\\s*:\\s*\"([^\"]+)\"");
-            java.util.regex.Matcher matcher = threadIdPattern.matcher(eventJson);
+            java.util.regex.Matcher threadMatcher = threadIdPattern.matcher(eventJson);
 
-            if (matcher.find()) {
-                topicId = matcher.group(1);
+            if (threadMatcher.find()) {
+                topicId = threadMatcher.group(1);
                 log.info("Successfully extracted threadId: {}", topicId);
-            } else {
-                // 尝试提取 root_id（话题的第一条消息）
-                java.util.regex.Pattern rootIdPattern = java.util.regex.Pattern.compile("\"root_id\"\\s*:\\s*\"([^\"]+)\"");
-                java.util.regex.Matcher rootMatcher = rootIdPattern.matcher(eventJson);
+            }
 
-                if (rootMatcher.find()) {
-                    topicId = rootMatcher.group(1);
-                    log.info("Successfully extracted rootId (first thread message): {}", topicId);
-                } else {
-                    log.info("No thread_id or root_id found, treating as normal message");
-                }
+            // 提取 root_id（话题根消息ID，用于回复到话题）
+            java.util.regex.Pattern rootIdPattern = java.util.regex.Pattern.compile("\"root_id\"\\s*:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher rootMatcher = rootIdPattern.matcher(eventJson);
+
+            if (rootMatcher.find()) {
+                rootId = rootMatcher.group(1);
+                log.info("Successfully extracted rootId: {}", rootId);
+            }
+
+            if (topicId == null && rootId == null) {
+                log.info("No thread_id or root_id found, treating as normal message");
             }
 
         } catch (Exception e) {
-            log.error("Failed to extract topicId", e);
+            log.error("Failed to extract topicId/rootId", e);
         }
 
         Message message = new Message(
@@ -179,8 +182,9 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         // 设置 eventId
         message.setEventId(eventId);
 
-        // 设置 topicId
+        // 设置 topicId 和 rootId
         message.setTopicId(topicId);
+        message.setRootId(rootId);
 
         // 设置 chatId
         message.setChatId(data.getMessage().getChatId());

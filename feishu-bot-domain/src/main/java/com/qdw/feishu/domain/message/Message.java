@@ -27,6 +27,9 @@ public class Message {
     /** 话题ID，如果消息在话题中 */
     private String topicId;
 
+    /** 话题根消息ID（root_id），用于回复到话题 */
+    private String rootId;
+
     /** 会话ID（群聊或私聊的 ID） */
     private String chatId;
 

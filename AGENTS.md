@@ -135,6 +135,45 @@ mvn spring-boot:run
 
 **⚠️ 注意：本项目不支持 WebHook 模式启动，只能使用长连接模式！**
 
+### 🔄 重启应用
+
+**重要**：修改代码后必须重启应用才能生效。重启前必须先停止旧进程。
+
+```bash
+# 1. 停止所有飞书相关进程
+pkill -9 -f "feishu" 2>/dev/null
+
+# 2. 确保端口已释放（等待 2-3 秒）
+sleep 3
+
+# 3. 重新构建并启动
+cd /root/workspace/feishu-backend
+mvn clean package -DskipTests
+cd feishu-bot-start
+LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+**快速重启（后台运行）**：
+
+```bash
+# 停止旧进程并重启
+pkill -9 -f "feishu" 2>/dev/null && sleep 3 && \
+cd /root/workspace/feishu-backend/feishu-bot-start && \
+LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
+mvn spring-boot:run -Dspring-boot.run.profiles=dev > /tmp/feishu-run.log 2>&1 &
+```
+
+**查看运行日志**：
+
+```bash
+# 实时查看日志
+tail -f /tmp/feishu-run.log
+
+# 查看最近的错误
+tail -f /tmp/feishu-run.log | grep -i error
+```
+
 ---
 
 ## 📁 关键文件位置
@@ -187,6 +226,148 @@ feishu-bot-adapter/src/main/java/com/qdw/feishu/adapter/
 | `app_id is invalid` | 凭证配置错误 | 检查 `FEISHU_APPID` 和 `FEISHU_APPSECRET` |
 | `No qualifying bean of type 'BotMessageService'` | 未注册为 Bean | 添加 `@Service` 注解 |
 | 中文显示为 `?` | 编码配置不正确 | 配置系统 locale、JVM 参数和日志编码 |
+| **发送消息后未创建话题** | **使用了错误的 API** | **必须使用 `reply` API + `replyInThread=true` 创建话题（见下方规范）** |
+
+### 🔴 话题创建与回复规范（CRITICAL）
+
+**重要：飞书 SDK 中话题的正确使用方法**
+
+#### 核心概念
+
+飞书话题涉及三个关键ID：
+- **message_id**：消息的唯一标识
+- **thread_id**：话题ID（首次回复后返回）
+- **root_id**：话题根消息ID（话题的第一条消息，用于回复到话题）
+
+#### ❌ 错误做法（不会创建话题）
+
+```java
+// 错误1：使用 createMessage API
+CreateMessageReq req = CreateMessageReq.newBuilder()
+    .receiveIdType("chat_id")
+    .createMessageReqBody(CreateMessageReqBody.newBuilder()
+        .receiveId(chatId)
+        .msgType("text")
+        .content(jsonContent)
+        .build())
+    .build();
+// 问题：createMessage API 只能发送独立消息，无法创建话题
+
+// 错误2：使用 thread_id 查询话题历史
+ListMessageReq req = ListMessageReq.newBuilder()
+    .containerIdType("thread_id")  // ❌ 不支持
+    .containerId(threadId)
+    .build();
+// 问题：listMessages API 不支持 thread_id 作为容器类型
+```
+
+#### ✅ 正确做法（创建和回复话题）
+
+**1. 创建新话题**
+
+```java
+// 正确：使用 reply API + replyInThread=true 回复原消息
+ReplyMessageReq req = ReplyMessageReq.newBuilder()
+    .messageId(originalMessageId)  // 用户消息的 messageId
+    .replyMessageReqBody(ReplyMessageReqBody.newBuilder()
+        .content(jsonContent)
+        .msgType("text")
+        .replyInThread(true)  // 关键：设置为 true 创建话题
+        .build())
+    .build();
+
+ReplyMessageResp resp = httpClient.im().message().reply(req);
+String threadId = resp.getData().getThreadId();  // 保存返回的 threadId
+```
+
+**2. 回复到现有话题**
+
+```java
+// 方法1：优先 - 使用 rootId 回复（推荐）
+if (message.getRootId() != null) {
+    // 直接使用 rootId 回复到话题根消息
+    ReplyMessageReq req = ReplyMessageReq.newBuilder()
+        .messageId(message.getRootId())  // 使用 rootId
+        .replyMessageReqBody(ReplyMessageReqBody.newBuilder()
+            .content(jsonContent)
+            .msgType("text")
+            .replyInThread(true)
+            .build())
+        .build();
+    httpClient.im().message().reply(req);
+}
+
+// 方法2：备用 - 使用用户消息的 parent_id
+// 如果消息在话题中，飞书会返回 parent_id，也可以用于回复
+```
+
+#### 📋 完整实现规范
+
+**Message 对象必须包含：**
+
+```java
+public class Message {
+    private String messageId;   // 消息ID
+    private String topicId;     // 话题ID（thread_id）
+    private String rootId;      // 话题根消息ID（用于回复）
+    // ... 其他字段
+}
+```
+
+**MessageListenerGatewayImpl 提取 root_id：**
+
+```java
+// 从飞书事件中提取 root_id
+String eventJson = Jsons.DEFAULT.toJson(event);
+
+// 提取 root_id
+Pattern rootIdPattern = Pattern.compile("\"root_id\"\\s*:\\s*\"([^\"]+)\"");
+Matcher rootMatcher = rootIdPattern.matcher(eventJson);
+if (rootMatcher.find()) {
+    String rootId = rootMatcher.group(1);
+    message.setRootId(rootId);
+}
+```
+
+**FeishuGatewayImpl 发送消息：**
+
+```java
+@Override
+public SendResult sendMessage(Message message, String content, String topicId) {
+    if (topicId != null && !topicId.isEmpty()) {
+        // 回复到现有话题：使用 rootId
+        String rootId = message.getRootId();
+        if (rootId != null && !rootId.isEmpty()) {
+            return sendReplyToMessage(rootId, content);
+        }
+    } else {
+        // 创建新话题：使用 reply API + replyInThread=true
+        return sendReplyToMessage(message.getMessageId(), content);
+    }
+}
+```
+
+#### ⚠️ 重要注意事项
+
+1. **必须保存 rootId**：消息在话题中时，飞书事件包含 `root_id`，必须提取并保存
+2. **使用 rootId 回复**：回复到现有话题时，优先使用 `rootId` 而不是 `threadId`
+3. **replyInThread=true**：创建话题和回复到话题都必须设置此参数
+4. **不能使用 listMessages 查询话题**：API 不支持 `thread_id` 作为容器类型
+5. **threadId 用于映射**：`threadId` 主要用于保存话题与应用的映射关系
+
+#### 🔍 飞书事件中的话题信息
+
+当消息在话题中时，飞书事件包含：
+```json
+{
+  "message": {
+    "message_id": "om_xxx",
+    "thread_id": "omt_xxx",    // 话题ID
+    "root_id": "om_xxx",       // 话题根消息ID（重要！）
+    "parent_id": "om_xxx"      // 父消息ID
+  }
+}
+```
 
 ### ⚠️ 架构规范违规
 
