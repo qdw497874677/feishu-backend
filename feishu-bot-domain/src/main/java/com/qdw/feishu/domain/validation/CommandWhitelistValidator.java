@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 public class CommandWhitelistValidator {
 
     private static final Set<String> WHITELIST = Set.of(
+        "pwd",
         "ls", "ll", "dir",
         "cat", "less",
         "head", "tail",
