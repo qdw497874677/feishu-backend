@@ -11,11 +11,8 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.model.TopicMapping;
 import com.qdw.feishu.domain.router.AppRouter;
-import com.lark.oapi.service.im.v1.model.UserId;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
-import java.time.Instant;
 
 @Slf4j
 @Service
@@ -34,17 +31,6 @@ public class BotMessageService {
         this.appRouter = appRouter;
         this.appRegistry = appRegistry;
         this.topicMappingGateway = topicMappingGateway;
-    }
-
-    private String getOpenIdFromSender(Object sender) {
-        if (sender instanceof UserId) {
-            UserId userId = (UserId) sender;
-            return userId.getOpenId() != null ? userId.getOpenId() : "";
-        }
-        if (sender instanceof String) {
-            return (String) sender;
-        }
-        return "";
     }
 
     private String extractAppId(String content) {
@@ -73,7 +59,7 @@ public class BotMessageService {
 
     public SendResult handleMessage(Message message) {
         log.info("=== BotMessageService.handleMessage 开始 ===");
-        log.info("消息内容: {}", message.getContent());
+        log.info("消息内容: {}", message.getDisplayContent());
 
         try {
             message.validate();
@@ -156,10 +142,12 @@ public class BotMessageService {
                 log.info("发送回复成功: topicId={}", result.getThreadId());
 
                 String actualThreadId = result.getThreadId();
-                if (replyMode == ReplyMode.TOPIC && actualThreadId != null && !actualThreadId.isEmpty()) {
+                // 只要返回了 threadId，就应该保存话题映射（无论哪种回复模式）
+                if (actualThreadId != null && !actualThreadId.isEmpty()) {
                     log.info("获取到飞书返回的 threadId: {}", actualThreadId);
                     TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
                     topicMappingGateway.save(mapping);
+                    log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
                 }
             } else {
                 log.error("发送回复失败: error={}", result.getErrorMessage());
