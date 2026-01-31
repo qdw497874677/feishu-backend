@@ -81,4 +81,38 @@ public class Message {
         // 返回原消息的回显
         return this.content;
     }
+
+    /**
+     * 获取用于日志显示的消息内容
+     * 如果内容是 JSON 格式，自动解析并提取文本
+     */
+    public String getDisplayContent() {
+        if (content == null) {
+            return "";
+        }
+
+        // 如果是 JSON 格式，尝试提取 text 字段（使用简单字符串解析）
+        if (content.trim().startsWith("{")) {
+            try {
+                // 查找 "text":"..." 模式
+                int textIndex = content.indexOf("\"text\"");
+                if (textIndex != -1) {
+                    int colonIndex = content.indexOf(":", textIndex);
+                    if (colonIndex != -1) {
+                        int quoteStart = content.indexOf("\"", colonIndex);
+                        if (quoteStart != -1) {
+                            int quoteEnd = content.indexOf("\"", quoteStart + 1);
+                            if (quoteEnd != -1) {
+                                return content.substring(quoteStart + 1, quoteEnd);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // 解析失败，返回原内容
+            }
+        }
+
+        return content;
+    }
 }
