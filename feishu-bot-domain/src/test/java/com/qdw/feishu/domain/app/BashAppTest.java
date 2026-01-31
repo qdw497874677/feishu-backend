@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.history.BashHistoryManager;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
@@ -7,17 +8,22 @@ import com.qdw.feishu.domain.validation.CommandWhitelistValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mock;
 
 import java.io.File;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class BashAppTest {
 
     private BashApp bashApp;
     private CommandWhitelistValidator validator;
     private BashHistoryManager historyManager;
+
+    @Mock
+    private FeishuGateway feishuGateway;
 
     @TempDir
     Path tempDir;
@@ -26,7 +32,8 @@ class BashAppTest {
     void setUp() {
         validator = new CommandWhitelistValidator();
         historyManager = new BashHistoryManager();
-        bashApp = new BashApp(validator, historyManager);
+        feishuGateway = mock(FeishuGateway.class);
+        bashApp = new BashApp(validator, historyManager, feishuGateway);
     }
 
     @Test

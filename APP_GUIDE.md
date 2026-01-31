@@ -290,6 +290,7 @@ public class ConfigurableApp implements FishuAppI {
 |---------|---------|-----------|------|----------|
 | `time` | 时间查询 | `TimeApp.java` | ✅ 已实现 | - |
 | `help` | 帮助信息 | `HelpApp.java` | ✅ 已实现 | 使用 `@Lazy` 注入 AppRegistry |
+| `bash` | 命令执行 | `BashApp.java` | ✅ 已实现 | 异步执行，命令白名单，工作空间隔离 |
 
 ---
 
