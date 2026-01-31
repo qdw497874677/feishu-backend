@@ -13,13 +13,13 @@ import com.lark.oapi.service.im.v1.model.ListMessageReq;
 import com.lark.oapi.service.im.v1.model.ListMessageResp;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
 import com.lark.oapi.service.im.v1.model.ReplyMessageResp;
+import com.qdw.feishu.domain.config.FeishuConfig;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.UserInfo;
 import com.qdw.feishu.domain.message.ChatHistory;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -35,18 +35,16 @@ public class FeishuGatewayImpl implements FeishuGateway {
     private final com.lark.oapi.Client httpClient;
     private final ObjectMapper objectMapper;
 
-    // DNS 重试配置
     private static final int MAX_RETRIES = 3;
-    private static final long INITIAL_RETRY_DELAY_MS = 1000; // 1 second
-    private static final long MAX_RETRY_DELAY_MS = 8000; // 8 seconds
+    private static final long INITIAL_RETRY_DELAY_MS = 1000;
+    private static final long MAX_RETRY_DELAY_MS = 8000;
 
-    public FeishuGatewayImpl(@Value("${feishu.appid}") String appId,
-                            @Value("${feishu.appsecret}") String appSecret) {
-        this.httpClient = com.lark.oapi.Client.newBuilder(appId, appSecret)
+    public FeishuGatewayImpl(FeishuConfig config) {
+        this.httpClient = Client.newBuilder(config.getAppId(), config.getAppSecret())
             .openBaseUrl(BaseUrlEnum.FeiShu)
             .build();
         this.objectMapper = new ObjectMapper();
-        log.info("Feishu SDK Client initialized with appId: {}", appId);
+        log.info("Feishu SDK Client initialized with appId: {}", config.getAppId());
     }
 
     /**

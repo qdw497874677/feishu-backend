@@ -1,26 +1,24 @@
 package com.qdw.feishu.infrastructure.config;
 
+import com.qdw.feishu.domain.config.FeishuConfig;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/**
- * 飞书配置属性
- */
 @Data
 @Component
 @ConfigurationProperties(prefix = "feishu")
-public class FeishuProperties {
+public class FeishuProperties implements FeishuConfig {
 
     /**
      * 飞书应用 ID
      */
-    private String appid;
+    private String appId;
 
     /**
      * 飞书应用 Secret
      */
-    private String appsecret;
+    private String appSecret;
 
     /**
      * 加密 Key (注意：getter 方法名为 getEncryptKey，匹配字段 encryptKey)
@@ -69,9 +67,10 @@ public class FeishuProperties {
         this.listener.setEnabled(enabled);
     }
 
-    public static class Listener {
+    public static class Listener implements ListenerConfig {
         private boolean enabled = false;
 
+        @Override
         public boolean isEnabled() {
             return enabled;
         }

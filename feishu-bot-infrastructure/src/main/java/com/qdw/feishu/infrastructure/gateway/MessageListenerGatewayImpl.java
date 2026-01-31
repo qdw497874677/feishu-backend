@@ -66,8 +66,8 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
 
         try {
             wsClient = new Client.Builder(
-                properties.getAppid(),
-                properties.getAppsecret()
+                properties.getAppId(),
+                properties.getAppSecret()
             ).eventHandler(eventDispatcher)
              .build();
 
@@ -127,8 +127,10 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
             }
         }
 
-        com.qdw.feishu.domain.message.Sender sender = new com.qdw.feishu.domain.message.Sender();
-        sender.setUserId(data.getSender().getSenderId());
+        com.qdw.feishu.domain.message.Sender sender = new com.qdw.feishu.domain.message.Sender(
+            data.getSender().getSenderId().getOpenId(),
+            data.getSender().getSenderType()
+        );
 
         // 提取 eventId（用于去重）
         String eventId = null;
