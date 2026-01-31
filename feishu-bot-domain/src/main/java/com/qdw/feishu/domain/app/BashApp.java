@@ -1,18 +1,19 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.history.BashHistoryManager;
 import com.qdw.feishu.domain.history.CommandExecution;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.validation.CommandWhitelistValidator;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -23,10 +24,14 @@ public class BashApp implements FishuAppI {
 
     private final CommandWhitelistValidator validator;
     private final BashHistoryManager historyManager;
+    private final FeishuGateway feishuGateway;
 
-    public BashApp(CommandWhitelistValidator validator, BashHistoryManager historyManager) {
+    public BashApp(CommandWhitelistValidator validator,
+                    BashHistoryManager historyManager,
+                    FeishuGateway feishuGateway) {
         this.validator = validator;
         this.historyManager = historyManager;
+        this.feishuGateway = feishuGateway;
     }
 
     @Override
@@ -71,10 +76,16 @@ public class BashApp implements FishuAppI {
             return "错误：命令不在白名单中或包含非法操作符";
         }
 
-        File workspaceDir = ensureWorkspaceExists();
-        String baseCommand = extractBaseCommand(command);
+        executeCommandAsync(message, command);
+        return "命令正在执行中，结果将稍后返回...";
+    }
 
+    @Async("bashExecutor")
+    public void executeCommandAsync(Message message, String command) {
         try {
+            File workspaceDir = ensureWorkspaceExists();
+            String baseCommand = extractBaseCommand(command);
+
             ProcessBuilder pb = new ProcessBuilder(baseCommand, getArgs(command));
             pb.directory(workspaceDir);
             pb.redirectErrorStream(true);
@@ -84,14 +95,17 @@ public class BashApp implements FishuAppI {
             int exitCode = process.waitFor();
 
             boolean success = exitCode == 0;
-            historyManager.recordExecution(command, truncateOutput(output), success);
+            String truncatedOutput = truncateOutput(output);
+            historyManager.recordExecution(command, truncatedOutput, success);
 
-            return output.isEmpty() ? "命令执行完成，无输出" : output;
+            String result = output.isEmpty() ? "命令执行完成，无输出" : output;
+
+            feishuGateway.sendMessage(message, result, message.getTopicId());
 
         } catch (Exception e) {
-            log.error("Command execution failed", e);
+            log.error("Async command execution failed", e);
             historyManager.recordExecution(command, "错误: " + e.getMessage(), false);
-            return "错误：" + e.getMessage();
+            feishuGateway.sendMessage(message, "错误：" + e.getMessage(), message.getTopicId());
         }
     }
 
