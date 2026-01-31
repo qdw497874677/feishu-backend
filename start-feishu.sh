@@ -5,7 +5,10 @@
 
 # 飞书应用凭证
 export FEISHU_APPID="cli_a8f66e3df8fb100d"
-export FEISHU_APPSECRET="${FEISHU_APPSECRET:-your_app_secret_here}"
+export FEISHU_APPSECRET="CFVrKX1w00ypHEqT1vInwdeKznwmYWpn"
+
+# 应用端口
+export APP_PORT="17777"
 
 # 编码设置
 export LANG=zh_CN.UTF-8
@@ -17,6 +20,23 @@ cd /root/workspace/feishu-backend/feishu-bot-start
 # 停止旧进程
 echo "正在停止旧的飞书相关进程..."
 pkill -9 -f "feishu" 2>/dev/null
+pkill -9 -f "spring-boot:run" 2>/dev/null
+
+# 清理应用端口
+echo "正在清理端口 $APP_PORT..."
+if command -v fuser >/dev/null 2>&1; then
+    fuser -k ${APP_PORT}/tcp 2>/dev/null
+elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti:${APP_PORT} | xargs kill -9 2>/dev/null
+else
+    # 使用 netstat 和 ps 清理
+    OLD_PID=$(netstat -tlnp 2>/dev/null | grep ":${APP_PORT}" | awk '{print $7}' | cut -d'/' -f1 | grep -v '-')
+    if [ -n "$OLD_PID" ]; then
+        kill -9 $OLD_PID 2>/dev/null
+    fi
+fi
+
+echo "等待端口释放..."
 sleep 3
 
 # 启动应用
@@ -26,8 +46,10 @@ echo "工作目录: $(pwd)"
 echo ""
 
 # 后台启动，日志输出到文件
+LOG_FILE="/tmp/feishu-run.log"
+echo "日志文件: $LOG_FILE"
 LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
-mvn spring-boot:run -Dspring-boot.run.profiles=dev > /tmp/feishu-run.log 2>&1 &
+mvn spring-boot:run -Dspring-boot.run.profiles=dev > "$LOG_FILE" 2>&1 &
 
 PID=$!
 echo "✅ 应用已启动！PID: $PID"

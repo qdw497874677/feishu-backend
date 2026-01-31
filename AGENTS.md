@@ -105,18 +105,35 @@
 
 ### Dev 环境（开发环境）
 
-Dev 环境已预配置飞书凭证，直接启动即可：
+**⚠️ 重要：必须使用启动脚本**
+
+Dev 环境需要飞书凭证，请使用启动脚本：
 
 ```bash
-cd feishu-bot-start
+./start-feishu.sh
+```
 
+**为什么需要启动脚本？**
+- 脚本包含必要的 `FEISHU_APPSECRET` 环境变量
+- 自动处理编码设置（UTF-8）
+- 自动停止旧进程并重启
+- **自动清理端口占用（17777）**
+- 提供启动日志和状态监控
+
+**启动脚本位置**：`/root/workspace/feishu-backend/start-feishu.sh`
+
+**手动启动（不推荐）**：
+```bash
+cd feishu-bot-start
+export FEISHU_APPSECRET="your_secret_here"
 LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 **Dev 环境配置**：
+- **port**: `17777`（应用端口）
 - appid: `cli_a8f66e3df8fb100d`
-- appsecret: 已配置
+- appsecret: 通过启动脚本的环境变量配置
 - mode: `listener`
 - listener.enabled: `true`
 
@@ -137,31 +154,37 @@ mvn spring-boot:run
 
 ### 🔄 重启应用
 
-**重要**：修改代码后必须重启应用才能生效。重启前必须先停止旧进程。
+**⚠️ 强制要求：必须使用启动脚本重启**
+
+启动脚本会自动处理以下步骤：
+1. 停止所有飞书相关进程
+2. **清理端口占用（17777）**
+3. 重新构建并启动应用
+
+**方法 1：使用启动脚本（唯一推荐方法）**
+
+```bash
+# 直接运行启动脚本（会自动处理所有步骤）
+./start-feishu.sh
+```
+
+**方法 2：手动重启（不推荐）**
 
 ```bash
 # 1. 停止所有飞书相关进程
 pkill -9 -f "feishu" 2>/dev/null
+pkill -9 -f "spring-boot:run" 2>/dev/null
 
-# 2. 确保端口已释放（等待 2-3 秒）
+# 2. 清理端口占用（17777）
+fuser -k 17777/tcp 2>/dev/null
+
+# 3. 确保端口已释放（等待 2-3 秒）
 sleep 3
 
-# 3. 重新构建并启动
+# 4. 重新构建并启动
 cd /root/workspace/feishu-backend
 mvn clean package -DskipTests
-cd feishu-bot-start
-LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-**快速重启（后台运行）**：
-
-```bash
-# 停止旧进程并重启
-pkill -9 -f "feishu" 2>/dev/null && sleep 3 && \
-cd /root/workspace/feishu-backend/feishu-bot-start && \
-LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
-mvn spring-boot:run -Dspring-boot.run.profiles=dev > /tmp/feishu-run.log 2>&1 &
+./start-feishu.sh
 ```
 
 **查看运行日志**：
@@ -354,6 +377,31 @@ public SendResult sendMessage(Message message, String content, String topicId) {
 3. **replyInThread=true**：创建话题和回复到话题都必须设置此参数
 4. **不能使用 listMessages 查询话题**：API 不支持 `thread_id` 作为容器类型
 5. **threadId 用于映射**：`threadId` 主要用于保存话题与应用的映射关系
+
+#### 🔧 话题映射保存（CRITICAL）
+
+**问题**：默认回复模式创建话题后，用户在话题中继续对话会收到"话题已失效"
+
+**原因**：`BotMessageService` 只在 `ReplyMode.TOPIC` 时保存话题映射，但默认回复模式也会创建话题
+
+**解决方案**：修改 `BotMessageService.java`，移除 `replyMode == ReplyMode.TOPIC &&` 条件
+
+```java
+// ❌ 错误：只在 TOPIC 模式保存映射
+if (replyMode == ReplyMode.TOPIC && actualThreadId != null && !actualThreadId.isEmpty()) {
+    TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
+    topicMappingGateway.save(mapping);
+}
+
+// ✅ 正确：任何模式返回 threadId 都保存映射
+if (actualThreadId != null && !actualThreadId.isEmpty()) {
+    TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
+    topicMappingGateway.save(mapping);
+    log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
+}
+```
+
+**效果**：用户可以在任何话题中继续对话，系统会自动找到对应的应用
 
 #### 🔍 飞书事件中的话题信息
 
