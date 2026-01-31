@@ -405,4 +405,25 @@ grep "connected to wss://" /tmp/feishu-run.log
 
 ---
 
-**最后更新**: 2026-01-25
+**最后更新**: 2026-01-31
+
+---
+
+## 📋 Module Knowledge Bases
+
+**Module-specific AGENTS.md files exist for:**
+
+| Module | Path | Complexity | Focus |
+|--------|------|------------|-------|
+| **feishu-bot-domain** | [./feishu-bot-domain/AGENTS.md](./feishu-bot-domain/AGENTS.md) | HIGH (85) | Business logic, applications, domain models |
+| **feishu-bot-infrastructure** | [./feishu-bot-infrastructure/AGENTS.md](./feishu-bot-infrastructure/AGENTS.md) | MODERATE (19) | Gateway implementations, Feishu SDK |
+
+**Why module AGENTS.md?**
+- **feishu-bot-domain**: Core business logic with 27 Java files, highest complexity
+- **feishu-bot-infrastructure**: External integrations, SDK-specific patterns
+
+**Modules covered by this file only:**
+- feishu-bot-app (13 files - simple orchestration layer)
+- feishu-bot-client (13 files - DTOs)
+- feishu-bot-adapter (10 files - event listeners)
+- feishu-bot-start (6 files - startup only)

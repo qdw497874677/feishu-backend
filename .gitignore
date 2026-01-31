@@ -22,6 +22,10 @@ application-dev.yml
 application-test.yml
 application-prod.yml
 
+# Feishu Credentials (DO NOT COMMIT)
+start-feishu.sh
+*.sh
+
 # Temporary
 *.tmp
 *.temp
