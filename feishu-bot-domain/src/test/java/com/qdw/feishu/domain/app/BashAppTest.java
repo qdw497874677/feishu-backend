@@ -12,9 +12,11 @@ import org.mockito.Mock;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
 class BashAppTest {
 
@@ -128,6 +130,50 @@ class BashAppTest {
 
         File workspace = new File(".workspace");
         assertTrue(workspace.exists(), "Workspace should exist after command execution");
+    }
+
+    @Test
+    void testExecute_commandWithNoArgs_executesSuccessfully() {
+        Message message = createMessage("/bash ls");
+
+        String result = bashApp.execute(message);
+
+        assertNotNull(result);
+        assertFalse(result.contains("cannot access"));
+    }
+
+    @Test
+    void testExecute_commandWithMultipleArgs_executesSuccessfully() {
+        Message message = createMessage("/bash ls -la");
+
+        String result = bashApp.execute(message);
+
+        assertNotNull(result);
+        assertFalse(result.contains("错误"));
+    }
+
+    @Test
+    void testExecute_fastCommand_returnsResultWithoutNotification() {
+        Message message = createMessage("/bash pwd");
+
+        long startTime = System.nanoTime();
+        String result = bashApp.execute(message);
+        long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
+
+        assertNotNull(result);
+        assertTrue(durationMs < 2000, "Fast command should complete in <2s");
+        verify(feishuGateway, never()).sendMessage(eq(message), contains("执行中"), anyString());
+    }
+
+    @Test
+    void testExecute_slowCommand_sendsNotificationThenResult() throws InterruptedException {
+        Message message = createMessage("/bash sleep 6");
+
+        String result = bashApp.execute(message);
+
+        assertNull(result, "Long async command should return null immediately");
+        Thread.sleep(100);
+        verify(feishuGateway, atLeastOnce()).sendMessage(eq(message), contains("执行中"), anyString());
     }
 
     private Message createMessage(String content) {

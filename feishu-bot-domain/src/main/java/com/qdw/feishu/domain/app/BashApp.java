@@ -14,6 +14,11 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -76,8 +81,33 @@ public class BashApp implements FishuAppI {
             return "错误：命令不在白名单中或包含非法操作符";
         }
 
-        executeCommandAsync(message, command);
-        return "命令正在执行中，结果将稍后返回...";
+        long startTime = System.nanoTime();
+        String result = null;
+
+        try {
+            // Try sync execution with 5 second timeout
+            result = executeCommandSync(message, command, 5, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            // Command takes >5 seconds - send "执行中..." and continue async
+            feishuGateway.sendMessage(message, "命令正在执行中，结果将稍后返回...",
+                                      message.getTopicId());
+            executeCommandAsync(message, command);
+            return null;
+        } catch (Exception e) {
+            log.error("Command execution failed", e);
+            historyManager.recordExecution(command, "错误: " + e.getMessage(), false);
+            return "错误：" + e.getMessage();
+        }
+
+        long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
+
+        if (durationMs > 2000 && result != null) {
+            // Command took 2-5 seconds - send "执行中..." first
+            feishuGateway.sendMessage(message, "命令正在执行中，结果将稍后返回...",
+                                      message.getTopicId());
+        }
+
+        return result;
     }
 
     @Async("bashExecutor")
@@ -85,8 +115,13 @@ public class BashApp implements FishuAppI {
         try {
             File workspaceDir = ensureWorkspaceExists();
             String baseCommand = extractBaseCommand(command);
+            String[] args = getArgsAsArray(command);
 
-            ProcessBuilder pb = new ProcessBuilder(baseCommand, getArgs(command));
+            java.util.List<String> commandList = new java.util.ArrayList<>();
+            commandList.add(baseCommand);
+            commandList.addAll(java.util.Arrays.asList(args));
+
+            ProcessBuilder pb = new ProcessBuilder(commandList);
             pb.directory(workspaceDir);
             pb.redirectErrorStream(true);
 
@@ -106,6 +141,42 @@ public class BashApp implements FishuAppI {
             log.error("Async command execution failed", e);
             historyManager.recordExecution(command, "错误: " + e.getMessage(), false);
             feishuGateway.sendMessage(message, "错误：" + e.getMessage(), message.getTopicId());
+        }
+    }
+
+    private String executeCommandSync(Message message, String command,
+                                      long timeout, TimeUnit unit) throws Exception {
+        File workspaceDir = ensureWorkspaceExists();
+        String baseCommand = extractBaseCommand(command);
+        String[] args = getArgsAsArray(command);
+
+        java.util.List<String> commandList = new java.util.ArrayList<>();
+        commandList.add(baseCommand);
+        commandList.addAll(java.util.Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(commandList);
+        pb.directory(workspaceDir);
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<String> future = executor.submit(() -> readProcessOutput(process));
+
+        try {
+            String output = future.get(timeout, unit);
+            int exitCode = process.waitFor();
+
+            boolean success = exitCode == 0;
+            String truncatedOutput = truncateOutput(output);
+            historyManager.recordExecution(command, truncatedOutput, success);
+
+            return output.isEmpty() ? "命令执行完成，无输出" : output;
+        } catch (TimeoutException e) {
+            process.destroyForcibly();
+            throw e;
+        } finally {
+            executor.shutdownNow();
         }
     }
 
@@ -134,6 +205,19 @@ public class BashApp implements FishuAppI {
             return trimmed.substring(spaceIndex + 1);
         }
         return "";
+    }
+
+    private String[] getArgsAsArray(String command) {
+        String trimmed = command.trim();
+        int spaceIndex = trimmed.indexOf(' ');
+        if (spaceIndex < 0) {
+            return new String[0];
+        }
+        String argsString = trimmed.substring(spaceIndex + 1).trim();
+        if (argsString.isEmpty()) {
+            return new String[0];
+        }
+        return argsString.split("\\s+");
     }
 
     private String readProcessOutput(Process process) {
