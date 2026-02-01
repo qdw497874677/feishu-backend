@@ -39,3 +39,4 @@ start-feishu.sh
 # If you want to exclude database files from Git, uncomment the following line:
 # *.db
 # data/*.db
+*.deb
