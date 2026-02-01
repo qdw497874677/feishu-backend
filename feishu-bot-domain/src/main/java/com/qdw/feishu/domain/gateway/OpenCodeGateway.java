@@ -3,7 +3,7 @@ package com.qdw.feishu.domain.gateway;
 /**
  * OpenCode Gateway 接口
  *
- * 定义与 OpenCode CLI 交互的抽象
+ * 定义与 OpenCode 服务端 API 交互的抽象
  */
 public interface OpenCodeGateway {
 
@@ -24,6 +24,20 @@ public interface OpenCodeGateway {
      * @return 格式化的会话列表
      */
     String listSessions();
+
+    /**
+     * 列出所有项目
+     *
+     * @return 格式化的项目列表
+     */
+    String listProjects();
+
+    /**
+     * 列出所有斜杠命令
+     *
+     * @return 格式化的命令列表
+     */
+    String listCommands();
 
     /**
      * 获取服务器状态

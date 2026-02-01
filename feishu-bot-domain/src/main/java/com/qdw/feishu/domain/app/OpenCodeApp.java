@@ -64,17 +64,24 @@ public class OpenCodeApp implements FishuAppI {
     @Override
     public String getHelp() {
         return "🤖 **OpenCode 助手** - 支持多轮对话\n\n" +
-               "📝 **基本命令**：\n" +
-               "  `/opencode <提示词>`          - 执行任务（自动保持会话）\n" +
-               "  `/opencode new <提示词>`       - 创建新会话并执行\n\n" +
-               "🔧 **会话管理**：\n" +
-               "  `/opencode session status`    - 查看当前会话信息\n" +
-               "  `/opencode session list`      - 查看所有会话\n" +
-               "  `/opencode session continue <id>` - 继续指定会话\n\n" +
-               "💡 **使用示例**：\n\n" +
-               "  /opencode 重构 TimeApp\n" +
-               "  /opencode 添加单元测试        # 自动继续上一会话\n" +
-               "  /opencode new 优化 BashApp    # 创建新会话\n\n";
+                "📝 **对话命令**：\n" +
+                "  `/opencode chat <内容>`       - 发送对话（推荐）\n" +
+                "  `/opencode new <内容>`        - 创建新会话并对话\n\n" +
+                "📁 **项目管理**：\n" +
+                "  `/opencode projects`          - 查看近期项目列表\n\n" +
+                "⚡️ **命令列表**：\n" +
+                "  `/opencode commands`          - 查看所有可用斜杠命令\n\n" +
+                "🔧 **会话管理**：\n" +
+                "  `/opencode session status`    - 查看当前会话信息\n" +
+                "  `/opencode session list`      - 查看所有会话\n" +
+                "  `/opencode session continue <id>` - 继续指定会话\n\n" +
+                "💡 **使用提示**：\n\n" +
+                "  在已绑定的话题中，可以直接输入内容（无需 `/opencode` 前缀）\n" +
+                "  在非绑定话题中，推荐使用 `/opencode chat <内容>` 明确表示对话\n\n" +
+                "💡 **使用示例**：\n\n" +
+                "  /opencode chat 帮我写个排序函数\n" +
+                "  /opencode new 重构登录模块\n" +
+                "  /opencode chat 添加单元测试    # 在话题中继续对话\n\n";
     }
 
     @Override
@@ -115,13 +122,66 @@ public class OpenCodeApp implements FishuAppI {
                 String newPrompt = parts[2].trim();
                 return executeWithNewSession(message, newPrompt);
 
+            case "chat":
+                // 明确的对话命令
+                if (parts.length < 3) {
+                    return "❌ 用法：`/opencode chat <对话内容>`\n\n" +
+                           "示例：`/opencode chat 帮我写一个排序函数`\n\n" +
+                           "💡 提示：在已绑定的话题中，也可以直接输入内容（无前缀）";
+                }
+                String chatPrompt = content.substring(content.indexOf(' ') + 1).trim();
+                // 移除 "chat" 子命令，提取实际对话内容
+                if (chatPrompt.toLowerCase().startsWith("chat ")) {
+                    chatPrompt = chatPrompt.substring(5).trim();
+                }
+                return executeWithAutoSession(message, chatPrompt);
+
             case "session":
                 // 会话管理命令
                 return handleSessionCommand(parts, message);
 
+            case "projects":
+                // 查看项目列表
+                return openCodeGateway.listProjects();
+
+            case "commands":
+                // 查看斜杠命令列表
+                return openCodeGateway.listCommands();
+
             default:
-                // 默认：执行命令（自动保持会话）
+                // 默认：可能是对话或未知命令
                 String prompt = content.substring(content.indexOf(' ') + 1).trim();
+                
+                // 在话题中，优先作为对话处理（除非是明确的子命令）
+                String topicId = message.getTopicId();
+                boolean isInTopic = topicId != null && !topicId.isEmpty();
+                
+                if (isInTopic) {
+                    // 在话题中，短输入（可能是误触的子命令）优先作为对话
+                    if (subCommand.length() <= 8 && !subCommand.equals("help") && 
+                        !subCommand.equals("new") && !subCommand.equals("chat") &&
+                        !subCommand.equals("projects") && !subCommand.equals("commands")) {
+                        log.info("话题中的短输入 '{}'，作为对话处理", subCommand);
+                        return executeWithAutoSession(message, prompt);
+                    }
+                }
+                
+                // 检查是否是已知的子命令拼写错误
+                if (subCommand.length() <= 6) {
+                    return String.format(
+                        "❌ 未知的子命令: `%s`\n\n" +
+                        "📝 可用子命令：\n" +
+                        "  `/opencode chat <内容>` - 对话（推荐）\n" +
+                        "  `/opencode new <内容>` - 创建新会话\n" +
+                        "  `/opencode projects` - 查看项目\n" +
+                        "  `/opencode commands` - 查看命令\n" +
+                        "  `/opencode session <status|list>` - 会话管理\n\n" +
+                        "💡 如果你想对话，请使用：`/opencode chat %s`",
+                        subCommand, prompt
+                    );
+                }
+                
+                // 对于较长的输入，假设是对话内容
                 return executeWithAutoSession(message, prompt);
         }
     }

@@ -29,9 +29,19 @@ feishu:
 
 # OpenCode 配置
 opencode:
-  executable-path: ${OPCODE_PATH:opencode}
-  default-timeout: 5
-  max-output-length: 2000
+  # 服务端 URL（默认: http://localhost:4098）
+  server-url: ${OPencode_SERVER_URL:http://localhost:4098}
+  # HTTP 基本认证用户名（默认: opencode）
+  username: ${OPencode_USERNAME:opencode}
+  # HTTP 基本认证密码（通过环境变量设置）
+  password: ${OPencode_SERVER_PASSWORD:}
+  # 连接超时时间（秒）
+  connect-timeout: 10
+  # 请求超时时间（秒）
+  request-timeout: 120
+  # 最大输出长度（字符）
+  max-output-length: 5000
+  # 是否启用异步执行
   async-enabled: true
 
 # 日志配置

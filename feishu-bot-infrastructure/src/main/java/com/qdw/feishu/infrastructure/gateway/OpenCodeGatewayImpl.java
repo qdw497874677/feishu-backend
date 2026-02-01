@@ -5,30 +5,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.infrastructure.config.OpenCodeProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * OpenCode Gateway 实现
  *
- * 调用 opencode CLI 并解析 JSON 输出
+ * 通过 HTTP API 与 OpenCode 服务端通信
  */
 @Slf4j
 @Component
 public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
     private final OpenCodeProperties properties;
-    private final String opencodeExecutable;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final int MAX_RETRIES = 3;
@@ -37,8 +37,545 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
     public OpenCodeGatewayImpl(OpenCodeProperties properties) {
         this.properties = properties;
-        this.opencodeExecutable = findExecutable();
-        log.info("OpenCode Gateway 初始化完成，可执行文件: {}", opencodeExecutable);
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(properties.getConnectTimeout()))
+                .build();
+        log.info("OpenCode Gateway 初始化完成，服务端: {}", properties.getServerUrl());
+    }
+
+    @Override
+    public String executeCommand(String prompt, String sessionId, int timeoutSeconds) throws Exception {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return executeInNewSession(prompt, timeoutSeconds);
+        } else {
+            return executeInExistingSession(sessionId, prompt, timeoutSeconds);
+        }
+    }
+
+    /**
+     * 在新会话中执行命令
+     */
+    private String executeInNewSession(String prompt, int timeoutSeconds) throws Exception {
+        log.info("创建新会话并执行命令: {}", prompt);
+
+        String sessionId = createSession(null);
+        if (sessionId == null) {
+            return "❌ 创建会话失败";
+        }
+
+        return sendMessageSync(sessionId, prompt, timeoutSeconds, true);
+    }
+
+    /**
+     * 在现有会话中执行命令
+     */
+    private String executeInExistingSession(String sessionId, String prompt, int timeoutSeconds) throws Exception {
+        log.info("在会话 {} 中执行命令: {}", sessionId, prompt);
+
+        if (prompt == null || prompt.isEmpty()) {
+            return getSessionDetails(sessionId);
+        }
+
+        return sendMessageSync(sessionId, prompt, timeoutSeconds, true);
+    }
+
+    /**
+     * 创建新会话
+     */
+    private String createSession(String parentID) {
+        return executeWithRetry("createSession", () -> {
+            try {
+                String body = parentID != null
+                    ? String.format("{\"parentID\":\"%s\"}", parentID)
+                    : "{}";
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/session"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", getAuthHeader())
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200 || response.statusCode() == 201) {
+                    JsonNode json = objectMapper.readTree(response.body());
+                    if (json.has("id")) {
+                        String sessionId = json.get("id").asText();
+                        log.info("创建会话成功: {}", sessionId);
+                        return sessionId;
+                    }
+                }
+
+                log.error("创建会话失败: {}", response.body());
+                return null;
+
+            } catch (Exception e) {
+                log.error("创建会话异常", e);
+                throw new RuntimeException("创建会话失败", e);
+            }
+        });
+    }
+
+    /**
+     * 同步发送消息并等待响应
+     */
+    private String sendMessageSync(String sessionId, String prompt, int timeoutSeconds, boolean returnNullOnTimeout) {
+        return executeWithRetry("sendMessageSync", () -> {
+            try {
+                String body = String.format(
+                        "{\"parts\":[{\"type\":\"text\",\"text\":\"%s\"}]}",
+                        escapeJson(prompt)
+                );
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId + "/message"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", getAuthHeader())
+                        .timeout(Duration.ofSeconds(timeoutSeconds > 0 ? timeoutSeconds : properties.getRequestTimeout()))
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return parseMessageResponse(response.body());
+                } else {
+                    log.error("发送消息失败: {}", response.body());
+                    return "❌ 发送消息失败: " + response.body();
+                }
+
+            } catch (java.net.http.HttpTimeoutException e) {
+                if (returnNullOnTimeout) {
+                    log.info("请求超时（{}秒），返回null等待异步执行", timeoutSeconds);
+                    return null;
+                } else {
+                    log.error("发送消息超时", e);
+                    throw new RuntimeException("发送消息超时", e);
+                }
+            } catch (Exception e) {
+                log.error("发送消息异常", e);
+                throw new RuntimeException("发送消息失败", e);
+            }
+        });
+    }
+
+    /**
+     * 异步发送消息（不等待响应）
+     */
+    public void sendMessageAsync(String sessionId, String prompt) {
+        try {
+            String body = String.format(
+                    "{\"parts\":[{\"type\":\"text\",\"text\":\"%s\"}]}",
+                    escapeJson(prompt)
+            );
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId + "/prompt_async"))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", getAuthHeader())
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 204) {
+                log.info("异步消息发送成功: sessionId={}", sessionId);
+            } else {
+                log.warn("异步消息发送失败: {}", response.body());
+            }
+
+        } catch (Exception e) {
+            log.error("异步发送消息异常", e);
+        }
+    }
+
+    @Override
+    public String listSessions() {
+        return executeWithRetry("listSessions", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/session"))
+                        .header("Authorization", getAuthHeader())
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return formatSessionList(response.body());
+                } else {
+                    return "❌ 获取会话列表失败: " + response.body();
+                }
+
+            } catch (Exception e) {
+                log.error("列出会话失败", e);
+                return "❌ 获取会话列表失败: " + e.getMessage();
+            }
+        });
+    }
+
+    @Override
+    public String listProjects() {
+        return executeWithRetry("listProjects", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/project"))
+                        .header("Authorization", getAuthHeader())
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return formatProjectList(response.body());
+                } else {
+                    return "❌ 获取项目列表失败: " + response.body();
+                }
+
+            } catch (Exception e) {
+                log.error("列出项目失败", e);
+                return "❌ 获取项目列表失败: " + e.getMessage();
+            }
+        });
+    }
+
+    @Override
+    public String listCommands() {
+        return executeWithRetry("listCommands", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/command"))
+                        .header("Authorization", getAuthHeader())
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return formatCommandList(response.body());
+                } else {
+                    return "❌ 获取命令列表失败: " + response.body();
+                }
+
+            } catch (Exception e) {
+                log.error("列出命令失败", e);
+                return "❌ 获取命令列表失败: " + e.getMessage();
+            }
+        });
+    }
+
+    @Override
+    public String getServerStatus() {
+        return executeWithRetry("getServerStatus", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/global/health"))
+                        .header("Authorization", getAuthHeader())
+                        .timeout(Duration.ofSeconds(5))
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonNode json = objectMapper.readTree(response.body());
+                    boolean healthy = json.get("healthy").asBoolean();
+                    String version = json.has("version") ? json.get("version").asText() : "Unknown";
+
+                    if (healthy) {
+                        return "✅ OpenCode 服务状态: 正常运行\n\n" +
+                               "版本: " + version + "\n" +
+                               "服务端: " + properties.getServerUrl();
+                    } else {
+                        return "⚠️ OpenCode 服务状态: 不可用\n\n" +
+                               "服务端: " + properties.getServerUrl();
+                    }
+                } else {
+                    return "❌ OpenCode 服务状态: 无法连接\n\n" +
+                           "服务端: " + properties.getServerUrl() + "\n" +
+                           "错误: " + response.body();
+                }
+
+            } catch (Exception e) {
+                log.error("检查服务状态失败", e);
+                return "❌ OpenCode 服务状态: 无法连接\n\n" +
+                       "服务端: " + properties.getServerUrl() + "\n" +
+                       "错误: " + e.getMessage();
+            }
+        });
+    }
+
+    /**
+     * 获取会话详情
+     */
+    private String getSessionDetails(String sessionId) {
+        return executeWithRetry("getSessionDetails", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId))
+                        .header("Authorization", getAuthHeader())
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return formatSessionDetails(response.body());
+                } else {
+                    return "❌ 获取会话详情失败: " + response.body();
+                }
+
+            } catch (Exception e) {
+                log.error("获取会话详情失败", e);
+                return "❌ 获取会话详情失败: " + e.getMessage();
+            }
+        });
+    }
+
+    /**
+     * 格式化会话列表
+     */
+    private String formatSessionList(String jsonResponse) {
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            if (!json.isArray() || json.size() == 0) {
+                return "📋 暂无会话记录";
+            }
+
+            StringBuilder sb = new StringBuilder("📋 OpenCode 会话列表:\n\n");
+
+            for (int i = 0; i < json.size() && i < 10; i++) {
+                JsonNode session = json.get(i);
+                String id = session.get("id").asText();
+                String title = session.has("title") && !session.get("title").isNull()
+                    ? session.get("title").asText()
+                    : "无标题";
+
+                sb.append(String.format("%d. %s\n   ID: %s\n\n", i + 1, title, id));
+            }
+
+            if (json.size() > 10) {
+                sb.append(String.format("... 还有 %d 个会话\n", json.size() - 10));
+            }
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            log.error("格式化会话列表失败", e);
+            return "❌ 格式化会话列表失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 格式化项目列表
+     */
+    private String formatProjectList(String jsonResponse) {
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            if (!json.isArray() || json.size() == 0) {
+                return "📁 暂无项目记录";
+            }
+
+            StringBuilder sb = new StringBuilder("📁 OpenCode 项目列表:\n\n");
+
+            for (int i = 0; i < json.size() && i < 15; i++) {
+                JsonNode project = json.get(i);
+
+                String worktree = project.has("worktree") ? project.get("worktree").asText() : "未知路径";
+                String vcs = project.has("vcs") ? project.get("vcs").asText() : "";
+
+                String name = extractProjectName(worktree);
+
+                sb.append(String.format("%d. **%s**\n   路径: %s\n", i + 1, name, worktree));
+
+                if (!vcs.isEmpty()) {
+                    sb.append(String.format("   VCS: %s\n", vcs.toUpperCase()));
+                }
+
+                sb.append("\n");
+            }
+
+            if (json.size() > 15) {
+                sb.append(String.format("... 还有 %d 个项目\n", json.size() - 15));
+            }
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            log.error("格式化项目列表失败", e);
+            return "❌ 格式化项目列表失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 格式化命令列表
+     */
+    private String formatCommandList(String jsonResponse) {
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            if (!json.isArray() || json.size() == 0) {
+                return "⚡️ 暂无可用命令";
+            }
+
+            StringBuilder sb = new StringBuilder("⚡️ OpenCode 斜杠命令:\n\n");
+
+            for (int i = 0; i < json.size(); i++) {
+                JsonNode command = json.get(i);
+
+                String id = command.has("id") ? command.get("id").asText() : "未知";
+                String name = command.has("name") ? command.get("name").asText() : "";
+
+                String description = "";
+                if (command.has("description")) {
+                    description = command.get("description").asText();
+                } else if (command.has("doc")) {
+                    description = command.get("doc").asText();
+                }
+
+                String enabled = command.has("enabled") && command.get("enabled").asBoolean()
+                    ? "✅"
+                    : "❌";
+
+                sb.append(String.format("**%s** `%s`", enabled, name));
+
+                if (!description.isEmpty()) {
+                    sb.append(String.format(" - %s", description));
+                }
+
+                sb.append("\n\n");
+            }
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            log.error("格式化命令列表失败", e);
+            return "❌ 格式化命令列表失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 从路径中提取项目名称
+     */
+    private String extractProjectName(String path) {
+        if (path == null || path.isEmpty()) {
+            return "未命名项目";
+        }
+
+        String[] parts = path.split("[/\\\\]");
+        if (parts.length > 0) {
+            String lastName = parts[parts.length - 1];
+            return lastName.isEmpty() ? "未命名项目" : lastName;
+        }
+
+        return "未命名项目";
+    }
+
+    /**
+     * 格式化会话详情
+     */
+    private String formatSessionDetails(String jsonResponse) {
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            String title = json.has("title") && !json.get("title").isNull()
+                ? json.get("title").asText()
+                : "无标题";
+
+            return "📝 会话详情\n\n" +
+                   "标题: " + title + "\n" +
+                   "ID: " + json.get("id").asText() + "\n" +
+                   "消息数: " + (json.has("messageCount") ? json.get("messageCount").asInt() : "未知");
+
+        } catch (Exception e) {
+            log.error("格式化会话详情失败", e);
+            return "❌ 格式化会话详情失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 解析消息响应，提取文本内容
+     */
+    private String parseMessageResponse(String jsonResponse) {
+        log.info("解析 OpenCode 响应: {}", jsonResponse);
+
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            StringBuilder textContent = new StringBuilder();
+
+            if (json.has("parts") && json.get("parts").isArray()) {
+                JsonNode parts = json.get("parts");
+                for (JsonNode part : parts) {
+                    String type = part.has("type") ? part.get("type").asText() : "";
+
+                    if ("text".equals(type)) {
+                        if (part.has("text")) {
+                            JsonNode textNode = part.get("text");
+                            if (textNode.isTextual()) {
+                                textContent.append(textNode.asText()).append("\n");
+                            } else if (textNode.has("content")) {
+                                textContent.append(textNode.get("content").asText()).append("\n");
+                            }
+                        }
+                    }
+
+                    if ("tool_use".equals(type)) {
+                        if (part.has("toolUse") && part.get("toolUse").has("output")) {
+                            String output = part.get("toolUse").get("output").asText();
+                            textContent.append("```\n").append(output).append("\n```\n");
+                        }
+                    }
+                }
+            }
+
+            String result = textContent.toString().trim();
+            if (result.isEmpty()) {
+                log.warn("响应解析成功，但无文本内容");
+                return "✅ 命令已执行，但无返回内容";
+            }
+
+            log.info("成功提取文本内容，长度: {}", result.length());
+            return result;
+
+        } catch (Exception e) {
+            log.error("解析消息响应失败: {}", jsonResponse, e);
+            return "❌ 解析响应失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 生成 HTTP 基本认证头
+     */
+    private String getAuthHeader() {
+        if (properties.getPassword() == null || properties.getPassword().isEmpty()) {
+            return "";
+        }
+
+        String auth = properties.getUsername() + ":" + properties.getPassword();
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+        return "Basic " + encodedAuth;
+    }
+
+    /**
+     * 转义 JSON 字符串
+     */
+    private String escapeJson(String text) {
+        if (text == null) {
+            return "";
+        }
+
+        return text.replace("\\", "\\\\")
+                   .replace("\"", "\\\"")
+                   .replace("\n", "\\n")
+                   .replace("\r", "\\r")
+                   .replace("\t", "\\t");
     }
 
     /**
@@ -53,10 +590,12 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
                     throw new RuntimeException(e);
                 }
 
-                if (e.getCause() instanceof java.net.UnknownHostException || 
-                    e instanceof java.net.UnknownHostException) {
+                if (e.getCause() instanceof java.net.UnknownHostException ||
+                    e instanceof java.net.UnknownHostException ||
+                    e.getCause() instanceof java.net.ConnectException) {
+
                     long delay = Math.min(INITIAL_RETRY_DELAY_MS * (1L << attempt), MAX_RETRY_DELAY_MS);
-                    log.warn("DNS resolution failed for {} (attempt {}/{}), retrying in {}ms...",
+                    log.warn("{} 失败 (attempt {}/{}), retrying in {}ms...",
                              operationName, attempt + 1, MAX_RETRIES, delay);
                     try {
                         Thread.sleep(delay);
@@ -70,216 +609,5 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
             }
         }
         throw new RuntimeException("All retry attempts failed for: " + operationName);
-    }
-
-    /**
-     * 查找 opencode 可执行文件
-     */
-    private String findExecutable() {
-        String path = properties.getExecutablePath();
-        if (path != null && !path.isEmpty()) {
-            return path;
-        }
-
-        // 尝试从 PATH 中查找
-        String[] searchPaths = {"/usr/bin/opencode", "/usr/local/bin/opencode"};
-        for (String testPath : searchPaths) {
-            try {
-                if (new java.io.File(testPath).exists()) {
-                    return testPath;
-                }
-            } catch (Exception e) {
-                // 忽略
-            }
-        }
-
-        // 默认使用 "opencode"，依赖 PATH
-        return "opencode";
-    }
-
-    @Override
-    public String executeCommand(String prompt, String sessionId, int timeoutSeconds) throws Exception {
-        List<String> command = new ArrayList<>();
-        command.add(opencodeExecutable);
-        command.add("run");
-        command.add("--format");
-        command.add("json");
-
-        // 添加会话继续参数
-        if (sessionId != null && !sessionId.isEmpty()) {
-            command.add("--session");
-            command.add(sessionId);
-        }
-
-        // 如果有 prompt，添加为参数
-        if (prompt != null && !prompt.isEmpty()) {
-            command.add(prompt);
-        }
-
-        // 构建进程
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
-
-        log.info("执行 OpenCode 命令: {}", String.join(" ", command));
-
-        Process process = pb.start();
-
-        // 如果有超时限制
-        if (timeoutSeconds > 0) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-            Future<String> future = executor.submit(() -> readProcessOutput(process));
-
-            try {
-                String output = future.get(timeoutSeconds, TimeUnit.SECONDS);
-                executor.shutdown();
-                return parseOpenCodeOutput(output);
-            } catch (TimeoutException e) {
-                process.destroyForcibly();
-                executor.shutdownNow();
-                log.warn("OpenCode 执行超时（{}秒）", timeoutSeconds);
-                return null;  // 超时返回null
-            }
-        } else {
-            // 无超时限制
-            String output = readProcessOutput(process);
-            return parseOpenCodeOutput(output);
-        }
-    }
-
-    @Override
-    public String listSessions() {
-        try {
-            List<String> command = List.of(opencodeExecutable, "session", "list");
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-
-            Process process = pb.start();
-            String output = readProcessOutput(process);
-
-            // 解析输出并格式化
-            if (output.isEmpty() || output.contains("No sessions found")) {
-                return "📋 暂无会话记录";
-            }
-
-            return "📋 OpenCode 会话列表:\n\n" + output;
-
-        } catch (Exception e) {
-            log.error("列出会话失败", e);
-            return "❌ 获取会话列表失败: " + e.getMessage();
-        }
-    }
-
-    @Override
-    public String getServerStatus() {
-        return executeWithRetry("getServerStatus", () -> {
-            try {
-                // 检查 OpenCode CLI 是否可用
-                ProcessBuilder pb = new ProcessBuilder(opencodeExecutable, "--version");
-                Process process = pb.start();
-                
-                int exitCode = process.waitFor();
-                String output = readProcessOutput(process);
-                
-                if (exitCode == 0 && output.contains("opencode")) {
-                    // 解析版本信息
-                    String version = extractVersion(output);
-                    return "✅ OpenCode 服务状态: 正常运行\n\n版本: " + version + "\n可执行文件: " + opencodeExecutable;
-                } else {
-                    return "⚠️ OpenCode 服务状态: 不可用\n\n可执行文件: " + opencodeExecutable + "\n错误: " + output.trim();
-                }
-                
-            } catch (Exception e) {
-                log.error("检查 OpenCode 服务状态失败", e);
-                return "❌ 无法检查 OpenCode 服务状态: " + e.getMessage();
-            }
-        });
-    }
-    
-    /**
-     * 从版本输出中提取版本号
-     */
-    private String extractVersion(String versionOutput) {
-        if (versionOutput == null || versionOutput.isEmpty()) {
-            return "Unknown";
-        }
-        
-        // 尝试提取版本号（格式可能为 "opencode 1.1.48" 或类似）
-        String[] parts = versionOutput.split("\\s+");
-        for (String part : parts) {
-            if (part.matches("\\d+\\.\\d+\\.\\d+.*")) {
-                return part;
-            }
-        }
-        return "Unknown (found: " + versionOutput.trim() + ")";
-    }
-
-    /**
-     * 读取进程输出
-     */
-    private String readProcessOutput(Process process) {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-
-            StringBuilder output = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-
-            process.waitFor();
-            return output.toString();
-
-        } catch (Exception e) {
-            log.error("读取进程输出失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-
-    /**
-     * 解析 OpenCode JSON 输出，提取文本内容
-     */
-    private String parseOpenCodeOutput(String jsonOutput) {
-        if (jsonOutput == null || jsonOutput.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder textContent = new StringBuilder();
-
-        // 解析 JSON Lines 格式
-        String[] lines = jsonOutput.split("\n");
-        for (String line : lines) {
-            if (line.trim().isEmpty()) {
-                continue;
-            }
-
-            try {
-                JsonNode node = objectMapper.readTree(line);
-
-                // 提取 text 类型消息
-                if (node.has("type") && "text".equals(node.get("type").asText())) {
-                    if (node.has("part") && node.get("part").has("text")) {
-                        String text = node.get("part").get("text").asText();
-                        textContent.append(text).append("\n");
-                    }
-                }
-
-                // 提取 tool_use 输出
-                if (node.has("type") && "tool_use".equals(node.get("type").asText())) {
-                    if (node.has("part") && node.get("part").has("state")) {
-                        var state = node.get("part").get("state");
-                        if (state.has("output")) {
-                            String output = state.get("output").asText();
-                            textContent.append("```\n").append(output).append("\n```\n");
-                        }
-                    }
-                }
-
-            } catch (Exception e) {
-                // JSON 解析失败，保留原始行
-                textContent.append(line).append("\n");
-            }
-        }
-
-        return textContent.toString().trim();
     }
 }

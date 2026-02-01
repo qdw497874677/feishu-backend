@@ -894,9 +894,9 @@ Wave 5: 配置和验证（依赖 Wave 4）
   - [ ] 异步执行功能正常（如果测试）
 
   **Evidence to Capture**:
-  - [ ] 启动日志截图（OpenCode 注册部分）
-  - [ ] `/opencode help` 返回结果
-  - [ ] 测试命令的执行结果
+  - [x] 启动日志截图（OpenCode 注册部分）- Captured in evidence-opencode-registration.md
+  - [ ] `/opencode help` 返回结果（等待 Feishu 测试）
+  - [ ] 测试命令的执行结果（等待 Feishu 测试）
 
   **Commit**: YES（如果有配置文件修改）
   - Message: `config(opencode): add OpenCode configuration`
@@ -980,29 +980,66 @@ sqlite3 data/feishu-topic-mappings.db "SELECT * FROM topic_mapping WHERE app_id=
 
 ---
 
-**Plan Version**: v3.0
+**Plan Version**: v3.1
 **Created**: 2026-02-01
-**Status**: ✅ IMPLEMENTATION 100% COMPLETE (Testing Blocked - Requires Feishu Access)
-**Completed**: 2026-02-01 09:35
+**Status**: ✅ IMPLEMENTATION 100% COMPLETE - TEST PREPARATION COMPLETE - AWAITING USER TESTING
+**Completed**: 2026-02-01 09:35 (Implementation)
+**Test Prep Completed**: 2026-02-01 10:00 (Test Infrastructure)
 **Estimated Time**: 2-3 hours
-**Actual Time**: ~2.5 hours
+**Actual Time**: ~2.5 hours (implementation) + 0.5 hours (test preparation)
 
-### Progress: 111/127 Total Checkboxes Complete (87.4%)
+### Progress: 112/127 Total Checkboxes Complete (88.2%)
 ### Implementation: 14/14 Tasks Complete (100%)
 ### Build & Verification: 100% Complete
-### Testing Blocked: 16/16 Items Require Feishu Access
+### Code TODOs: 2/2 Resolved (100%)
+### Test Preparation: 100% Complete
+### Test Documentation: 100% Complete
+### Evidence Capture: 1/3 Complete (33% - startup logs captured)
+### Manual Testing: 0% COMPLETE (BLOCKED - Requires Feishu Access)
 
 **Blocker:** See `.sisyphus/notepads/opencode-multiturn-implementation/BLOCKERS.md`
 - All code implementation: 100% COMPLETE ✅
 - Build verification: PASSED ✅
-- Application startup: VERIFIED ✅
+- Application startup: VERIFIED ✅ (PID 35567)
 - Database schema: VERIFIED ✅
 - All features implemented: COMPLETE ✅
 - Documentation: COMPLETE ✅
+- Test infrastructure: COMPLETE ✅
+- Test preparation: COMPLETE ✅
+- Startup evidence captured: COMPLETE ✅
 - Manual testing in Feishu: BLOCKED ⏳ (requires platform access)
-- Evidence capture: PENDING ⏳ (requires Feishu testing)
+- Command execution evidence: PENDING ⏳ (requires Feishu testing)
+- User acceptance: PENDING ⏳ (requires Feishu testing)
 
-**Remaining 16 unchecked items: ALL require Feishu platform access for testing.**
+**Remaining 15 unchecked items:**
+- 12 items require Feishu platform access for testing
+- 3 items require test execution screenshots/results
+
+**Test Infrastructure Ready:**
+- ✅ 8 comprehensive test cases documented
+- ✅ Step-by-step test instructions prepared
+- ✅ Test report template created
+- ✅ Evidence capture guide ready
+- ✅ Troubleshooting guide prepared
+- ✅ Database verification queries documented
+- ✅ Application monitoring commands documented
+
+**Documents Created for Testing:**
+1. TESTING-INSTRUCTIONS.md - 8 test cases with detailed steps
+2. TEST-READINESS.md - Pre-test checklist and current status
+3. TEST-REPORT-TEMPLATE.md - Structured test results format
+4. evidence-opencode-registration.md - Startup evidence captured
+5. IMPLEMENTATION-COMPLETE-HANDOFF.md - Handoff package for user
+
+**Git Commits: 10 commits ahead of origin/master**
+- All implementation work committed
+- All documentation committed
+- Working tree clean
+- Ready for push after tests complete
+
+**Next Step:** User to execute tests in Feishu platform
+**Estimated Test Time:** 15-20 minutes
+**Test Guide:** `.sisyphus/notepads/opencode-multiturn-implementation/TESTING-INSTRUCTIONS.md`
 
 ## Completion Summary
 
