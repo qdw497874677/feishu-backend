@@ -184,6 +184,10 @@ public class OpenCodeApp implements FishuAppI {
                 }
                 return executeWithAutoSession(message, chatPrompt);
 
+            case "sessions":
+                // 查询指定项目的最近会话
+                return handleSessionsCommand(parts, message);
+
             case "session":
                 // 会话管理命令
                 return handleSessionCommand(parts, message);
@@ -232,6 +236,37 @@ public class OpenCodeApp implements FishuAppI {
                 // 对于较长的输入，假设是对话内容
                 return executeWithAutoSession(message, prompt);
         }
+    }
+
+    /**
+     * 处理项目会话查询命令
+     */
+    private String handleSessionsCommand(String[] parts, Message message) {
+        if (parts.length < 3) {
+            return "❌ 用法：`/opencode sessions <项目名称>`\n\n" +
+                   "示例：`/opencode sessions my-project`\n\n" +
+                   "💡 提示：\n" +
+                   " - 使用 `/opencode projects` 查看所有项目\n" +
+                   " - 项目名称支持部分匹配（不区分大小写）";
+        }
+
+        String project = parts[2].trim();
+        int limit = 5; // 默认返回最近 5 个会话
+
+        // 检查是否指定了数量
+        if (parts.length >= 4) {
+            try {
+                limit = Integer.parseInt(parts[3].trim());
+                if (limit < 1 || limit > 20) {
+                    return "❌ 数量必须在 1-20 之间";
+                }
+            } catch (NumberFormatException e) {
+                // 忽略，使用默认值
+            }
+        }
+
+        log.info("查询项目会话: project={}, limit={}", project, limit);
+        return openCodeGateway.listRecentSessions(project, limit);
     }
 
     /**
@@ -355,6 +390,26 @@ public class OpenCodeApp implements FishuAppI {
         if (topicId != null && !topicId.isEmpty()) {
             sessionGateway.saveSession(topicId, sessionId);
             log.info("已更新会话映射: topicId={}, sessionId={}", topicId, sessionId);
+        }
+
+        // 如果 prompt 为空，返回初始化成功提示
+        if (prompt == null || prompt.isEmpty()) {
+            StringBuilder response = new StringBuilder();
+            response.append("✅ **话题已初始化成功！**\n\n");
+            response.append("📋 会话信息\n");
+            response.append("  🆔 Session ID: `").append(sessionId).append("`\n");
+            if (topicId != null && !topicId.isEmpty()) {
+                response.append("  💬 话题 ID: `").append(topicId).append("`\n");
+            }
+            response.append("  ✅ 状态: 已绑定\n\n");
+            response.append("**💡 现在可以开始对话了！**\n\n");
+            response.append("发送命令：\n");
+            response.append("  `/opencode chat <你的问题>` - 发送对话\n");
+            response.append("  或直接输入问题（无需前缀）\n\n");
+            response.append("示例：\n");
+            response.append("  `/opencode chat 帮我重构这个函数`\n");
+            response.append("  或直接：`帮我重构这个函数`\n");
+            return response.toString();
         }
 
         return executeOpenCodeTask(message, prompt, sessionId);
@@ -541,31 +596,41 @@ public class OpenCodeApp implements FishuAppI {
      */
     private String buildConnectResponse() {
         StringBuilder response = new StringBuilder();
-        
-        response.append("🔗 **OpenCode 连接状态**\n\n");
-        
+
+        response.append("🔗 **OpenCode 连接成功**\n\n");
+
+        // 获取健康信息
         try {
-            // 获取健康信息
             String status = openCodeGateway.getServerStatus();
-            response.append("**健康信息**：\n").append(status).append("\n\n");
+            response.append("**服务状态**\n").append(status).append("\n\n");
         } catch (Exception e) {
-            response.append("**健康信息**：❌ 无法获取 (").append(e.getMessage()).append(")\n\n");
+            response.append("**服务状态**\n❌ 无法获取 (").append(e.getMessage()).append(")\n\n");
         }
-        
-        // 简化的帮助摘要
-        response.append("**快速开始**：\n");
-        response.append("  `/opencode chat <内容>` - 发送对话\n");
-        response.append("  `/opencode new <内容>` - 创建新会话\n");
-        response.append("  `/opencode session list` - 查看所有会话\n\n");
-        
+
+        // 获取项目列表
+        response.append("**📁 可用项目**\n\n");
         try {
-            // 获取项目列表
             String projects = openCodeGateway.listProjects();
-            response.append("**近期项目**：\n").append(projects);
+            response.append(projects).append("\n");
         } catch (Exception e) {
-            response.append("**近期项目**：❌ 无法获取 (").append(e.getMessage()).append(")");
+            response.append("❌ 无法获取项目列表 (").append(e.getMessage()).append(")\n\n");
         }
-        
+
+        // 引导用户查询项目 session
+        response.append("**💡 下一步操作**\n\n");
+        response.append("1️⃣ 查看项目的最近会话：\n");
+        response.append("   `/opencode sessions <项目名称>`\n");
+        response.append("   示例：`/opencode sessions feishu-backend`\n\n");
+        response.append("2️⃣ 选择会话并绑定：\n");
+        response.append("   `/opencode session continue <会话ID>`\n\n");
+        response.append("3️⃣ 开始对话：\n");
+        response.append("   `/opencode chat <你的问题>`\n");
+        response.append("   或直接输入（在已初始化的话题中）\n\n");
+
+        response.append("**📝 其他命令**\n");
+        response.append(" `/opencode help` - 查看完整帮助\n");
+        response.append(" `/opencode commands` - 查看所有斜杠命令\n");
+
         return response.toString();
     }
 }

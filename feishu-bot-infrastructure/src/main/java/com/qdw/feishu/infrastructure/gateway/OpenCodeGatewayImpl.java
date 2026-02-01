@@ -220,6 +220,32 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     @Override
+    public String listRecentSessions(String project, int limit) {
+        return executeWithRetry("listRecentSessions", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/session"))
+                        .header("Authorization", getAuthHeader())
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return formatProjectSessionList(response.body(), project, limit);
+                } else {
+                    return "❌ 获取会话列表失败: " + response.body();
+                }
+
+            } catch (Exception e) {
+                log.error("列出项目会话失败: project={}", project, e);
+                return "❌ 获取项目会话列表失败: " + e.getMessage();
+            }
+        });
+    }
+
+    @Override
     public String listProjects() {
         return executeWithRetry("listProjects", () -> {
             try {
@@ -372,6 +398,124 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
         } catch (Exception e) {
             log.error("格式化会话列表失败", e);
             return "❌ 格式化会话列表失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 格式化项目会话列表（过滤指定项目的最近会话）
+     */
+    private String formatProjectSessionList(String jsonResponse, String project, int limit) {
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            if (!json.isArray() || json.size() == 0) {
+                return "📋 暂无会话记录";
+            }
+
+            // 过滤属于指定项目的会话
+            List<JsonNode> filteredSessions = new ArrayList<>();
+            for (JsonNode session : json) {
+                if (isSessionBelongToProject(session, project)) {
+                    filteredSessions.add(session);
+                }
+            }
+
+            if (filteredSessions.isEmpty()) {
+                return String.format("📋 项目 **%s** 暂无会话记录\n\n" +
+                       "💡 提示：\n" +
+                       " - 确认项目名称是否正确\n" +
+                       " - 使用 `/opencode projects` 查看所有项目\n" +
+                       " - 使用 `/opencode new <提示词>` 在此项目中创建新会话", project);
+            }
+
+            // 限制返回数量
+            int count = Math.min(limit, filteredSessions.size());
+            StringBuilder sb = new StringBuilder(String.format("📋 项目 **%s** 的最近 %d 个会话:\n\n", project, count));
+
+            for (int i = 0; i < count; i++) {
+                JsonNode session = filteredSessions.get(i);
+                String id = session.get("id").asText();
+                String title = session.has("title") && !session.get("title").isNull()
+                    ? session.get("title").asText()
+                    : "无标题";
+
+                String timeInfo = "";
+                if (session.has("created_at")) {
+                    long createdAt = session.get("created_at").asLong();
+                    timeInfo = formatTimestamp(createdAt);
+                }
+
+                sb.append(String.format("%d. %s\n   ID: `%s`\n", i + 1, title, id));
+                if (!timeInfo.isEmpty()) {
+                    sb.append(String.format("   创建时间: %s\n", timeInfo));
+                }
+                sb.append("\n");
+            }
+
+            if (filteredSessions.size() > limit) {
+                sb.append(String.format("... 还有 %d 个会话\n", filteredSessions.size() - limit));
+            }
+
+            sb.append("💡 选择会话:\n" +
+                     "   `/opencode session continue <ID>`\n");
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            log.error("格式化项目会话列表失败", e);
+            return "❌ 格式化项目会话列表失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 判断会话是否属于指定项目
+     */
+    private boolean isSessionBelongToProject(JsonNode session, String project) {
+        // 检查会话的 title 或其他字段是否包含项目名称
+        if (session.has("title") && !session.get("title").isNull()) {
+            String title = session.get("title").asText().toLowerCase();
+            if (title.contains(project.toLowerCase())) {
+                return true;
+            }
+        }
+
+        // 检查其他可能包含项目信息的字段
+        if (session.has("project")) {
+            String sessionProject = session.get("project").asText();
+            if (sessionProject.equalsIgnoreCase(project)) {
+                return true;
+            }
+        }
+
+        if (session.has("worktree")) {
+            String worktree = session.get("worktree").asText();
+            if (worktree.toLowerCase().contains(project.toLowerCase())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 格式化时间戳
+     */
+    private String formatTimestamp(long timestamp) {
+        try {
+            java.time.Instant instant = java.time.Instant.ofEpochSecond(timestamp);
+            java.time.ZonedDateTime zdt = java.time.ZonedDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+            java.time.Duration duration = java.time.Duration.between(zdt, java.time.ZonedDateTime.now());
+
+            if (duration.toMinutes() < 60) {
+                return String.format("%d 分钟前", duration.toMinutes());
+            } else if (duration.toHours() < 24) {
+                return String.format("%d 小时前", duration.toHours());
+            } else if (duration.toDays() < 7) {
+                return String.format("%d 天前", duration.toDays());
+            } else {
+                return zdt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            }
+        } catch (Exception e) {
+            return "未知时间";
         }
     }
 

@@ -26,6 +26,15 @@ public interface OpenCodeGateway {
     String listSessions();
 
     /**
+     * 列出指定项目的最近会话
+     *
+     * @param project 项目名称或路径
+     * @param limit 返回的会话数量限制（最近 N 个）
+     * @return 格式化的会话列表，包含 session ID 和摘要
+     */
+    String listRecentSessions(String project, int limit);
+
+    /**
      * 列出所有项目
      *
      * @return 格式化的项目列表
