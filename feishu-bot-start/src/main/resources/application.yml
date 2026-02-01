@@ -27,6 +27,13 @@ feishu:
     sqlite:
       path: data/feishu-topic-mappings.db  # SQLite 数据库文件路径
 
+# OpenCode 配置
+opencode:
+  executable-path: ${OPCODE_PATH:opencode}
+  default-timeout: 5
+  max-output-length: 2000
+  async-enabled: true
+
 # 日志配置
 logging:
   level:
