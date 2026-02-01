@@ -89,6 +89,7 @@ public class TopicMappingSqliteGateway implements TopicMappingGateway {
             CREATE TABLE IF NOT EXISTS topic_mapping (
                 topic_id TEXT PRIMARY KEY NOT NULL,
                 app_id TEXT NOT NULL,
+                metadata TEXT,
                 created_at INTEGER NOT NULL,
                 last_active_at INTEGER NOT NULL
             )
@@ -118,13 +119,14 @@ public class TopicMappingSqliteGateway implements TopicMappingGateway {
     @Override
     public void save(TopicMapping mapping) {
         String sql = """
-            INSERT OR REPLACE INTO topic_mapping (topic_id, app_id, created_at, last_active_at)
-            VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO topic_mapping (topic_id, app_id, metadata, created_at, last_active_at)
+            VALUES (?, ?, ?, ?, ?)
         """;
 
         int updated = jdbcTemplate.update(sql,
                 mapping.getTopicId(),
                 mapping.getAppId(),
+                mapping.getMetadata(),
                 mapping.getCreatedAt(),
                 mapping.getLastActiveAt()
         );
@@ -137,13 +139,14 @@ public class TopicMappingSqliteGateway implements TopicMappingGateway {
 
     @Override
     public Optional<TopicMapping> findByTopicId(String topicId) {
-        String sql = "SELECT topic_id, app_id, created_at, last_active_at FROM topic_mapping WHERE topic_id = ?";
+        String sql = "SELECT topic_id, app_id, metadata, created_at, last_active_at FROM topic_mapping WHERE topic_id = ?";
 
         try {
             TopicMapping mapping = jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
                 TopicMapping m = new TopicMapping(
                         rs.getString("topic_id"),
-                        rs.getString("app_id")
+                        rs.getString("app_id"),
+                        rs.getString("metadata")
                 );
                 return m;
             }, topicId);

@@ -25,15 +25,30 @@ public class TopicMapping {
     /** 最后活跃时间（毫秒时间戳） */
     private long lastActiveAt;
 
+    /** 元数据（JSON 字符串，存储应用特定的任意数据） */
+    private String metadata;
+
     /**
-     * 创建话题映射
+     * 创建话题映射（不含元数据）
      *
      * @param topicId 话题 ID
      * @param appId 应用 ID
      */
     public TopicMapping(String topicId, String appId) {
+        this(topicId, appId, null);
+    }
+
+    /**
+     * 创建话题映射（含元数据）
+     *
+     * @param topicId 话题 ID
+     * @param appId 应用 ID
+     * @param metadata 元数据（JSON 字符串）
+     */
+    public TopicMapping(String topicId, String appId, String metadata) {
         this.topicId = topicId;
         this.appId = appId;
+        this.metadata = metadata;
         this.createdAt = System.currentTimeMillis();
         this.lastActiveAt = System.currentTimeMillis();
         this.validate();
@@ -58,5 +73,14 @@ public class TopicMapping {
      */
     public void activate() {
         this.lastActiveAt = System.currentTimeMillis();
+    }
+
+    /**
+     * 检查是否有元数据
+     *
+     * @return 如果 metadata 不为空且不为空字符串，返回 true
+     */
+    public boolean hasMetadata() {
+        return metadata != null && !metadata.isEmpty();
     }
 }
