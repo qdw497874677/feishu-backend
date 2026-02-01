@@ -1,0 +1,26 @@
+Maven Build Output - Final Verification
+==========================================
+
+Command: mvn clean install -DskipTests
+Date: 2026-02-01 09:26:36Z
+
+Reactor Summary for feishu-bot 1.0.0-SNAPSHOT:
+
+ feishu-bot ......................................... SUCCESS [  0.296 s]
+ feishu-bot-client .................................. SUCCESS [  2.510 s]
+ feishu-bot-domain .................................. SUCCESS [  3.355 s]
+ feishu-bot-app ..................................... SUCCESS [  0.772 s]
+ feishu-bot-adapter ................................. SUCCESS [  0.643 s]
+ feishu-bot-infrastructure .......................... SUCCESS [  1.445 s]
+ feishu-bot-start ................................... SUCCESS [  1.221 s]
+
+------------------------------------------------------------------------
+BUILD SUCCESS
+------------------------------------------------------------------------
+Total time:  10.597 s
+Finished at: 2026-02-01T09:26:36Z
+------------------------------------------------------------------------
+
+All modules compiled and installed successfully.
+No compilation errors.
+OpenCode related classes included in build.
