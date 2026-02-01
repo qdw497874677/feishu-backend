@@ -1,5 +1,7 @@
 package com.qdw.feishu.domain.app;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
@@ -25,6 +27,7 @@ public class OpenCodeApp implements FishuAppI {
     private final FeishuGateway feishuGateway;
     private final OpenCodeSessionGateway sessionGateway;
     private final TopicMappingGateway topicMappingGateway;
+    private final ObjectMapper objectMapper;
 
     // 同步执行超时阈值（5秒）
     private static final long SYNC_TIMEOUT_MS = 5000;
@@ -34,11 +37,13 @@ public class OpenCodeApp implements FishuAppI {
     public OpenCodeApp(OpenCodeGateway openCodeGateway,
                        FeishuGateway feishuGateway,
                        OpenCodeSessionGateway sessionGateway,
-                       TopicMappingGateway topicMappingGateway) {
+                       TopicMappingGateway topicMappingGateway,
+                       ObjectMapper objectMapper) {
         this.openCodeGateway = openCodeGateway;
         this.feishuGateway = feishuGateway;
         this.sessionGateway = sessionGateway;
         this.topicMappingGateway = topicMappingGateway;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -321,14 +326,57 @@ public class OpenCodeApp implements FishuAppI {
 
     /**
      * 从 OpenCode 输出中提取 sessionID
-     *
-     * TODO: 实际实现需要解析 JSON 输出中的 sessionID
+     * 
+     * 通过解析 JSON 输出提取 session_id 字段，而不是简单的字符串匹配
+     * OpenCode 输出格式: {"type":"text","content":"...", "session_id":"ses_xxx"}
      */
     private String extractSessionId(String output) {
-        if (output == null) {
+        if (output == null || output.isEmpty()) {
             return null;
         }
 
+        try {
+            // 尝试从 JSON 输出中提取 session_id 字段
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(output);
+            
+            // 检查是否是消息数组格式
+            if (root.isArray()) {
+                // 遍历消息数组查找 session_id
+                for (com.fasterxml.jackson.databind.JsonNode message : root) {
+                    if (message.has("session_id")) {
+                        String sessionId = message.get("session_id").asText();
+                        if (sessionId != null && sessionId.startsWith("ses_")) {
+                            log.debug("从 JSON 中提取到 sessionId: {}", sessionId);
+                            return sessionId;
+                        }
+                    }
+                }
+            } else if (root.isObject()) {
+                // 单个消息对象
+                if (root.has("session_id")) {
+                    String sessionId = root.get("session_id").asText();
+                    if (sessionId != null && sessionId.startsWith("ses_")) {
+                        log.debug("从 JSON 中提取到 sessionId: {}", sessionId);
+                        return sessionId;
+                    }
+                }
+            }
+            
+            // JSON 解析未找到 session_id，回退到字符串匹配（向后兼容）
+            log.debug("JSON 中未找到 session_id，回退到字符串匹配");
+            return extractSessionIdByStringMatching(output);
+            
+        } catch (Exception e) {
+            log.warn("JSON 解析失败，回退到字符串匹配: {}", e.getMessage());
+            return extractSessionIdByStringMatching(output);
+        }
+    }
+    
+    /**
+     * 回退方法：通过字符串匹配提取 sessionID
+     * 用于向后兼容或非 JSON 格式输出
+     */
+    private String extractSessionIdByStringMatching(String output) {
         int sessionIndex = output.indexOf("ses_");
         if (sessionIndex == -1) {
             return null;

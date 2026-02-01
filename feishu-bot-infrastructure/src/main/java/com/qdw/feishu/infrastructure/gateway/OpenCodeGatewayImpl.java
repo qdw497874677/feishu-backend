@@ -31,10 +31,45 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     private final String opencodeExecutable;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private static final int MAX_RETRIES = 3;
+    private static final long INITIAL_RETRY_DELAY_MS = 1000;
+    private static final long MAX_RETRY_DELAY_MS = 8000;
+
     public OpenCodeGatewayImpl(OpenCodeProperties properties) {
         this.properties = properties;
         this.opencodeExecutable = findExecutable();
         log.info("OpenCode Gateway 初始化完成，可执行文件: {}", opencodeExecutable);
+    }
+
+    /**
+     * 使用指数退避策略执行带重试的操作
+     */
+    private <T> T executeWithRetry(String operationName, java.util.function.Supplier<T> operation) {
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                return operation.get();
+            } catch (Exception e) {
+                if (attempt == MAX_RETRIES - 1) {
+                    throw new RuntimeException(e);
+                }
+
+                if (e.getCause() instanceof java.net.UnknownHostException || 
+                    e instanceof java.net.UnknownHostException) {
+                    long delay = Math.min(INITIAL_RETRY_DELAY_MS * (1L << attempt), MAX_RETRY_DELAY_MS);
+                    log.warn("DNS resolution failed for {} (attempt {}/{}), retrying in {}ms...",
+                             operationName, attempt + 1, MAX_RETRIES, delay);
+                    try {
+                        Thread.sleep(delay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("RETRY_INTERRUPTED", ie);
+                    }
+                } else {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+        throw new RuntimeException("All retry attempts failed for: " + operationName);
     }
 
     /**
@@ -136,8 +171,46 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
     @Override
     public String getServerStatus() {
-        // TODO: 实现服务器状态检查
-        return "✅ OpenCode 可用\n\n版本: 1.1.48\n可执行文件: " + opencodeExecutable;
+        return executeWithRetry("getServerStatus", () -> {
+            try {
+                // 检查 OpenCode CLI 是否可用
+                ProcessBuilder pb = new ProcessBuilder(opencodeExecutable, "--version");
+                Process process = pb.start();
+                
+                int exitCode = process.waitFor();
+                String output = readProcessOutput(process);
+                
+                if (exitCode == 0 && output.contains("opencode")) {
+                    // 解析版本信息
+                    String version = extractVersion(output);
+                    return "✅ OpenCode 服务状态: 正常运行\n\n版本: " + version + "\n可执行文件: " + opencodeExecutable;
+                } else {
+                    return "⚠️ OpenCode 服务状态: 不可用\n\n可执行文件: " + opencodeExecutable + "\n错误: " + output.trim();
+                }
+                
+            } catch (Exception e) {
+                log.error("检查 OpenCode 服务状态失败", e);
+                return "❌ 无法检查 OpenCode 服务状态: " + e.getMessage();
+            }
+        });
+    }
+    
+    /**
+     * 从版本输出中提取版本号
+     */
+    private String extractVersion(String versionOutput) {
+        if (versionOutput == null || versionOutput.isEmpty()) {
+            return "Unknown";
+        }
+        
+        // 尝试提取版本号（格式可能为 "opencode 1.1.48" 或类似）
+        String[] parts = versionOutput.split("\\s+");
+        for (String part : parts) {
+            if (part.matches("\\d+\\.\\d+\\.\\d+.*")) {
+                return part;
+            }
+        }
+        return "Unknown (found: " + versionOutput.trim() + ")";
     }
 
     /**
