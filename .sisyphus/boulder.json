@@ -1,6 +1,8 @@
 {
-  "active_plan": "/root/workspace/feishu-backend/.sisyphus/plans/opencode-multiturn-implementation.md",
-  "started_at": "2026-02-01T08:45:31.943Z",
-  "session_ids": ["ses_3e7b1a3adffezqakZVmcDgufCI"],
-  "plan_name": "opencode-multiturn-implementation"
+  "active_plan": "/root/workspace/feishu-backend/.sisyphus/plans/opencode-non-topic-restriction.md",
+  "started_at": "2026-02-01T21:36:06.945Z",
+  "session_ids": [
+    "ses_3e4f65f6bffenLSF1YkdMqj6tp"
+  ],
+  "plan_name": "opencode-non-topic-restriction"
 }

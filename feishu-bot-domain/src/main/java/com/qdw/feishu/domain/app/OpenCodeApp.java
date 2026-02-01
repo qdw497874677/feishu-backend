@@ -7,7 +7,11 @@ import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.model.CommandWhitelist;
 import com.qdw.feishu.domain.model.TopicMapping;
+import com.qdw.feishu.domain.model.TopicState;
+import com.qdw.feishu.domain.model.ValidationResult;
+import com.qdw.feishu.domain.service.TopicCommandValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -27,6 +31,7 @@ public class OpenCodeApp implements FishuAppI {
     private final FeishuGateway feishuGateway;
     private final OpenCodeSessionGateway sessionGateway;
     private final TopicMappingGateway topicMappingGateway;
+    private final TopicCommandValidator commandValidator;
     private final ObjectMapper objectMapper;
 
     // 同步执行超时阈值（5秒）
@@ -38,11 +43,13 @@ public class OpenCodeApp implements FishuAppI {
                        FeishuGateway feishuGateway,
                        OpenCodeSessionGateway sessionGateway,
                        TopicMappingGateway topicMappingGateway,
+                       TopicCommandValidator commandValidator,
                        ObjectMapper objectMapper) {
         this.openCodeGateway = openCodeGateway;
         this.feishuGateway = feishuGateway;
         this.sessionGateway = sessionGateway;
         this.topicMappingGateway = topicMappingGateway;
+        this.commandValidator = commandValidator;
         this.objectMapper = objectMapper;
     }
 
@@ -91,7 +98,29 @@ public class OpenCodeApp implements FishuAppI {
 
     @Override
     public ReplyMode getReplyMode() {
-        return ReplyMode.TOPIC;  // 使用话题模式，支持多轮对话
+        return ReplyMode.TOPIC;
+    }
+
+    @Override
+    public CommandWhitelist getCommandWhitelist(TopicState state) {
+        return switch (state) {
+            case NON_TOPIC -> CommandWhitelist.builder()
+                .add("connect", "help", "projects")
+                .build();
+            case UNINITIALIZED -> CommandWhitelist.allExcept("chat", "new");
+            case INITIALIZED -> CommandWhitelist.all();
+        };
+    }
+
+    @Override
+    public boolean isTopicInitialized(Message message) {
+        String topicId = message.getTopicId();
+        if (topicId == null || topicId.isEmpty()) {
+            return false;
+        }
+
+        Optional<String> sessionIdOpt = sessionGateway.getSessionId(topicId);
+        return sessionIdOpt.isPresent();
     }
 
     @Override
@@ -106,12 +135,31 @@ public class OpenCodeApp implements FishuAppI {
             return getHelp();
         }
 
+        // 检测话题状态
+        TopicState state = commandValidator.detectState(message, this);
+        log.info("话题状态: {}", state.getDescription());
+
+        // 提取子命令
         String subCommand = parts[1].toLowerCase();
+
+        // 验证命令是否允许
+        CommandWhitelist whitelist = getCommandWhitelist(state);
+        if (whitelist != null) {
+            ValidationResult result = commandValidator.validateCommand(subCommand, state, whitelist);
+            if (!result.isAllowed()) {
+                log.info("命令受限: command={}, state={}", subCommand, state);
+                return result.getMessage();
+            }
+        }
 
         // 处理子命令
         switch (subCommand) {
             case "help":
                 return getHelp();
+
+            case "connect":
+                // 连接命令：返回健康信息、帮助摘要、项目列表
+                return buildConnectResponse();
 
             case "new":
                 // 创建新会话
@@ -484,5 +532,40 @@ public class OpenCodeApp implements FishuAppI {
         }
 
         return output;
+    }
+
+    /**
+     * 构建 connect 命令的响应
+     * 
+     * @return 包含健康信息、帮助摘要、项目列表的响应
+     */
+    private String buildConnectResponse() {
+        StringBuilder response = new StringBuilder();
+        
+        response.append("🔗 **OpenCode 连接状态**\n\n");
+        
+        try {
+            // 获取健康信息
+            String status = openCodeGateway.getServerStatus();
+            response.append("**健康信息**：\n").append(status).append("\n\n");
+        } catch (Exception e) {
+            response.append("**健康信息**：❌ 无法获取 (").append(e.getMessage()).append(")\n\n");
+        }
+        
+        // 简化的帮助摘要
+        response.append("**快速开始**：\n");
+        response.append("  `/opencode chat <内容>` - 发送对话\n");
+        response.append("  `/opencode new <内容>` - 创建新会话\n");
+        response.append("  `/opencode session list` - 查看所有会话\n\n");
+        
+        try {
+            // 获取项目列表
+            String projects = openCodeGateway.listProjects();
+            response.append("**近期项目**：\n").append(projects);
+        } catch (Exception e) {
+            response.append("**近期项目**：❌ 无法获取 (").append(e.getMessage()).append(")");
+        }
+        
+        return response.toString();
     }
 }

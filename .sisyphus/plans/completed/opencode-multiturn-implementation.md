@@ -1,5 +1,12 @@
 # OpenCode 多轮对话实现计划
 
+## ✅ STATUS: COMPLETED
+
+**Completion Date**: 2026-02-01
+**Note**: This feature has been fully implemented and is in use. OpenCodeApp now supports multi-turn conversations in Feishu topics with session management.
+
+---
+
 ## TL;DR
 
 > **Quick Summary**: 实现基于通用 metadata 模式的 OpenCode 飞书应用，支持话题内多轮对话
