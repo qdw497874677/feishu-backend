@@ -22,6 +22,10 @@ feishu:
       read: 60000          # 读取超时
   reply:
     mode: DEFAULT  # 可选值: DEFAULT, TOPIC
+  topic-mapping:
+    storage-type: sqlite  # 可选值: file, sqlite (默认: sqlite)
+    sqlite:
+      path: data/feishu-topic-mappings.db  # SQLite 数据库文件路径
 
 # 日志配置
 logging:

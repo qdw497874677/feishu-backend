@@ -5,6 +5,7 @@ import com.google.gson.reflect.TypeToken;
 import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.model.TopicMapping;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -19,6 +20,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(
+    name = "feishu.topic-mapping.storage-type",
+    havingValue = "file",
+    matchIfMissing = false
+)
 public class TopicMappingGatewayImpl implements TopicMappingGateway {
 
     private final Map<String, TopicMapping> mappings = new ConcurrentHashMap<>();

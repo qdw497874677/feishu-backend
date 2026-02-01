@@ -428,9 +428,50 @@ if (actualThreadId != null && !actualThreadId.isEmpty()) {
 
 ---
 
+## 🎯 快速创建新应用
+
+创建一个飞书机器人应用只需 **3 步**，无需修改配置：
+
+### 步骤概览
+
+1. **创建应用类**：在 `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/app/` 创建 Java 类
+2. **实现接口**：实现 `FishuAppI` 接口，添加 `@Component` 注解
+3. **构建重启**：运行 `mvn clean install` 并重启应用
+
+**示例**：
+```java
+@Component
+public class YourApp implements FishuAppI {
+    @Override
+    public String getAppId() {
+        return "yourapp";  // 命令前缀：/yourapp
+    }
+
+    @Override
+    public String execute(Message message) {
+        return "Hello from YourApp!";
+    }
+}
+```
+
+**完成后**：应用会自动注册，立即可用（命令：`/yourapp`）
+
+### 关键要点
+
+- **位置**：必须在 `feishu-bot-domain` 的 `app/` 目录
+- **注解**：必须添加 `@Component`
+- **接口**：必须实现 `FishuAppI`
+- **AppId**：必须唯一（决定命令前缀）
+
+**详细指南**：👉 [应用开发规范](./APP_GUIDE.md)
+
+---
+
 ## 📚 参考资料
 
-- [应用开发规范](./APP_GUIDE.md) - 快速创建新应用
+- [应用开发规范](./APP_GUIDE.md) - **详细**的应用创建教程
+- [命令别名机制](./docs/COMMAND-ALIASES.md) - 如何为应用添加命令别名
+- [SQLite 持久化](./docs/SQLITE-PERSISTENCE.md) - 数据持久化方案
 - [飞书 IM SDK 文档](https://open.feishu.cn/document/serverSdk/im sdk)
 - [飞书 WebSocket 文档](https://open.feishu.cn/document/serverSdk/event-sdk)
 - [COLA 框架](https://github.com/alibaba/COLA)
@@ -453,7 +494,7 @@ grep "connected to wss://" /tmp/feishu-run.log
 
 ---
 
-**最后更新**: 2026-01-31
+**最后更新**: 2026-02-01
 
 ---
 
@@ -463,15 +504,63 @@ grep "connected to wss://" /tmp/feishu-run.log
 
 | Module | Path | Complexity | Focus |
 |--------|------|------------|-------|
-| **feishu-bot-domain** | [./feishu-bot-domain/AGENTS.md](./feishu-bot-domain/AGENTS.md) | HIGH (85) | Business logic, applications, domain models |
-| **feishu-bot-infrastructure** | [./feishu-bot-infrastructure/AGENTS.md](./feishu-bot-infrastructure/AGENTS.md) | MODERATE (19) | Gateway implementations, Feishu SDK |
+| **feishu-bot-domain** | [./feishu-bot-domain/AGENTS.md](./feishu-bot-domain/AGENTS.md) | HIGH (85) | Business logic, applications, domain models, command aliases |
+| **feishu-bot-infrastructure** | [./feishu-bot-infrastructure/AGENTS.md](./feishu-bot-infrastructure/AGENTS.md) | MODERATE (19) | Gateway implementations, Feishu SDK, SQLite persistence |
 
 **Why module AGENTS.md?**
-- **feishu-bot-domain**: Core business logic with 27 Java files, highest complexity
+- **feishu-bot-domain**: Core business logic with 31 Java files, highest complexity
+  - App system: BashApp, TimeApp, HelpApp, HistoryApp
+  - Message routing: Command parsing, alias matching
+  - Domain services: BotMessageService, MessageDeduplicator
+  - Gateway interfaces: FeishuGateway, MessageListenerGateway, TopicMappingGateway
+
 - **feishu-bot-infrastructure**: External integrations, SDK-specific patterns
+  - Feishu SDK integration (oapi-sdk 2.5.2)
+  - WebSocket long-connection (MessageListenerGatewayImpl)
+  - SQLite persistence (TopicMappingSqliteGateway)
+  - Configuration management (FeishuProperties)
 
 **Modules covered by this file only:**
-- feishu-bot-app (13 files - simple orchestration layer)
-- feishu-bot-client (13 files - DTOs)
-- feishu-bot-adapter (10 files - event listeners)
+- feishu-bot-app (3 files - simple orchestration layer)
+- feishu-bot-client (3 files - DTOs)
+- feishu-bot-adapter (2 files - event listeners)
 - feishu-bot-start (6 files - startup only)
+
+---
+
+## 🆕 新功能（2026-02-01）
+
+### 命令别名机制
+
+每个应用现在支持多个命令触发方式：
+
+- **BashApp**: `/bash`, `/cmd`, `/shell`, `/exec`
+- **TimeApp**: `/time`, `/t`, `/now`, `/date`
+- **HelpApp**: `/help`, `/h`, `/?`, `/man`
+
+**特点**：
+- 大小写不敏感
+- 在应用类中通过 `getAppAliases()` 定义
+- 详见 [命令别名机制](./docs/COMMAND-ALIASES.md)
+
+### SQLite 持久化
+
+话题映射现在使用 SQLite 数据库存储：
+
+- **数据库文件**: `data/feishu-topic-mappings.db`
+- **支持 Git**: 数据库文件可以加入版本控制
+- **自动切换**: 通过配置在 SQLite 和文件模式间切换
+- 详见 [SQLite 持久化指南](./docs/SQLITE-PERSISTENCE.md)
+
+### 话题上下文增强
+
+在绑定的话题中可以直接输入命令（无前缀）：
+
+```
+用户在 bash 话题中：
+- 输入: "pwd" （无前缀）
+- 系统自动添加: "/bash pwd"
+- 执行命令并返回结果
+```
+
+**优势**：简化用户操作，提升对话体验

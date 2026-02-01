@@ -35,6 +35,11 @@ public class HelpApp implements FishuAppI {
     }
 
     @Override
+    public java.util.List<String> getAppAliases() {
+        return java.util.Arrays.asList("h", "?", "man");
+    }
+
+    @Override
     public String execute(Message message) {
         log.info("=== HelpApp.execute 开始 ===");
         log.info("应用 ID: {}", getAppId());
@@ -44,14 +49,26 @@ public class HelpApp implements FishuAppI {
         helpText.append("飞书机器人命令帮助\n\n");
 
         appRegistry.getAllApps().forEach(app -> {
-            helpText.append(String.format("%s - %s\n", 
-                    app.getTriggerCommand(), 
+            helpText.append(String.format("📌 %s - %s\n",
+                    app.getTriggerCommand(),
                     app.getAppName()));
-            helpText.append(String.format("  %s\n\n", 
+            helpText.append(String.format("   %s\n",
                     app.getDescription()));
+
+            java.util.List<String> aliases = app.getAppAliases();
+            if (!aliases.isEmpty()) {
+                helpText.append(String.format("   别名: %s\n",
+                        String.join(", ", aliases.stream()
+                                .map(a -> "/" + a)
+                                .toList())));
+            }
+
+            helpText.append("\n");
         });
 
-        helpText.append("💡 提示：发送任意非命令消息也会显示此帮助信息");
+        helpText.append("💡 提示：\n");
+        helpText.append("   - 发送任意非命令消息也会显示此帮助信息\n");
+        helpText.append("   - 命令和别名不区分大小写（如 /Bash、/BASH、/bash 都可以）");
 
         String result = helpText.toString();
         log.info("HelpApp.execute 完成，返回帮助信息");

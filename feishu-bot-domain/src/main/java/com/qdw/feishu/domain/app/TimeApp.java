@@ -36,6 +36,11 @@ public class TimeApp implements FishuAppI {
     }
 
     @Override
+    public java.util.List<String> getAppAliases() {
+        return java.util.Arrays.asList("t", "now", "date");
+    }
+
+    @Override
     public ReplyMode getReplyMode() {
         return ReplyMode.TOPIC;
     }

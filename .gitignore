@@ -32,3 +32,10 @@ start-feishu.sh
 
 # Git Worktrees
 .worktrees/
+
+# SQLite Database
+# NOTE: By default, SQLite database files (*.db) are NOT ignored and can be committed to Git
+# This allows topic mappings to be version-controlled and shared across environments
+# If you want to exclude database files from Git, uncomment the following line:
+# *.db
+# data/*.db

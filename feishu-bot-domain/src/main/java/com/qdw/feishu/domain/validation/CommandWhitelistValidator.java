@@ -13,7 +13,8 @@ public class CommandWhitelistValidator {
         "ls", "ll", "dir",
         "cat", "less",
         "head", "tail",
-        "find", "grep", "ping"
+        "find", "grep", "ping",
+        "mkdir", "opencode"
     );
 
     private static final Pattern CHAINING_PATTERN = Pattern.compile(

@@ -55,6 +55,11 @@ public class BashApp implements FishuAppI {
     }
 
     @Override
+    public java.util.List<String> getAppAliases() {
+        return java.util.Arrays.asList("cmd", "shell", "exec");
+    }
+
+    @Override
     public String getHelp() {
         return "用法：/bash <命令>\n" +
                "允许的命令：ls, ll, dir, cat, less, head, tail, find, grep, ping\n" +

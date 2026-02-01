@@ -42,6 +42,32 @@ public class BotMessageService {
         return appId;
     }
 
+    /**
+     * 根据命令前缀或别名查找应用
+     *
+     * @param command 命令前缀（不含 /）
+     * @return 找到的应用，如果不存在则返回 null
+     */
+    private FishuAppI findAppByCommandOrAlias(String command) {
+        String commandLower = command.toLowerCase();
+
+        for (FishuAppI app : appRegistry.getAllApps()) {
+            if (app.getAppId().equalsIgnoreCase(commandLower)) {
+                return app;
+            }
+
+            for (String alias : app.getAppAliases()) {
+                if (alias.equalsIgnoreCase(commandLower)) {
+                    log.info("通过别名找到应用: command={}, alias={}, appId={}",
+                            command, alias, app.getAppId());
+                    return app;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private void handleUnknownTopic(Message message) {
         String errorReply = "话题已失效，请重新发送命令触发应用。";
         SendResult result = feishuGateway.sendMessage(message, errorReply, null);
@@ -66,6 +92,7 @@ public class BotMessageService {
             log.info("消息验证通过");
 
             String topicId = message.getTopicId();
+            boolean inTopicWithMapping = false;
             FishuAppI app;
 
             if (topicId != null && !topicId.isEmpty()) {
@@ -82,6 +109,7 @@ public class BotMessageService {
                         message.markProcessed();
                         return SendResult.failure("应用不可用");
                     }
+                    inTopicWithMapping = true;
                     topicMapping.activate();
                     topicMappingGateway.save(topicMapping);
                 } else {
@@ -90,25 +118,66 @@ public class BotMessageService {
                     message.markProcessed();
                     return SendResult.failure("话题已失效");
                 }
-            } else {
-                String content = message.getContent().trim();
-                if (!content.startsWith("/")) {
-                    log.info("不是命令，路由到 help 应用");
-                    app = appRegistry.getApp("help").orElse(null);
-                    if (app == null) {
-                        log.warn("未找到帮助应用");
-                        message.markProcessed();
-                        return SendResult.failure("未找到帮助应用");
-                    }
                 } else {
-                    String appId = extractAppId(content);
-                    log.info("检测到命令，应用ID: {}", appId);
-                    app = appRegistry.getApp(appId).orElse(null);
-                    if (app == null) {
-                        log.warn("应用不存在: appId={}", appId);
-                        message.markProcessed();
-                        return SendResult.failure("应用不存在: " + appId);
+                    String content = message.getContent().trim();
+                    if (!content.startsWith("/")) {
+                        log.info("不是命令，路由到 help 应用");
+                        app = appRegistry.getApp("help").orElse(null);
+                        if (app == null) {
+                            log.warn("未找到帮助应用");
+                            message.markProcessed();
+                            return SendResult.failure("未找到帮助应用");
+                        }
+                    } else {
+                        String command = extractAppId(content);
+                        log.info("检测到命令: {}", command);
+                        
+                        app = findAppByCommandOrAlias(command);
+                        if (app == null) {
+                            log.warn("应用不存在: command={}", command);
+
+                            String availableApps = appRegistry.getAllApps().stream()
+                                    .flatMap(a -> a.getAllTriggerCommands().stream())
+                                    .reduce((a, b) -> a + ", " + b)
+                                    .orElse("无");
+
+                            String errorMessage = String.format(
+                                    "❌ 未找到应用: `%s`\n\n" +
+                                    "📋 可用应用列表:\n%s\n\n" +
+                                    "💡 提示: 请使用正确的命令前缀",
+                                    command, availableApps
+                            );
+
+                            log.info("发送应用不存在提示: {}", errorMessage);
+                            feishuGateway.sendDirectReply(message, errorMessage);
+
+                            message.markProcessed();
+                            return SendResult.failure("应用不存在: " + command);
+                        }
+                        
+                        log.info("找到应用: appId={}, appName={}", app.getAppId(), app.getAppName());
                     }
+                }
+
+            if (inTopicWithMapping) {
+                String content = message.getContent().trim();
+                String appId = app.getAppId();
+                String expectedPrefix = "/" + appId;
+                
+                if (content.startsWith(expectedPrefix + " ") || content.equals(expectedPrefix)) {
+                    log.info("话题中的消息包含命令前缀，去除前缀: {}", content);
+                    if (content.length() > expectedPrefix.length()) {
+                        content = content.substring(expectedPrefix.length()).trim();
+                    } else {
+                        content = "";
+                    }
+                    message.setContent(content);
+                    log.info("话题消息处理后的内容: '{}'", content);
+                } else {
+                    log.info("话题中的消息不包含前缀，添加前缀: '{}'", content);
+                    content = expectedPrefix + " " + content;
+                    message.setContent(content);
+                    log.info("话题消息处理后的内容: '{}'", content);
                 }
             }
 
