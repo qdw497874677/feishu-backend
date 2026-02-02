@@ -1,5 +1,6 @@
-package com.qdw.feishu.domain.app;
+package com.qdw.feishu.domain.core;
 
+import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.config.FeishuReplyProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +47,7 @@ public class AppRegistry {
 
     public String getAppHelp() {
         return apps.values().stream()
-            .map(app -> String.format("%s - %s", 
+            .map(app -> String.format("%s - %s",
                 app.getTriggerCommand(), app.getDescription()))
             .collect(Collectors.joining("\n"));
     }

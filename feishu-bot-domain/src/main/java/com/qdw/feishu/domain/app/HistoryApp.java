@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.ChatHistory;
 import com.qdw.feishu.domain.message.Message;

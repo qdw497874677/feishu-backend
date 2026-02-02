@@ -1,4 +1,4 @@
-package com.qdw.feishu.domain.validation;
+package com.qdw.feishu.domain.command;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

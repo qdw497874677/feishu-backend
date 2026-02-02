@@ -4,7 +4,7 @@ import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.history.BashHistoryManager;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
-import com.qdw.feishu.domain.validation.CommandWhitelistValidator;
+import com.qdw.feishu.domain.command.CommandWhitelistValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

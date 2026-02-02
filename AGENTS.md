@@ -1,39 +1,43 @@
 # 飞书机器人 - 项目规范
 
+> **必读**：所有开发者必须遵守本文档规范。违反规范可能导致代码无法合并。
+
 ---
 
-## ⚠️ 核心规范（必须遵守）
+## ⚠️ 核心原则
 
-### 🔴 严禁使用 WebHook 模式
+### 1. 通信模式（铁律）
 
-| 模式 | 状态 | 原因 |
+| 模式 | 状态 | 说明 |
 |------|------|------|
-| WebHook | ❌ **严禁使用** | 需要公网 IP 和域名，部署复杂，不稳定 |
-| 长连接 | ✅ **唯一允许** | WebSocket 实时推送，无需回调端点，稳定可靠 |
+| 长连接 | ✅ **唯一允许** | WebSocket 实时推送，稳定可靠 |
+| WebHook | ❌ **严禁使用** | 需要公网 IP 和域名，部署复杂 |
 
-**重要说明**：
-- ✅ 所有新代码必须基于长连接模式
-- ❌ 禁止添加任何 WebHook 相关的新代码
-- ✅ 消息接收和发送统一使用 `MessageListenerGateway` 和 `FeishuGateway`
+**强制要求**：
+- 所有代码必须基于长连接模式
+- 禁止添加任何 WebHook 相关代码
+- 消息收发统一使用 `MessageListenerGateway` 和 `FeishuGateway`
+
+### 2. COLA 架构
+
+严格遵循 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA)。
 
 ---
 
-### 🏗️ COLA 架构规范
+## 🏗️ COLA 架构规范
 
-本项目严格遵循 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA) 架构。
+### 模块职责
 
-#### 新建代码放置规则
+| 模块 | 职责 | 代码类型 | 示例 |
+|------|------|---------|------|
+| **domain** | 领域模型、业务逻辑、网关接口 | `@Entity`, `DomainService`, `Gateway Interface`, `FishuAppI` | `Message.java`, `FeishuGateway.java` |
+| **app** | 应用服务、用例编排 | `@AppService`, `Cmd`, `Qry`, `CmdExe`, `QryExe` | `ReceiveMessageCmdExe.java` |
+| **infrastructure** | 基础设施、外部集成 | Gateway 实现, Config, Repository | `FeishuGatewayImpl.java` |
+| **adapter** | 适配层、事件监听 | Controller, Listener, Event Handler | `FeishuEventListener.java` |
+| **client** | DTO 对象 | `@DTO`, `@Request`, `@Response` | `ReceiveMessageCmd.java` |
+| **start** | 启动配置 | `Application.java`, `application.yml` | - |
 
-| 模块 | 职责 | 新建代码类型 | 示例 |
-|------|------|-------------|------|
-| **feishu-bot-domain** | 领域模型、业务逻辑、领域服务、网关接口、应用实现 | `@Entity`, `@ValueObject`, `DomainService`, `Gateway Interface`, `FishuAppI` | `Message.java`, `BotMessageService.java`, `FeishuGateway.java`, `TimeApp.java` |
-| **feishu-bot-app** | 应用服务、用例编排、命令/查询 | `@AppService`, `Cmd`, `Qry`, `CmdExe`, `QryExe` | `ReceiveMessageCmd.java`, `ReceiveMessageCmdExe.java` |
-| **feishu-bot-infrastructure** | 基础设施实现、外部系统集成 | Gateway 实现、Config、Repository 实现 | `FeishuGatewayImpl.java`, `FeishuProperties.java` |
-| **feishu-bot-adapter** | 适配层、外部接口、事件监听 | Controller、Listener、Event Handler | `FeishuEventListener.java`, `GlobalExceptionHandler.java` |
-| **feishu-bot-client** | DTO 对象、对外接口定义 | `@DTO`, `@Request`, `@Response` | `ReceiveMessageCmd.java` |
-| **feishu-bot-start** | 启动模块、配置 | `Application.java`, `application.yml`, `pom.xml` (父) | - |
-
-#### COLA 分层依赖原则
+### 分层依赖图
 
 ```
 ┌─────────────────────────────────────┐
@@ -48,519 +52,370 @@
 │         feishu-bot-app            │  ← 应用层
 └──────────────┬──────────────────────┘
                │
-        ┌───────┴───────┐
-        │               │
-┌──────▼──────┐  ┌─────▼─────┐
-│  feishu-bot-  │  │feishu-bot-│
-│   domain     │  │  client   │  ← 领域层 + DTO 层
-└──────┬───────┘  └───────────┘
+        ┌──────┴───────┐
+        │              │
+┌──────▼──────┐ ┌─────▼─────┐
+│  feishu-bot- │ │feishu-bot-│
+│   domain     │ │  client   │  ← 领域层 + DTO 层
+└──────┬───────┘ └───────────┘
        │
 ┌──────▼──────────────────────────┐
 │  feishu-bot-infrastructure     │  ← 基础设施层
 └─────────────────────────────────┘
 ```
 
-**依赖规则**：
-- 上层可以依赖下层
-- 下层不能依赖上层（反转依赖：domain 定义接口，infrastructure 实现）
-- 横向模块之间不能直接依赖
+### 依赖规则
 
-#### 代码放置决策树
+1. **上层依赖下层**：app → domain + client
+2. **下层定义接口**：domain 定义接口，infrastructure 实现
+3. **横向隔离**：同层模块不能直接依赖
+
+### 代码放置决策树
 
 ```
 需要添加什么代码？
 │
-├─ 实体/值对象/领域服务/领域事件/应用实现
-│  └─ → feishu-bot-domain
-│
-├─ 命令/查询/用例执行器
-│  └─ → feishu-bot-app
-│
-├─ 数据库/外部 API 实现/配置类
-│  └─ → feishu-bot-infrastructure
-│
-├─ Controller/EventListener/事件处理
-│  └─ → feishu-bot-adapter
-│
-├─ DTO/请求响应对象
-│  └─ → feishu-bot-client
-│
-└─ 启动配置/主类
-   └─ → feishu-bot-start
+├─ 实体/值对象/领域服务/应用 → domain
+├─ 命令/查询/用例执行器 → app
+├─ 数据库/外部API/配置 → infrastructure
+├─ Controller/Listener → adapter
+├─ DTO/请求响应 → client
+└─ 启动配置 → start
 ```
-
-#### ⚠️ 注意事项
-
-- **禁止跨层依赖**：下层不能依赖上层
-- **接口定义在 domain**：domain 定义接口，infrastructure 实现
-- **横向隔离**：同层模块之间不能直接依赖
-- **长连接相关**：
-  - `MessageListenerGateway` 接口定义在 `domain`
-  - `MessageListenerGatewayImpl` 实现在 `infrastructure`
-  - `FeishuEventListener` 启动监听器在 `adapter`
 
 ---
 
-## 🚀 启动命令
+## 🚀 启动与部署
 
-### Dev 环境（开发环境）
-
-**⚠️ 重要：必须使用启动脚本**
-
-Dev 环境需要飞书凭证，请使用启动脚本：
+### 快速启动
 
 ```bash
 ./start-feishu.sh
 ```
 
-**为什么需要启动脚本？**
-- 脚本包含必要的 `FEISHU_APPSECRET` 环境变量
-- 自动处理编码设置（UTF-8）
-- 自动停止旧进程并重启
-- **自动清理端口占用（17777）**
-- 提供启动日志和状态监控
+**详细指南**：👉 [RESTART-GUIDE.md](./RESTART-GUIDE.md)
 
-**启动脚本位置**：`/root/workspace/feishu-backend/start-feishu.sh`
-
-**手动启动（不推荐）**：
-```bash
-cd feishu-bot-start
-export FEISHU_APPSECRET="your_secret_here"
-LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-**Dev 环境配置**：
-- **port**: `17777`（应用端口）
-- appid: `cli_a8f66e3df8fb100d`
-- appsecret: 通过启动脚本的环境变量配置
-- mode: `listener`
-- listener.enabled: `true`
-
-### 长连接模式（唯一允许模式）
+### 验证启动成功
 
 ```bash
-cd /root/workspace/feishu-backend/feishu-bot-start
+# 查看日志
+tail -50 /tmp/feishu-run.log
 
-LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
-FEISHU_APPID="your_app_id" \
-FEISHU_APPSECRET="your_app_secret" \
-FEISHU_MODE="listener" \
-FEISHU_LISTENER_ENABLED=true \
-mvn spring-boot:run
-```
+# 检查 WebSocket 连接
+grep "connected to wss://" /tmp/feishu-run.log
 
-**⚠️ 注意：本项目不支持 WebHook 模式启动，只能使用长连接模式！**
-
-### 🔄 重启应用
-
-**⚠️ 强制要求：必须使用启动脚本重启**
-
-启动脚本会自动处理以下步骤：
-1. 停止所有飞书相关进程
-2. **清理端口占用（17777）**
-3. 重新构建并启动应用
-
-**方法 1：使用启动脚本（唯一推荐方法）**
-
-```bash
-# 直接运行启动脚本（会自动处理所有步骤）
-./start-feishu.sh
-```
-
-**方法 2：手动重启（不推荐）**
-
-```bash
-# 1. 停止所有飞书相关进程
-pkill -9 -f "feishu" 2>/dev/null
-pkill -9 -f "spring-boot:run" 2>/dev/null
-
-# 2. 清理端口占用（17777）
-fuser -k 17777/tcp 2>/dev/null
-
-# 3. 确保端口已释放（等待 2-3 秒）
-sleep 3
-
-# 4. 重新构建并启动
-cd /root/workspace/feishu-backend
-mvn clean package -DskipTests
-./start-feishu.sh
-```
-
-**查看运行日志**：
-
-```bash
-# 实时查看日志
-tail -f /tmp/feishu-run.log
-
-# 查看最近的错误
-tail -f /tmp/feishu-run.log | grep -i error
+# 成功标志
+# ✅ Started Application in X seconds
+# ✅ connected to wss://msg-frontner.feishu.cn/...
+# ✅ 5个应用已注册：[help, opencode, bash, history, time]
 ```
 
 ---
 
-## 📁 关键文件位置
+## 🎯 应用开发规范
 
-**注意：以下文件位置严格遵循 COLA 架构规范**
+### 快速创建应用（3 步）
 
-```
-feishu-bot-domain/src/main/java/com/qdw/feishu/domain/
-├── app/                              # 应用系统
-│   ├── FishuAppI.java               # 应用接口
-│   ├── AppRegistry.java               # 应用注册中心
-│   └── TimeApp.java                  # 时间应用（示例）
-├── exception/                        # 异常定义
-├── gateway/                         # 网关接口
-│   ├── FeishuGateway.java
-│   └── MessageListenerGateway.java
-├── message/                          # 消息领域模型
-│   ├── Message.java
-│   ├── MessageType.java
-│   ├── Sender.java
-│   ├── MessageStatus.java
-│   └── SendResult.java
-├── router/                          # 路由器
-│   └── AppRouter.java                # 应用路由器
-└── service/                          # 领域服务
-    └── BotMessageService.java
+1. **创建类**：`feishu-bot-domain/src/main/java/com/qdw/feishu/domain/app/YourApp.java`
+2. **实现接口**：添加 `@Component` + 实现 `FishuAppI`
+3. **构建重启**：`mvn clean package && ./start-feishu.sh`
 
-feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/
-├── config/
-│   └── FeishuProperties.java       # 飞书配置属性
-└── gateway/
-    ├── FeishuGatewayImpl.java      # 飞书网关实现
-    └── MessageListenerGatewayImpl.java # 长连接实现
+### 应用模板
 
-feishu-bot-adapter/src/main/java/com/qdw/feishu/adapter/
-├── exception/
-│   └── GlobalExceptionHandler.java
-└── listener/
-    └── FeishuEventListener.java      # 长连接监听器
-```
-
----
-
-## 🐛 常见错误
-
-| 错误 | 原因 | 解决方案 |
-|------|------|----------|
-| `NoSuchMethodError: Sender: method 'void <init>()' not found` | 缺少无参构造函数 | 添加 `@NoArgsConstructor` 注解 |
-| `content is not a string in json format` | 消息内容格式错误 | 使用 `MessageText.newBuilder().text().build()` |
-| `app_id is invalid` | 凭证配置错误 | 检查 `FEISHU_APPID` 和 `FEISHU_APPSECRET` |
-| `No qualifying bean of type 'BotMessageService'` | 未注册为 Bean | 添加 `@Service` 注解 |
-| 中文显示为 `?` | 编码配置不正确 | 配置系统 locale、JVM 参数和日志编码 |
-| **发送消息后未创建话题** | **使用了错误的 API** | **必须使用 `reply` API + `replyInThread=true` 创建话题（见下方规范）** |
-
-### 🔴 话题创建与回复规范（CRITICAL）
-
-**重要：飞书 SDK 中话题的正确使用方法**
-
-#### 核心概念
-
-飞书话题涉及三个关键ID：
-- **message_id**：消息的唯一标识
-- **thread_id**：话题ID（首次回复后返回）
-- **root_id**：话题根消息ID（话题的第一条消息，用于回复到话题）
-
-#### ❌ 错误做法（不会创建话题）
-
-```java
-// 错误1：使用 createMessage API
-CreateMessageReq req = CreateMessageReq.newBuilder()
-    .receiveIdType("chat_id")
-    .createMessageReqBody(CreateMessageReqBody.newBuilder()
-        .receiveId(chatId)
-        .msgType("text")
-        .content(jsonContent)
-        .build())
-    .build();
-// 问题：createMessage API 只能发送独立消息，无法创建话题
-
-// 错误2：使用 thread_id 查询话题历史
-ListMessageReq req = ListMessageReq.newBuilder()
-    .containerIdType("thread_id")  // ❌ 不支持
-    .containerId(threadId)
-    .build();
-// 问题：listMessages API 不支持 thread_id 作为容器类型
-```
-
-#### ✅ 正确做法（创建和回复话题）
-
-**1. 创建新话题**
-
-```java
-// 正确：使用 reply API + replyInThread=true 回复原消息
-ReplyMessageReq req = ReplyMessageReq.newBuilder()
-    .messageId(originalMessageId)  // 用户消息的 messageId
-    .replyMessageReqBody(ReplyMessageReqBody.newBuilder()
-        .content(jsonContent)
-        .msgType("text")
-        .replyInThread(true)  // 关键：设置为 true 创建话题
-        .build())
-    .build();
-
-ReplyMessageResp resp = httpClient.im().message().reply(req);
-String threadId = resp.getData().getThreadId();  // 保存返回的 threadId
-```
-
-**2. 回复到现有话题**
-
-```java
-// 方法1：优先 - 使用 rootId 回复（推荐）
-if (message.getRootId() != null) {
-    // 直接使用 rootId 回复到话题根消息
-    ReplyMessageReq req = ReplyMessageReq.newBuilder()
-        .messageId(message.getRootId())  // 使用 rootId
-        .replyMessageReqBody(ReplyMessageReqBody.newBuilder()
-            .content(jsonContent)
-            .msgType("text")
-            .replyInThread(true)
-            .build())
-        .build();
-    httpClient.im().message().reply(req);
-}
-
-// 方法2：备用 - 使用用户消息的 parent_id
-// 如果消息在话题中，飞书会返回 parent_id，也可以用于回复
-```
-
-#### 📋 完整实现规范
-
-**Message 对象必须包含：**
-
-```java
-public class Message {
-    private String messageId;   // 消息ID
-    private String topicId;     // 话题ID（thread_id）
-    private String rootId;      // 话题根消息ID（用于回复）
-    // ... 其他字段
-}
-```
-
-**MessageListenerGatewayImpl 提取 root_id：**
-
-```java
-// 从飞书事件中提取 root_id
-String eventJson = Jsons.DEFAULT.toJson(event);
-
-// 提取 root_id
-Pattern rootIdPattern = Pattern.compile("\"root_id\"\\s*:\\s*\"([^\"]+)\"");
-Matcher rootMatcher = rootIdPattern.matcher(eventJson);
-if (rootMatcher.find()) {
-    String rootId = rootMatcher.group(1);
-    message.setRootId(rootId);
-}
-```
-
-**FeishuGatewayImpl 发送消息：**
-
-```java
-@Override
-public SendResult sendMessage(Message message, String content, String topicId) {
-    if (topicId != null && !topicId.isEmpty()) {
-        // 回复到现有话题：使用 rootId
-        String rootId = message.getRootId();
-        if (rootId != null && !rootId.isEmpty()) {
-            return sendReplyToMessage(rootId, content);
-        }
-    } else {
-        // 创建新话题：使用 reply API + replyInThread=true
-        return sendReplyToMessage(message.getMessageId(), content);
-    }
-}
-```
-
-#### ⚠️ 重要注意事项
-
-1. **必须保存 rootId**：消息在话题中时，飞书事件包含 `root_id`，必须提取并保存
-2. **使用 rootId 回复**：回复到现有话题时，优先使用 `rootId` 而不是 `threadId`
-3. **replyInThread=true**：创建话题和回复到话题都必须设置此参数
-4. **不能使用 listMessages 查询话题**：API 不支持 `thread_id` 作为容器类型
-5. **threadId 用于映射**：`threadId` 主要用于保存话题与应用的映射关系
-
-#### 🔧 话题映射保存（CRITICAL）
-
-**问题**：默认回复模式创建话题后，用户在话题中继续对话会收到"话题已失效"
-
-**原因**：`BotMessageService` 只在 `ReplyMode.TOPIC` 时保存话题映射，但默认回复模式也会创建话题
-
-**解决方案**：修改 `BotMessageService.java`，移除 `replyMode == ReplyMode.TOPIC &&` 条件
-
-```java
-// ❌ 错误：只在 TOPIC 模式保存映射
-if (replyMode == ReplyMode.TOPIC && actualThreadId != null && !actualThreadId.isEmpty()) {
-    TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
-    topicMappingGateway.save(mapping);
-}
-
-// ✅ 正确：任何模式返回 threadId 都保存映射
-if (actualThreadId != null && !actualThreadId.isEmpty()) {
-    TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
-    topicMappingGateway.save(mapping);
-    log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
-}
-```
-
-**效果**：用户可以在任何话题中继续对话，系统会自动找到对应的应用
-
-#### 🔍 飞书事件中的话题信息
-
-当消息在话题中时，飞书事件包含：
-```json
-{
-  "message": {
-    "message_id": "om_xxx",
-    "thread_id": "omt_xxx",    // 话题ID
-    "root_id": "om_xxx",       // 话题根消息ID（重要！）
-    "parent_id": "om_xxx"      // 父消息ID
-  }
-}
-```
-
-### ⚠️ 架构规范违规
-
-| 违规行为 | 后果 | 正确做法 |
-|---------|------|----------|
-| 在 `domain` 中引用 `infrastructure` | 违反 COLA 原则，代码无法编译 | `domain` 定义接口，`infrastructure` 实现接口 |
-| 在 `app` 中直接使用 SDK | 耦合外部依赖，难以测试 | 通过 `Gateway` 接口调用 |
-| 使用 WebHook 模式 | 不符合项目规范，代码将被拒绝 | 必须使用长连接模式 |
-| 跨模块直接依赖 | 违反分层原则 | 通过 DTO 或网关接口交互 |
-
----
-
-## 🎯 快速创建新应用
-
-创建一个飞书机器人应用只需 **3 步**，无需修改配置：
-
-### 步骤概览
-
-1. **创建应用类**：在 `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/app/` 创建 Java 类
-2. **实现接口**：实现 `FishuAppI` 接口，添加 `@Component` 注解
-3. **构建重启**：运行 `mvn clean install` 并重启应用
-
-**示例**：
 ```java
 @Component
 public class YourApp implements FishuAppI {
+
     @Override
     public String getAppId() {
-        return "yourapp";  // 命令前缀：/yourapp
+        return "yourapp";  // 唯一ID，命令前缀 /yourapp
     }
 
     @Override
     public String execute(Message message) {
         return "Hello from YourApp!";
     }
+
+    @Override
+    public List<String> getAppAliases() {
+        return Arrays.asList("alias1", "alias2");  // 可选
+    }
 }
 ```
 
-**完成后**：应用会自动注册，立即可用（命令：`/yourapp`）
-
 ### 关键要点
 
-- **位置**：必须在 `feishu-bot-domain` 的 `app/` 目录
+- **位置**：必须在 `domain/app/` 目录
 - **注解**：必须添加 `@Component`
-- **接口**：必须实现 `FishuAppI`
-- **AppId**：必须唯一（决定命令前缀）
+- **AppId**：必须唯一
 
-**详细指南**：👉 [应用开发规范](./APP_GUIDE.md)
+**详细指南**：👉 [APP_GUIDE.md](./APP_GUIDE.md)
+
+---
+
+## 🛡️ 设计模式规范
+
+### 策略模式（回复处理）
+
+**目的**：消除 if-else，符合开放封闭原则
+
+**结构**：
+```
+domain/reply/
+├── ReplyStrategy.java          # 策略接口
+└── ReplyStrategyFactory.java   # 策略工厂
+
+infrastructure/reply/
+├── DirectReplyStrategy.java    # 直接回复
+├── TopicReplyStrategy.java     # 话题回复
+└── DefaultReplyStrategy.java   # 默认回复
+```
+
+**使用方式**：
+```java
+// BotMessageService.java
+ReplyStrategy strategy = replyStrategyFactory.getStrategy(replyMode);
+SendResult result = strategy.reply(message, replyContent, topicId);
+```
+
+**新增回复模式**：只需创建新的 `ReplyStrategy` 实现类，自动注册。
+
+### 防腐层（外部集成）
+
+**目的**：隔离外部 SDK 变化，保护领域层
+
+**结构**：
+```
+domain/gateway/
+└── MessageEventParser.java     # 防腐层接口
+
+infrastructure/parser/
+└── MessageEventParserImpl.java # 解析器实现
+```
+
+**原则**：
+- 领域层不依赖飞书 SDK
+- SDK 解析逻辑封装在防腐层
+- 便于单元测试（可 mock）
+
+---
+
+## 📋 代码规范约束
+
+### 1. 命名规范
+
+| 类型 | 规范 | 示例 |
+|------|------|------|
+| 类名 | PascalCase | `BotMessageService`, `MessageListenerGateway` |
+| 方法名 | camelCase | `sendMessage()`, `findAppByCommand()` |
+| 变量名 | camelCase | `messageId`, `topicId`, `replyContent` |
+| 常量名 | UPPER_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_TIMEOUT` |
+| 包名 | 全小写 | `com.qdw.feishu.domain.gateway` |
+
+**禁止**：
+- ❌ 模糊缩写（`cmd` → `command`，除非是广泛认可的如 `id`）
+- ❌ 单字母变量（循环变量除外）
+- ❌ 类型前缀（`strMessage`, `iCount`）
+
+### 2. 类设计规范
+
+**单一职责原则**：
+- ✅ 一个类只负责一件事
+- ✅ 类长度建议不超过 300 行
+- ✅ 方法长度建议不超过 50 行
+
+**接口隔离**：
+- ✅ 接口方法尽量少（≤ 5 个）
+- ✅ 优先使用小接口而非大接口
+- ✅ 避免"肥接口"
+
+**示例**：
+```java
+// ✅ 好：职责单一
+public interface ReplyStrategy {
+    SendResult reply(Message message, String content, String topicId);
+}
+
+// ❌ 不好：职责过多
+public interface MessageHandler {
+    void validate();
+    void parse();
+    void route();
+    void execute();
+    void reply();
+}
+```
+
+### 3. 方法规范
+
+**参数数量**：
+- ✅ 理想：0-2 个参数
+- ⚠️ 警告：3-4 个参数（考虑封装为对象）
+- ❌ 禁止：超过 4 个参数
+
+**返回值**：
+- ✅ 优先返回具体类型而非泛型
+- ✅ 使用 `Optional` 表示可能为空的值
+- ✅ 返回 `void` 用于副作用操作
+
+**异常处理**：
+- ✅ 使用明确的异常类型
+- ✅ 记录有意义的错误信息
+- ❌ 禁止吞掉异常（`catch (Exception e) {}`）
+- ❌ 禁止返回 `null` 表示错误
+
+### 4. 注释规范
+
+**允许的注释**：
+- ✅ API 文档（public 类/方法）
+- ✅ 复杂算法说明
+- ✅ 安全相关逻辑
+- ✅ 业务规则解释
+
+**禁止的注释**：
+- ❌ 显而易见的代码说明（`i++; // i 增加 1`）
+- ❌ 注释掉的代码（删除或使用版本控制）
+- ❌ TODO 长期存在（及时处理）
+
+**示例**：
+```java
+/**
+ * 根据回复模式执行消息回复。
+ * 使用策略模式封装不同回复行为，便于扩展。
+ */
+public interface ReplyStrategy {
+    // 复杂的正则表达式需要注释
+    private static final Pattern THREAD_ID_PATTERN = 
+        Pattern.compile("\"thread_id\"\\s*:\\s*\"([^\"]+)\"");
+}
+```
+
+### 5. 测试规范
+
+**要求**：
+- ✅ 核心业务逻辑必须有单元测试
+- ✅ 测试方法命名：`should_returnX_when_givenY`
+- ✅ 每个测试用例一个验证点
+- ✅ 保持测试代码与生产代码同等质量
+
+**示例**：
+```java
+@Test
+void should_returnDirectReply_when_modeIsDirect() {
+    // given
+    Message message = createTestMessage();
+    ReplyStrategy strategy = new DirectReplyStrategy(feishuGateway);
+    
+    // when
+    SendResult result = strategy.reply(message, "test", null);
+    
+    // then
+    assertTrue(result.isSuccess());
+}
+```
+
+### 6. 日志规范
+
+**级别使用**：
+| 级别 | 使用场景 | 示例 |
+|------|---------|------|
+| ERROR | 系统错误，需要关注 | `连接飞书 SDK 失败` |
+| WARN | 潜在问题，可恢复 | `使用默认策略，因为未找到指定策略` |
+| INFO | 关键操作，业务流程 | `消息处理完成，耗时 123ms` |
+| DEBUG | 调试信息，开发时使用 | `提取到 threadId: xxx` |
+| TRACE | 详细追踪，极少使用 | `SDK 原始响应: xxx` |
+
+**禁止**：
+- ❌ 在生产环境使用 `System.out.println()`
+- ❌ 记录敏感信息（密码、密钥等）
+- ❌ 记录完整请求/响应（使用 DEBUG 级别）
+
+### 7. Git 规范
+
+**提交信息**：
+```
+<type>(<scope>): <subject>
+
+types: feat, fix, refactor, docs, style, test, chore
+```
+
+**示例**：
+```
+feat(reply): 添加话题回复策略实现
+fix(parser): 修复正则表达式解析 threadId 失败问题
+refactor(gateway): 重构 FeishuGateway 使用策略模式
+docs(AGENTS.md): 更新规范约束章节
+```
+
+**禁止**：
+- ❌ 提交信息为空或不明确
+- ❌ 提交未编译通过的代码
+- ❌ 提交临时文件（`.tmp`, `debug.log` 等）
+
+---
+
+## 🐛 常见错误排查
+
+| 错误 | 原因 | 解决方案 |
+|------|------|----------|
+| `NoSuchMethodError: Sender` | 缺少 `@NoArgsConstructor` | 添加 Lombok 注解 |
+| `No qualifying bean of type 'X'` | 未添加 `@Component`/`@Service` | 添加注解 |
+| `app_id is invalid` | 环境变量未传递 | 使用 `./start-feishu.sh` |
+| 中文显示为 `?` | 编码配置不正确 | 配置 UTF-8 |
+| 话题已失效 | 未保存话题映射 | 检查 `topicMappingGateway.save()` |
+
+**详细排查**：👉 [RESTART-GUIDE.md](./RESTART-GUIDE.md)
 
 ---
 
 ## 📚 参考资料
 
-- [应用开发规范](./APP_GUIDE.md) - **详细**的应用创建教程
-- [命令别名机制](./docs/COMMAND-ALIASES.md) - 如何为应用添加命令别名
-- [SQLite 持久化](./docs/SQLITE-PERSISTENCE.md) - 数据持久化方案
-- [飞书 IM SDK 文档](https://open.feishu.cn/document/serverSdk/im sdk)
-- [飞书 WebSocket 文档](https://open.feishu.cn/document/serverSdk/event-sdk)
-- [COLA 框架](https://github.com/alibaba/COLA)
-- [飞书 SDK GitHub](https://github.com/larksuite/oapi-sdk-java)
+| 文档 | 用途 |
+|------|------|
+| [APP_GUIDE.md](./APP_GUIDE.md) | 应用开发指南 |
+| [RESTART-GUIDE.md](./RESTART-GUIDE.md) | 重启与故障排查 |
+| [COLA 框架](https://github.com/alibaba/COLA) | COLA 架构官方文档 |
+| [飞书 IM SDK](https://open.feishu.cn/document/serverSdk/im sdk) | 飞书消息 API |
+| [飞书 WebSocket](https://open.feishu.cn/document/serverSdk/event-sdk) | 飞书事件推送 |
 
 ---
 
-## 🔍 调试命令
+## 📁 关键文件位置
 
-```bash
-# 实时查看日志
-tail -f /tmp/feishu-run.log
+```
+feishu-bot-domain/src/main/java/com/qdw/feishu/domain/
+├── app/                      # 应用系统
+│   ├── FishuAppI.java        # 应用接口
+│   └── *.java                # 应用实现
+├── gateway/                  # 网关接口
+│   ├── FeishuGateway.java
+│   ├── MessageListenerGateway.java
+│   └── MessageEventParser.java    # 防腐层接口
+├── message/                  # 消息模型
+│   └── Message.java
+├── reply/                    # 策略模式
+│   ├── ReplyStrategy.java
+│   └── ReplyStrategyFactory.java
+├── router/                   # 路由器
+│   └── AppRouter.java
+└── service/                  # 领域服务
+    └── BotMessageService.java
 
-# 查看消息相关日志
-tail -f /tmp/feishu-run.log | grep -E "(Received|Processing|Sending|Error)"
-
-# 验证 WebSocket 连接
-grep "connected to wss://" /tmp/feishu-run.log
+feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/
+├── gateway/                  # 网关实现
+│   ├── FeishuGatewayImpl.java
+│   └── MessageListenerGatewayImpl.java
+├── parser/                   # 防腐层实现
+│   └── MessageEventParserImpl.java
+├── reply/                    # 策略实现
+│   ├── DirectReplyStrategy.java
+│   ├── TopicReplyStrategy.java
+│   └── DefaultReplyStrategy.java
+└── config/                   # 配置
+    ├── FeishuProperties.java
+    └── DomainServiceConfig.java
 ```
 
 ---
 
-**最后更新**: 2026-02-01
-
----
-
-## 📋 Module Knowledge Bases
-
-**Module-specific AGENTS.md files exist for:**
-
-| Module | Path | Complexity | Focus |
-|--------|------|------------|-------|
-| **feishu-bot-domain** | [./feishu-bot-domain/AGENTS.md](./feishu-bot-domain/AGENTS.md) | HIGH (85) | Business logic, applications, domain models, command aliases |
-| **feishu-bot-infrastructure** | [./feishu-bot-infrastructure/AGENTS.md](./feishu-bot-infrastructure/AGENTS.md) | MODERATE (19) | Gateway implementations, Feishu SDK, SQLite persistence |
-
-**Why module AGENTS.md?**
-- **feishu-bot-domain**: Core business logic with 31 Java files, highest complexity
-  - App system: BashApp, TimeApp, HelpApp, HistoryApp
-  - Message routing: Command parsing, alias matching
-  - Domain services: BotMessageService, MessageDeduplicator
-  - Gateway interfaces: FeishuGateway, MessageListenerGateway, TopicMappingGateway
-
-- **feishu-bot-infrastructure**: External integrations, SDK-specific patterns
-  - Feishu SDK integration (oapi-sdk 2.5.2)
-  - WebSocket long-connection (MessageListenerGatewayImpl)
-  - SQLite persistence (TopicMappingSqliteGateway)
-  - Configuration management (FeishuProperties)
-
-**Modules covered by this file only:**
-- feishu-bot-app (3 files - simple orchestration layer)
-- feishu-bot-client (3 files - DTOs)
-- feishu-bot-adapter (2 files - event listeners)
-- feishu-bot-start (6 files - startup only)
-
----
-
-## 🆕 新功能（2026-02-01）
-
-### 命令别名机制
-
-每个应用现在支持多个命令触发方式：
-
-- **BashApp**: `/bash`, `/cmd`, `/shell`, `/exec`
-- **TimeApp**: `/time`, `/t`, `/now`, `/date`
-- **HelpApp**: `/help`, `/h`, `/?`, `/man`
-
-**特点**：
-- 大小写不敏感
-- 在应用类中通过 `getAppAliases()` 定义
-- 详见 [命令别名机制](./docs/COMMAND-ALIASES.md)
-
-### SQLite 持久化
-
-话题映射现在使用 SQLite 数据库存储：
-
-- **数据库文件**: `data/feishu-topic-mappings.db`
-- **支持 Git**: 数据库文件可以加入版本控制
-- **自动切换**: 通过配置在 SQLite 和文件模式间切换
-- 详见 [SQLite 持久化指南](./docs/SQLITE-PERSISTENCE.md)
-
-### 话题上下文增强
-
-在绑定的话题中可以直接输入命令（无前缀）：
-
-```
-用户在 bash 话题中：
-- 输入: "pwd" （无前缀）
-- 系统自动添加: "/bash pwd"
-- 执行命令并返回结果
-```
-
-**优势**：简化用户操作，提升对话体验
+**最后更新**: 2026-02-02

@@ -48,7 +48,11 @@ echo ""
 # 后台启动，日志输出到文件
 LOG_FILE="/tmp/feishu-run.log"
 echo "日志文件: $LOG_FILE"
-LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
+# 重要：环境变量必须在启动命令的同一行设置，确保后台进程能正确继承
+export FEISHU_APPID="cli_a8f66e3df8fb100d"
+export FEISHU_APPSECRET="CFVrKX1w00ypHEqT1vInwdeKznwmYWpn"
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
 mvn spring-boot:run -Dspring-boot.run.profiles=dev > "$LOG_FILE" 2>&1 &
 
 PID=$!

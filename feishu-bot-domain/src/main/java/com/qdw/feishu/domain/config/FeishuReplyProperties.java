@@ -1,6 +1,6 @@
 package com.qdw.feishu.domain.config;
 
-import com.qdw.feishu.domain.app.ReplyMode;
+import com.qdw.feishu.domain.core.ReplyMode;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;

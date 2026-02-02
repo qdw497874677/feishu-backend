@@ -1,5 +1,7 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.core.AppRegistry;
+import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

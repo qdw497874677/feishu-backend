@@ -1,8 +1,9 @@
-package com.qdw.feishu.domain.model;
+package com.qdw.feishu.domain.command;
 
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import com.qdw.feishu.domain.topic.TopicState;
 
 /**
  * 命令白名单配置

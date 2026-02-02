@@ -1,4 +1,4 @@
-package com.qdw.feishu.domain.app;
+package com.qdw.feishu.domain.core;
 
 /**
  * 回复模式枚举

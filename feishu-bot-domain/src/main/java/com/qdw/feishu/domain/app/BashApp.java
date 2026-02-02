@@ -1,10 +1,10 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.command.CommandWhitelistValidator;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.history.BashHistoryManager;
 import com.qdw.feishu.domain.history.CommandExecution;
 import com.qdw.feishu.domain.message.Message;
-import com.qdw.feishu.domain.validation.CommandWhitelistValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;

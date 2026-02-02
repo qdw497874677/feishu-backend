@@ -1,8 +1,9 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.command.CommandWhitelist;
+import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.message.Message;
-import com.qdw.feishu.domain.model.CommandWhitelist;
-import com.qdw.feishu.domain.model.TopicState;
+import com.qdw.feishu.domain.topic.TopicState;
 import java.util.Collections;
 import java.util.List;
 

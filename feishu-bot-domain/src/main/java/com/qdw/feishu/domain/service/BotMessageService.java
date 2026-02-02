@@ -1,8 +1,8 @@
 package com.qdw.feishu.domain.service;
 
-import com.qdw.feishu.domain.app.AppRegistry;
 import com.qdw.feishu.domain.app.FishuAppI;
-import com.qdw.feishu.domain.app.ReplyMode;
+import com.qdw.feishu.domain.core.AppRegistry;
+import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.exception.MessageSysException;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
@@ -10,6 +10,8 @@ import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.model.TopicMapping;
+import com.qdw.feishu.domain.reply.ReplyStrategy;
+import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.router.AppRouter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,15 +24,18 @@ public class BotMessageService {
     private final AppRouter appRouter;
     private final AppRegistry appRegistry;
     private final TopicMappingGateway topicMappingGateway;
+    private final ReplyStrategyFactory replyStrategyFactory;
 
     public BotMessageService(FeishuGateway feishuGateway,
                             AppRouter appRouter,
                             AppRegistry appRegistry,
-                            TopicMappingGateway topicMappingGateway) {
+                            TopicMappingGateway topicMappingGateway,
+                            ReplyStrategyFactory replyStrategyFactory) {
         this.feishuGateway = feishuGateway;
         this.appRouter = appRouter;
         this.appRegistry = appRegistry;
         this.topicMappingGateway = topicMappingGateway;
+        this.replyStrategyFactory = replyStrategyFactory;
     }
 
     private String extractAppId(String content) {
@@ -188,24 +193,16 @@ public class BotMessageService {
                 return SendResult.failure("应用返回空回复");
             }
 
+            // 使用策略模式处理回复
             ReplyMode replyMode = app.getReplyMode();
-            SendResult result;
-
-            if (replyMode == ReplyMode.DIRECT) {
-                log.info("使用直接回复模式：不创建话题");
-                result = feishuGateway.sendDirectReply(message, replyContent);
-            } else if (replyMode == ReplyMode.TOPIC) {
-                if (topicId != null && !topicId.isEmpty()) {
-                    log.info("使用话题模式回复：回复到现有话题");
-                    result = feishuGateway.sendMessage(message, replyContent, topicId);
-                } else {
-                    log.info("使用话题模式回复：创建新话题");
-                    result = feishuGateway.sendMessage(message, replyContent, null);
-                }
-            } else {
-                log.info("使用默认回复模式");
-                result = feishuGateway.sendMessage(message, replyContent, topicId);
+            ReplyStrategy strategy = replyStrategyFactory.getStrategy(replyMode);
+            
+            if (strategy == null) {
+                log.warn("未找到回复模式 {} 的策略，使用默认策略", replyMode);
+                strategy = replyStrategyFactory.getStrategy(ReplyMode.DEFAULT);
             }
+
+            SendResult result = strategy.reply(message, replyContent, topicId);
 
             if (result.isSuccess()) {
                 log.info("发送回复成功: topicId={}", result.getThreadId());

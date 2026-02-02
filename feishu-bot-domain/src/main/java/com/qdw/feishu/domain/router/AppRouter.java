@@ -1,7 +1,7 @@
 package com.qdw.feishu.domain.router;
 
-import com.qdw.feishu.domain.app.AppRegistry;
 import com.qdw.feishu.domain.app.FishuAppI;
+import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

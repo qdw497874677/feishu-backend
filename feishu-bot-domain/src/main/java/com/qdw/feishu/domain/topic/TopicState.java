@@ -1,8 +1,8 @@
-package com.qdw.feishu.domain.model;
+package com.qdw.feishu.domain.topic;
 
 /**
  * 话题状态枚举
- * 
+ *
  * 用于表示对话所在的话题状态，支持分层命令限制
  */
 public enum TopicState {
@@ -24,7 +24,7 @@ public enum TopicState {
 
     /**
      * 获取状态描述
-     * 
+     *
      * @return 中文描述
      */
     public String getDescription() {

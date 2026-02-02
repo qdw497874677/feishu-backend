@@ -1,4 +1,4 @@
-package com.qdw.feishu.domain.model;
+package com.qdw.feishu.domain.command;
 
 /**
  * 命令验证结果
@@ -15,7 +15,7 @@ public class ValidationResult {
 
     /**
      * 创建允许的验证结果
-     * 
+     *
      * @return 验证结果实例
      */
     public static ValidationResult allowed() {
@@ -24,7 +24,7 @@ public class ValidationResult {
 
     /**
      * 创建受限的验证结果
-     * 
+     *
      * @param message 限制消息
      * @return 验证结果实例
      */
@@ -34,7 +34,7 @@ public class ValidationResult {
 
     /**
      * 检查是否允许
-     * 
+     *
      * @return 如果允许返回 true，否则返回 false
      */
     public boolean isAllowed() {
@@ -43,7 +43,7 @@ public class ValidationResult {
 
     /**
      * 获取消息
-     * 
+     *
      * @return 消息内容，如果允许则为 null
      */
     public String getMessage() {

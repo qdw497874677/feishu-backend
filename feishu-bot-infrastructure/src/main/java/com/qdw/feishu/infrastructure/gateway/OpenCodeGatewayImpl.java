@@ -80,8 +80,8 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     /**
-     * 创建新会话
-     */
+      * 创建新会话
+      */
     private String createSession(String parentID) {
         return executeWithRetry("createSession", () -> {
             try {
@@ -91,9 +91,9 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(properties.getServerUrl() + "/session"))
-                        .header("Content-Type", "application/json")
+                        .header("Content-Type", "application/json; charset=utf-8")
                         .header("Authorization", getAuthHeader())
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                         .build();
 
                 HttpResponse<String> response = httpClient.send(request,
@@ -119,8 +119,8 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     /**
-     * 同步发送消息并等待响应
-     */
+      * 同步发送消息并等待响应
+      */
     private String sendMessageSync(String sessionId, String prompt, int timeoutSeconds, boolean returnNullOnTimeout) {
         return executeWithRetry("sendMessageSync", () -> {
             try {
@@ -131,10 +131,10 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId + "/message"))
-                        .header("Content-Type", "application/json")
+                        .header("Content-Type", "application/json; charset=utf-8")
                         .header("Authorization", getAuthHeader())
                         .timeout(Duration.ofSeconds(timeoutSeconds > 0 ? timeoutSeconds : properties.getRequestTimeout()))
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                         .build();
 
                 HttpResponse<String> response = httpClient.send(request,
@@ -163,8 +163,8 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     /**
-     * 异步发送消息（不等待响应）
-     */
+      * 异步发送消息（不等待响应）
+      */
     public void sendMessageAsync(String sessionId, String prompt) {
         try {
             String body = String.format(
@@ -174,9 +174,9 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId + "/prompt_async"))
-                    .header("Content-Type", "application/json")
+                    .header("Content-Type", "application/json; charset=utf-8")
                     .header("Authorization", getAuthHeader())
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request,
