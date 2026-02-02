@@ -122,6 +122,12 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
       * 同步发送消息并等待响应
       */
     private String sendMessageSync(String sessionId, String prompt, int timeoutSeconds, boolean returnNullOnTimeout) {
+        // 首先检查服务连通性（如果启用）
+        if (properties.isHealthCheckEnabled() && !isServerHealthy()) {
+            log.warn("OpenCode 服务不可达，跳过请求");
+            return "❌ 无法连接到 OpenCode 服务，请确保服务已启动";
+        }
+
         return executeWithRetry("sendMessageSync", () -> {
             try {
                 String body = String.format(
@@ -143,8 +149,8 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
                 if (response.statusCode() == 200) {
                     return parseMessageResponse(response.body());
                 } else {
-                    log.error("发送消息失败: {}", response.body());
-                    return "❌ 发送消息失败: " + response.body();
+                    log.error("发送消息失败，状态码: {}, 响应: {}", response.statusCode(), response.body());
+                    return "❌ OpenCode 服务异常 (状态码: " + response.statusCode() + ")";
                 }
 
             } catch (java.net.http.HttpTimeoutException e) {
@@ -157,7 +163,40 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
                 }
             } catch (Exception e) {
                 log.error("发送消息异常", e);
-                throw new RuntimeException("发送消息失败", e);
+                // 对于连接错误等异常，直接返回用户友好的错误消息
+                if (e.getCause() instanceof java.net.ConnectException ||
+                    e.getCause() instanceof java.net.UnknownHostException) {
+                    return "❌ 无法连接到 OpenCode 服务，请确保服务已启动";
+                }
+                throw new RuntimeException("发送消息失败: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
+      * 检查 OpenCode 服务是否健康
+      */
+    public boolean isServerHealthy() {
+        return executeWithRetry("healthCheck", () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(properties.getServerUrl() + "/global/health"))
+                        .header("Authorization", getAuthHeader())
+                        .timeout(Duration.ofSeconds(5))
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonNode json = objectMapper.readTree(response.body());
+                    return json.has("healthy") && json.get("healthy").asBoolean();
+                }
+                return false;
+            } catch (Exception e) {
+                log.warn("健康检查失败: {}", e.getMessage());
+                return false;
             }
         });
     }
@@ -185,7 +224,7 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
             if (response.statusCode() == 204) {
                 log.info("异步消息发送成功: sessionId={}", sessionId);
             } else {
-                log.warn("异步消息发送失败: {}", response.body());
+                log.warn("异步消息发送失败，状态码: {}", response.statusCode());
             }
 
         } catch (Exception e) {

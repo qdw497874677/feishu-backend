@@ -41,8 +41,24 @@ public class OpenCodeProperties {
 
     /**
      * 请求超时时间（秒）
+     * 建议值：60-120秒，过长会导致用户等待过久
      */
-    private int requestTimeout = 120;
+    private int requestTimeout = 60;
+
+    /**
+     * 同步执行超时时间（秒），超过此时间转为异步执行
+     */
+    private int syncTimeout = 30;
+
+    /**
+     * 异步执行超时时间（秒）
+     */
+    private int asyncTimeout = 60;
+
+    /**
+     * 是否启用健康检查（失败时快速响应）
+     */
+    private boolean healthCheckEnabled = true;
 
     /**
      * 默认超时时间（秒）- 用于兼容旧代码

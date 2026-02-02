@@ -5,8 +5,8 @@ server:
 
 # 飞书配置
 feishu:
-  appid: ${FEISHU_APPID:your_app_id}
-  appsecret: ${FEISHU_APPSECRET:your_app_secret}
+  appid: ${FEISHU_APPID}
+  appsecret: ${FEISHU_APPSECRET}
   encrypt-key: ${FEISHU_ENCRYPT_KEY:your_encrypt_key}
   verification-token: ${FEISHU_VERIFICATION_TOKEN:your_verification_token}
   mode: listener
@@ -38,11 +38,18 @@ opencode:
   # 连接超时时间（秒）
   connect-timeout: 10
   # 请求超时时间（秒）
-  request-timeout: 120
+  # 建议值：60-120秒，过长会导致用户等待过久
+  request-timeout: 60
+  # 同步执行超时时间（秒），超过此时间转为异步执行
+  sync-timeout: 30
+  # 异步执行超时时间（秒）
+  async-timeout: 60
   # 最大输出长度（字符）
   max-output-length: 5000
   # 是否启用异步执行
   async-enabled: true
+  # 是否启用健康检查（失败时快速响应）
+  health-check-enabled: true
 
 # 日志配置
 logging:

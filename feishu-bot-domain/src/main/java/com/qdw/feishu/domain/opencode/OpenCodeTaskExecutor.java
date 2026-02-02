@@ -16,8 +16,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class OpenCodeTaskExecutor {
 
-    private static final long SYNC_TIMEOUT_MS = 5000;
-    private static final long ASYNC_THRESHOLD_MS = 2000;
+    private static final long SYNC_TIMEOUT_MS = 30000;  // 同步超时：30秒
+    private static final long ASYNC_THRESHOLD_MS = 5000;  // 异步阈值：5秒
 
     private final OpenCodeGateway openCodeGateway;
     private final FeishuGateway feishuGateway;
@@ -100,35 +100,33 @@ public class OpenCodeTaskExecutor {
     }
 
     /**
-     * 执行 OpenCode 任务（同步或异步）
-     *
-     * @param message 消息对象
-     * @param prompt 提示词
-     * @param sessionId 会话 ID（null 表示新会话）
-     * @return 执行结果
-     */
+      * 执行 OpenCode 任务（同步或异步）
+      *
+      * @param message 消息对象
+      * @param prompt 提示词
+      * @param sessionId 会话 ID（null 表示新会话）
+      * @return 执行结果
+      */
     public String executeTask(Message message, String prompt, String sessionId) {
         long startTime = System.nanoTime();
 
         try {
-            // 尝试同步执行（5秒超时）
-            String result = openCodeGateway.executeCommand(prompt, sessionId, 5);
+            // 尝试同步执行（30秒超时）
+            String result = openCodeGateway.executeCommand(prompt, sessionId, 30);
 
             if (result == null) {
-                // 执行时间超过5秒，转为异步执行
-                log.info("任务执行超过5秒，转为异步执行");
-                feishuGateway.sendMessage(message, "⏳ 任务正在执行中，结果将稍后返回...",
-                                          message.getTopicId());
+                // 执行时间超过30秒，转为异步执行
+                log.info("任务执行超过30秒，转为异步执行");
+                feishuGateway.sendMessage(message, "⏳ 任务正在执行中，请稍候...", message.getTopicId());
                 executeAsync(message, prompt, sessionId);
-                return null;
+                return "⏳ 任务已在后台执行中，请稍候...";
             }
 
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
 
-            // 如果执行时间超过2秒，先发送"执行中"消息
+            // 如果执行时间超过5秒，先发送"执行中"消息
             if (durationMs > ASYNC_THRESHOLD_MS) {
-                feishuGateway.sendMessage(message, "⏳ 任务执行中...",
-                                          message.getTopicId());
+                feishuGateway.sendMessage(message, "⏳ 任务执行中...", message.getTopicId());
             }
 
             // 提取并保存 sessionID
@@ -148,12 +146,20 @@ public class OpenCodeTaskExecutor {
     }
 
     /**
-     * 异步执行 OpenCode 任务
-     */
+      * 异步执行 OpenCode 任务
+      * 使用较长超时时间（60秒），避免用户等待过久
+      */
     @Async("opencodeExecutor")
     public void executeAsync(Message message, String prompt, String sessionId) {
         try {
-            String result = openCodeGateway.executeCommand(prompt, sessionId, 0);
+            String result = openCodeGateway.executeCommand(prompt, sessionId, 60);
+
+            if (result == null) {
+                log.warn("异步执行超时（60秒），返回错误提示");
+                feishuGateway.sendMessage(message,
+                    "⚠️ 任务执行超时，请稍后重试或尝试简化问题。", message.getTopicId());
+                return;
+            }
 
             // 提取并保存 sessionID
             String extractedSessionId = responseFormatter.extractSessionId(result);
@@ -166,8 +172,8 @@ public class OpenCodeTaskExecutor {
 
         } catch (Exception e) {
             log.error("异步执行失败", e);
-            feishuGateway.sendMessage(message, "❌ 执行失败: " + e.getMessage(),
-                                      message.getTopicId());
+            // 立即响应错误给用户
+            feishuGateway.sendMessage(message, "❌ 执行失败: " + e.getMessage(), message.getTopicId());
         }
     }
 

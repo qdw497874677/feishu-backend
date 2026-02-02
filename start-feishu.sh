@@ -3,9 +3,30 @@
 # 飞书机器人启动脚本
 # 此脚本包含 dev 环境的凭证配置
 
-# 飞书应用凭证
-export FEISHU_APPID="cli_a8f66e3df8fb100d"
-export FEISHU_APPSECRET="CFVrKX1w00ypHEqT1vInwdeKznwmYWpn"
+# 飞书应用凭证 - 通过环境变量设置
+# 请在运行前设置以下环境变量:
+#   export FEISHU_APPID="cli_xxxxx"
+#   export FEISHU_APPSECRET="xxxxx"
+
+# 检查凭证是否已配置
+if [ -z "$FEISHU_APPID" ] || [ "$FEISHU_APPID" = "your_app_id" ]; then
+    echo "❌ 错误: FEISHU_APPID 未正确配置"
+    echo "请设置飞书应用凭证:"
+    echo "  export FEISHU_APPID='你的app_id'"
+    echo "  export FEISHU_APPSECRET='你的app_secret'"
+    echo ""
+    echo "示例:"
+    echo "  export FEISHU_APPID='cli_a8f66e3df8fb100d'"
+    echo "  export FEISHU_APPSECRET='CFVrKX1w00ypHEqT1vInwdeKznwmYWpn'"
+    exit 1
+fi
+
+if [ -z "$FEISHU_APPSECRET" ] || [ "$FEISHU_APPSECRET" = "your_app_secret" ]; then
+    echo "❌ 错误: FEISHU_APPSECRET 未正确配置"
+    exit 1
+fi
+
+echo "✅ 飞书凭证已配置: ${FEISHU_APPID:0:10}..."
 
 # 应用端口
 export APP_PORT="17777"
@@ -41,7 +62,7 @@ sleep 3
 
 # 启动应用
 echo "正在启动飞书机器人..."
-echo "应用ID: $FEISHU_APPID"
+echo "应用ID: ${FEISHU_APPID:0:15}..."
 echo "工作目录: $(pwd)"
 echo ""
 
@@ -49,11 +70,7 @@ echo ""
 LOG_FILE="/tmp/feishu-run.log"
 echo "日志文件: $LOG_FILE"
 # 重要：环境变量必须在启动命令的同一行设置，确保后台进程能正确继承
-export FEISHU_APPID="cli_a8f66e3df8fb100d"
-export FEISHU_APPSECRET="CFVrKX1w00ypHEqT1vInwdeKznwmYWpn"
-export LANG=zh_CN.UTF-8
-export LC_ALL=zh_CN.UTF-8
-mvn spring-boot:run -Dspring-boot.run.profiles=dev > "$LOG_FILE" 2>&1 &
+LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 mvn spring-boot:run > "$LOG_FILE" 2>&1 &
 
 PID=$!
 echo "✅ 应用已启动！PID: $PID"

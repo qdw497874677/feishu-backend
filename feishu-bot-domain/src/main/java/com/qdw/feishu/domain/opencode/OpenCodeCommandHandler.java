@@ -201,37 +201,11 @@ public class OpenCodeCommandHandler {
     }
 
     /**
-     * 处理未知命令
-     */
+      * 处理未知命令
+      */
     private String handleUnknownCommand(Message message, String subCommand, String[] parts) {
-        String content = message.getContent().trim();
-        String prompt = content.substring(content.indexOf(' ') + 1).trim();
-
-        String topicId = message.getTopicId();
-        boolean isInTopic = topicId != null && !topicId.isEmpty();
-
-        // 在话题中，短输入优先作为对话处理
-        if (isInTopic && isShortInput(subCommand)) {
-            log.info("话题中的短输入 '{}'，作为对话处理", subCommand);
-            return taskExecutor.executeWithAutoSession(message, prompt);
-        }
-
-        // 检查是否是已知的子命令拼写错误
-        if (subCommand.length() <= 6) {
-            return buildUnknownCommandResponse(subCommand, prompt);
-        }
-
-        // 对于较长的输入，假设是对话内容
-        return taskExecutor.executeWithAutoSession(message, prompt);
-    }
-
-    private boolean isShortInput(String subCommand) {
-        return subCommand.length() <= 8 &&
-               !subCommand.equals("help") &&
-               !subCommand.equals("new") &&
-               !subCommand.equals("chat") &&
-               !subCommand.equals("projects") &&
-               !subCommand.equals("commands");
+        // 必须使用 chat 子命令才能触发对话
+        return buildUnknownCommandResponse(subCommand, "");
     }
 
     private String buildUnknownCommandResponse(String subCommand, String prompt) {
