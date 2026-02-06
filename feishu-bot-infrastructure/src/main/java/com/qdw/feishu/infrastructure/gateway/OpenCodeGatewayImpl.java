@@ -768,26 +768,44 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
                 return operation.get();
+            } catch (java.net.ConnectException e) {
+                if (attempt == MAX_RETRIES - 1) {
+                    log.error("连接失败: 无法连接到 OpenCode 服务");
+                    throw new RuntimeException("❌ 无法连接到 OpenCode 服务，请检查服务是否启动");
+                }
+                log.warn("连接失败，重试 {}/{}", attempt + 1, MAX_RETRIES);
+                long delay = Math.min(INITIAL_RETRY_DELAY_MS * (1L << attempt), MAX_RETRY_DELAY_MS);
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("RETRY_INTERRUPTED", ie);
+                }
+            } catch (java.net.http.HttpTimeoutException e) {
+                if (attempt == MAX_RETRIES - 1) {
+                    log.error("请求超时: OpenCode 服务响应超时");
+                    throw new RuntimeException("❌ OpenCode 服务响应超时，请稍后重试");
+                }
+                log.warn("请求超时，重试 {}/{}", attempt + 1, MAX_RETRIES);
+                long delay = Math.min(INITIAL_RETRY_DELAY_MS * (1L << attempt), MAX_RETRY_DELAY_MS);
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("RETRY_INTERRUPTED", ie);
+                }
             } catch (Exception e) {
                 if (attempt == MAX_RETRIES - 1) {
-                    throw new RuntimeException(e);
+                    log.error("未知错误: operation={}, error={}", operationName, e.getMessage(), e);
+                    throw new RuntimeException(operationName + " 失败", e);
                 }
-
-                if (e.getCause() instanceof java.net.UnknownHostException ||
-                    e instanceof java.net.UnknownHostException ||
-                    e.getCause() instanceof java.net.ConnectException) {
-
-                    long delay = Math.min(INITIAL_RETRY_DELAY_MS * (1L << attempt), MAX_RETRY_DELAY_MS);
-                    log.warn("{} 失败 (attempt {}/{}), retrying in {}ms...",
-                             operationName, attempt + 1, MAX_RETRIES, delay);
-                    try {
-                        Thread.sleep(delay);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("RETRY_INTERRUPTED", ie);
-                    }
-                } else {
-                    throw new RuntimeException(e);
+                log.warn("操作失败，重试 {}/{}: {}", attempt + 1, MAX_RETRIES, operationName, e.getMessage());
+                long delay = Math.min(INITIAL_RETRY_DELAY_MS * (1L << attempt), MAX_RETRY_DELAY_MS);
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("RETRY_INTERRUPTED", ie);
                 }
             }
         }
