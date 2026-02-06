@@ -9,6 +9,28 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
+ * OpenCode 应用常量
+ */
+final class OpenCodeConstants {
+    
+    private OpenCodeConstants() {
+        // 防止实例化
+    }
+
+    /**
+     * 会话查询限制
+     */
+    static final int DEFAULT_SESSION_LIMIT = 5;
+    static final int MIN_SESSION_LIMIT = 1;
+    static final int MAX_SESSION_LIMIT = 20;
+
+    /**
+     * 字符串长度限制
+     */
+    static final int MAX_PROJECT_NAME_LENGTH = 100;
+}
+
+/**
  * OpenCode 会话管理器
  *
  * 负责会话的创建、查询、状态管理和绑定
@@ -86,19 +108,31 @@ public class OpenCodeSessionManager {
         }
 
         String project = parts[2].trim();
-        int limit = 5;
-
+        
+        // 输入验证：检查项目名称是否为空
+        if (project.isEmpty()) {
+            return "❌ 项目名称不能为空\n\n" +
+                   "用法：`/opencode sessions <项目名称>`";
+        }
+        
+        // 输入验证：检查项目名称长度
+        if (project.length() > OpenCodeConstants.MAX_PROJECT_NAME_LENGTH) {
+            return "❌ 项目名称过长（最多" + OpenCodeConstants.MAX_PROJECT_NAME_LENGTH + "个字符）";
+        }
+        
+        int limit = OpenCodeConstants.DEFAULT_SESSION_LIMIT;
+        
         if (parts.length >= 4) {
             try {
                 limit = Integer.parseInt(parts[3].trim());
-                if (limit < 1 || limit > 20) {
-                    return "❌ 数量必须在 1-20 之间";
+                if (limit < OpenCodeConstants.MIN_SESSION_LIMIT || limit > OpenCodeConstants.MAX_SESSION_LIMIT) {
+                    return "❌ 数量必须在 " + OpenCodeConstants.MIN_SESSION_LIMIT + "-" + OpenCodeConstants.MAX_SESSION_LIMIT + " 之间";
                 }
             } catch (NumberFormatException e) {
-                // 忽略，使用默认值
+                log.warn("无效的数量参数，使用默认值: {}", parts[3]);
             }
         }
-
+        
         log.info("查询项目会话: project={}, limit={}", project, limit);
         return openCodeGateway.listRecentSessions(project, limit);
     }
@@ -128,5 +162,20 @@ public class OpenCodeSessionManager {
      */
     public Optional<String> getSessionId(String topicId) {
         return sessionGateway.getSessionId(topicId);
+    }
+
+    /**
+     * 检查话题是否已显式初始化
+     */
+    public boolean isExplicitlyInitialized(String topicId) {
+        return sessionGateway.isExplicitlyInitialized(topicId);
+    }
+
+    public void setExplicitlyInitialized(String topicId) {
+        sessionGateway.setExplicitlyInitialized(topicId);
+    }
+
+    public void clearExplicitlyInitialized(String topicId) {
+        sessionGateway.clearExplicitlyInitialized(topicId);
     }
 }
