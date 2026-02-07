@@ -466,6 +466,51 @@ docs(AGENTS.md): 更新规范约束章节
 
 ---
 
+## 📖 应用使用指南
+
+**文档**: [APP_USAGE_GUIDE.md](./APP_USAGE_GUIDE.md)
+
+本文档详细说明所有已实现应用的使用流程、命令格式和示例。
+
+### 应用列表
+
+| 应用 | 功能 | 命令 |
+|------|------|------|
+| **HelpApp** | 显示所有可用命令 | `/help`, `/h`, `/?`, `/man` |
+| **TimeApp** | 查询当前系统时间 | `/time`, `/t`, `/now`, `/date` |
+| **BashApp** | 执行安全的bash命令 | `/bash <命令>`, `/cmd`, `/shell`, `/exec` |
+| **HistoryApp** | 查询对话历史消息 | `/history` |
+| **OpenCodeApp** | 通过飞书对话控制 OpenCode | `/opencode <子命令>`, `/oc`, `/code` |
+
+### 快速链接
+
+- **[完整使用指南 →](./APP_USAGE_GUIDE.md)**
+- **[应用开发指南 →](./APP_GUIDE.md)**
+
+### 关键使用场景
+
+**场景1：查询帮助信息**
+```
+/help
+```
+显示所有可用应用的命令列表和别名。
+
+**场景2：执行bash命令**
+```
+/bash ls -la
+```
+查看工作目录文件列表（仅限安全命令）。
+
+**场景3：使用OpenCode助手**
+```
+/opencode projects          # 1. 查看可用项目
+/opencode sessions feishu-backend  # 2. 查看项目会话
+/opencode sc ses_abc123     # 3. 绑定会话到话题
+/opencode chat 帮我写代码    # 4. 开始对话
+```
+
+---
+
 ## 📚 参考资料
 
 | 文档 | 用途 |
