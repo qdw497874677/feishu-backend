@@ -31,6 +31,7 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
     private static final String KEY_COMMAND_COUNT = "commandCount";
     private static final String KEY_SESSION_CREATED = "sessionCreatedAt";
     private static final String KEY_LAST_ACTIVE = "lastActiveAt";
+    private static final String KEY_EXPLICITLY_INITIALIZED = "explicitlyInitialized";
 
     public OpenCodeSessionGatewayImpl(TopicMappingGateway topicMappingGateway) {
         this.topicMappingGateway = topicMappingGateway;
@@ -153,5 +154,54 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
         topicMappingGateway.save(topicMetadata.save());
 
         log.info("保存元数据: topicId={}, metadata={}", topicId, metadata);
+    }
+
+    @Override
+    public boolean isExplicitlyInitialized(String topicId) {
+        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+
+        if (mappingOpt.isEmpty()) {
+            return false;
+        }
+
+        TopicMapping mapping = mappingOpt.get();
+        TopicMetadata metadata = TopicMetadata.of(mapping);
+
+        return metadata.getBoolean(KEY_EXPLICITLY_INITIALIZED).orElse(false);
+    }
+
+    @Override
+    public void setExplicitlyInitialized(String topicId) {
+        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+
+        if (mappingOpt.isEmpty()) {
+            log.warn("话题映射不存在，无法设置显式初始化: topicId={}", topicId);
+            return;
+        }
+
+        TopicMapping mapping = mappingOpt.get();
+        TopicMetadata metadata = TopicMetadata.of(mapping);
+        metadata.set(KEY_EXPLICITLY_INITIALIZED, "true");
+
+        topicMappingGateway.save(metadata.save());
+
+        log.info("设置话题为已显式初始化: topicId={}", topicId);
+    }
+
+    @Override
+    public void clearExplicitlyInitialized(String topicId) {
+        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+
+        if (mappingOpt.isEmpty()) {
+            return;
+        }
+
+        TopicMapping mapping = mappingOpt.get();
+        TopicMetadata metadata = TopicMetadata.of(mapping);
+        metadata.remove(KEY_EXPLICITLY_INITIALIZED);
+
+        topicMappingGateway.save(metadata.save());
+
+        log.info("清除话题的显式初始化状态: topicId={}", topicId);
     }
 }

@@ -64,4 +64,26 @@ public interface OpenCodeSessionGateway {
      * @param metadata 元数据对象
      */
     void saveMetadata(String topicId, OpenCodeMetadata metadata);
+
+    /**
+     * 检查话题是否已显式初始化
+     *
+     * @param topicId 话题 ID
+     * @return 如果已显式初始化返回 true，否则返回 false
+     */
+    boolean isExplicitlyInitialized(String topicId);
+
+    /**
+     * 设置话题为已显式初始化
+     *
+     * @param topicId 话题 ID
+     */
+    void setExplicitlyInitialized(String topicId);
+
+    /**
+     * 清除话题的显式初始化状态
+     *
+     * @param topicId 话题 ID
+     */
+    void clearExplicitlyInitialized(String topicId);
 }
