@@ -58,7 +58,7 @@ public class OpenCodeCommandHandler {
 
         if (state == TopicState.NON_TOPIC && !subCommand.equals("connect")
             && !subCommand.equals("help") && !subCommand.equals("projects")
-            && !subCommand.equals("reset")) {
+            && !subCommand.equals("p") && !subCommand.equals("reset")) {
             log.info("非话题环境且不是允许的命令，显示连接引导");
             return buildConnectGuide();
         }

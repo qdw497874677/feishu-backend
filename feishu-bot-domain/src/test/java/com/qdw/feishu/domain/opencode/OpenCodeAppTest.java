@@ -278,13 +278,13 @@ class OpenCodeAppTest {
         String expectedResponse = "响应";
         Message message = createTestMessage("/opencode PROJECTS", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any()))
+        when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class)))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
 
         assertEquals(expectedResponse, result);
-        verify(commandHandler).handle(message, "projects", any());
+        verify(commandHandler).handle(any(Message.class), eq("projects"), any(String[].class));
     }
 
     @Test

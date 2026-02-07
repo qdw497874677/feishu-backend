@@ -314,7 +314,105 @@ void should_returnDirectReply_when_modeIsDirect() {
 }
 ```
 
-### 6. 日志规范
+### 6. 测试质量保证 ⚠️ **重要**
+
+**核心原则：不要为了快速通过而降低测试质量**
+
+#### 6.1 高质量测试的标志
+
+✅ **必须做到**：
+- 验证具体返回值（使用 `assertEquals` 而非 `assertNotNull`）
+- 验证方法调用（使用 `verify()` 确认正确的方法被调用）
+- 验证错误消息格式（检查包含关键错误信息）
+- 模拟正确的测试场景（正确设置话题状态、初始化状态等）
+
+❌ **禁止行为**：
+- 仅检查 `assertNotNull(result)` - 这会让bug逃过检测
+- 仅检查 `assertTrue(result.contains("xxx"))` 当应该精确验证时
+- 省略 `verify()` 调用 - 无法确认正确的交互发生
+- 为了通过测试而简化断言
+
+#### 6.2 测试场景设置
+
+**OpenCode 应用的三种话题状态**：
+
+| 状态 | 条件 | 行为 |
+|------|------|------|
+| `NON_TOPIC` | `topicId == null` | 只允许 connect/help/projects/p/reset |
+| `UNINITIALIZED` | `topicId != null` 且无 sessionId | 显示初始化引导 |
+| `INITIALIZED` | 有 sessionId | 允许所有命令 |
+
+**正确模拟已初始化话题**：
+```java
+String topicId = "init-topic";
+when(sessionManager.getSessionId(topicId))
+    .thenReturn(Optional.of("ses_123"));
+when(sessionManager.isExplicitlyInitialized(topicId))
+    .thenReturn(true);  // chat命令需要此设置
+```
+
+#### 6.3 命令别名完整性检查
+
+**问题**：别名必须在所有相关检查中被包含
+
+**示例**：
+```java
+// ❌ 错误：只检查全称
+if (state == TopicState.NON_TOPIC && !subCommand.equals("projects")) {
+    return buildConnectGuide();
+}
+
+// ✅ 正确：检查全称和别名
+if (state == TopicState.NON_TOPIC && !subCommand.equals("projects")
+    && !subCommand.equals("p")) {
+    return buildConnectGuide();
+}
+```
+
+**检查清单**：
+- 白名单检查是否包含别名
+- 允许命令列表是否包含别名
+- 初始化命令列表是否包含别名
+
+#### 6.4 Mockito 匹配器使用规范
+
+**错误示例**（混合实际值和匹配器）：
+```java
+when(commandHandler.handle(eq(message), eq("projects"), any()))
+    .thenReturn(expectedResponse);
+```
+
+**正确示例**（统一使用匹配器）：
+```java
+when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class)))
+    .thenReturn(expectedResponse);
+```
+
+**规则**：
+- 要么全部使用匹配器：`any()`, `eq()`, `any(String[].class)`
+- 要么全部使用实际值
+- **禁止混合使用**
+
+#### 6.5 测试失败诊断流程
+
+当测试失败时：
+
+1. **查看实际返回值** - 理解实现的真实行为
+2. **检查实现逻辑** - 确认是测试问题还是实现bug
+3. **修复实现而非降低测试** - 如果是bug，修复代码
+4. **保持断言强度** - 使用精确的验证而非宽泛的检查
+
+**示例**：
+```java
+// ❌ 降低质量：为了通过而放宽断言
+assertTrue(result.contains("some") || result.contains("any"));
+
+// ✅ 保持质量：修复实现或调整测试场景
+assertEquals(expectedResult, result);
+verify(service).correctMethod(param);
+```
+
+### 7. 日志规范
 
 **级别使用**：
 | 级别 | 使用场景 | 示例 |

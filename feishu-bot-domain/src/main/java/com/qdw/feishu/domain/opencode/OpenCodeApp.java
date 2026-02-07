@@ -81,6 +81,13 @@ public class OpenCodeApp implements FishuAppI {
               /opencode chat 帮我写个排序函数
               /opencode new 重构登录模块
               /opencode chat 添加单元测试    # 在话题中继续对话
+
+            🚀 **快速开始**：
+
+              1. `/opencode projects` - 查看可用项目
+              2. `/opencode sessions <项目名>` - 查看项目会话
+              3. `/opencode sc <会话ID>` - 绑定会话到话题
+              4. `/opencode chat <问题>` - 开始对话
             """;
     }
 
