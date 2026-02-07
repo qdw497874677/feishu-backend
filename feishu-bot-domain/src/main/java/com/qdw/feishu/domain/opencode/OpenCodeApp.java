@@ -58,10 +58,10 @@ public class OpenCodeApp implements FishuAppI {
 
             🚀 **快速开始**（任选一种）
 
-              ⚡️ **方式1：话题外快速对话**（推荐，最简单）
-                `/opencode c 帮我写代码`
-                或 `/oc c 帮我写代码`
-                系统会在项目启动目录/workspace/{日期}/创建会话
+              ⚡️ **方式1：立即对话**（推荐，最简单）
+                `/opencode chatnow 帮我写代码`
+                或 `/oc cn 帮我写代码`
+                系统会自动创建会话并绑定到话题
 
               📋 **方式2：话题内继续对话**（已绑定话题）
                 `/opencode chat 继续优化`
@@ -73,32 +73,32 @@ public class OpenCodeApp implements FishuAppI {
                 3. `/opencode chat <问题>`
 
             📝 **对话命令**
-              `/opencode c <内容>`          - 快速对话（话题外，推荐）
-              `/opencode chat <内容>`       - 继续对话（话题内）
-              `/opencode new <内容>`        - 在默认路径创建新会话
-              `/opencode new <项目> <内容>`  - 在指定项目中创建新会话
+              `/opencode chatnow <内容>`       - 立即对话（自动创建并绑定会话，推荐）
+              `/opencode chat <内容>`         - 继续对话（话题内）
+              `/opencode new <内容>`          - 在默认路径创建新会话
+              `/opencode new <项目> <内容>`    - 在指定项目中创建新会话
 
             📁 **项目管理**
-              `/opencode projects`          - 查看项目列表
-              `/opencode sessions <项目名>`  - 查看项目的最近会话
+              `/opencode projects`           - 查看项目列表
+              `/opencode sessions <项目名>`   - 查看项目的最近会话
 
             🔧 **会话管理**
-              `/opencode session status`    - 查看当前会话信息
-              `/opencode session list`      - 查看所有会话
-              `/opencode sc <会话ID>`       - 绑定会话到话题（简写）
-              `/opencode reset`             - 重置话题（允许重新绑定）
+              `/opencode session status`     - 查看当前会话信息
+              `/opencode session list`       - 查看所有会话
+              `/opencode sc <会话ID>`        - 绑定会话到话题（简写）
+              `/opencode reset`              - 重置话题（允许重新绑定）
 
             ⚡️ **其他命令**
-              `/opencode commands`          - 查看所有可用斜杠命令
+              `/opencode commands`           - 查看所有可用斜杠命令
 
             💡 **使用场景**
 
               **话题外**（无 topicId）：
-              ✅ 允许：`/opencode c`, `/opencode help`, `/opencode projects`
+              ✅ 允许：`/opencode chatnow`, `/opencode help`, `/opencode projects`
               ❌ 禁止：`/opencode chat`, `/opencode session`, `/opencode sc`
 
               **话题未初始化**（有 topicId 但未绑定会话）：
-              ✅ 允许：`/opencode c`, `/opencode sc`, `/opencode sessions`, `/opencode reset`
+              ✅ 允许：`/opencode chatnow`, `/opencode sc`, `/opencode sessions`, `/opencode reset`
               ❌ 禁止：`/opencode chat`（需先绑定会话）
 
               **话题已初始化**（已绑定会话）：
@@ -106,9 +106,9 @@ public class OpenCodeApp implements FishuAppI {
 
             💡 **使用示例**
 
-              话题外快速对话：
-              `/oc c 帮我写个排序函数`
-              → 在 /root/workspace/feishu-backend/workspace/2026-02-07/ 创建会话
+              立即对话（自动绑定）：
+              `/oc cn 帮我写个排序函数`
+              → 创建会话 → 绑定话题 → 返回会话信息 + 对话结果
 
               话题内继续对话：
               `/opencode chat 添加单元测试`
@@ -120,7 +120,7 @@ public class OpenCodeApp implements FishuAppI {
 
             💡 **提示**
 
-              - `c` 命令用于话题外快速对话，自动创建日期文件夹
+              - `chatnow` 命令用于立即对话，自动创建并绑定会话到话题
               - `chat` 命令用于话题内继续对话
               - 默认路径：项目启动目录/workspace/{YYYY-MM-DD}/
               - 在已绑定的话题中可直接输入问题（无需前缀）
@@ -142,13 +142,13 @@ public class OpenCodeApp implements FishuAppI {
         return switch (state) {
             case NON_TOPIC -> CommandWhitelist.builder()
                 // 话题外允许的命令：基础命令 + 快速对话
-                .add("help", "connect", "projects", "p", "c")  // c = 快速对话（话题外）
+                .add("help", "connect", "projects", "p", "chatnow", "cn")  // chatnow = chat now（话题外快速对话）
                 .build();
             case UNINITIALIZED -> CommandWhitelist.builder()
                 // 话题未初始化：允许初始化相关命令 + 快速对话
                 .add("help", "connect", "projects", "p",           // 基础命令
                      "sessions", "s", "session", "sc",            // 会话管理
-                     "reset", "new", "commands", "c")              // 重置、新建、命令列表、快速对话
+                     "reset", "new", "commands", "chatnow", "cn")  // 重置、新建、命令列表、快速对话
                 .build();
             case INITIALIZED -> CommandWhitelist.all();  // 话题已初始化：允许所有命令
         };

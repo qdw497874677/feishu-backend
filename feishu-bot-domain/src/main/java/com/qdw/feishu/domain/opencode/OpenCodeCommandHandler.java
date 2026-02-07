@@ -78,7 +78,7 @@ public class OpenCodeCommandHandler {
             case "help" -> null;
             case "connect" -> handleConnect();
             case "new" -> handleNewCommand(parts, message);
-            case "chat", "c" -> handleChatCommand(parts, message);  // c 是 chat 的简写
+            case "chat", "chatnow", "cn" -> handleChatCommand(parts, message);  // chatnow = chat now, cn = chat now 的简写
             case "sessions", "s" -> sessionManager.handleSessionsCommand(parts);
             case "session", "sc" -> handleSessionCommand(parts, message);
             case "projects", "p" -> openCodeGateway.listProjects();
@@ -275,50 +275,68 @@ public class OpenCodeCommandHandler {
     }
 
     /**
-     * 处理 chat 命令
-     *
-     * 智能行为：
-     * - 话题未初始化 → 自动创建新会话并绑定
-     * - 话题已初始化 → 使用现有会话继续对话
-     */
-    private String handleChatCommand(String[] parts, Message message) {
+      * 处理 chat 命令
+      *
+      * 支持三种模式：
+      * - chatnow/cn：立即对话（自动创建并绑定会话）
+      * - chat（话题内）：继续对话
+      *
+      * 智能行为：
+      * - 话题未初始化 + chatnow/cn → 自动创建新会话并绑定
+      * - 话题未初始化 + chat → 显示错误提示
+      * - 话题已初始化 + chatnow → 自动创建新会话并绑定
+      * - 话题已初始化 + chat → 使用现有会话继续对话
+      */
+     private String handleChatCommand(String[] parts, Message message) {
         String topicId = message.getTopicId();
         boolean inTopic = topicId != null && !topicId.isEmpty();
+        String subCommand = parts.length > 1 ? parts[1].toLowerCase() : "chat";
 
-        if (parts.length < 3) {
-            if (inTopic) {
-                return sessionManager.getSessionId(topicId)
-                    .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
-                    .orElse(buildChatQuickStart());
-            }
-            return buildChatQuickStart();
-        }
+        // 检测是否是 chatnow 命令（包括别名 cn）
+        boolean isChatNow = "chatnow".equals(subCommand) || "cn".equals(subCommand);
 
-        String prompt = extractChatContent(parts, message);
+         if (parts.length < 3) {
+             if (inTopic) {
+                 return sessionManager.getSessionId(topicId)
+                     .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
+                     .orElse(buildChatQuickStart());
+             }
+             return buildChatQuickStart();
+         }
 
-        // 智能判断：话题未初始化时自动创建新会话
-        if (inTopic && !sessionManager.isTopicInitialized(message)) {
-            log.info("话题未初始化，自动创建新会话: topicId={}", topicId);
-            return taskExecutor.executeWithNewSession(message, prompt, null);
-        }
+         String prompt = extractChatContent(parts, message);
 
-        // 已初始化，正常执行
-        return taskExecutor.executeWithAutoSession(message, prompt);
-    }
+         // chatnow/cn：立即对话模式（所有场景都创建新会话）
+         if (isChatNow) {
+             log.info("立即对话模式：自动创建新会话并绑定到话题");
+             return taskExecutor.executeWithNewSession(message, prompt, null);
+         }
+
+         // chat 命令：话题内继续对话模式
+         // 智能判断：话题未初始化时自动创建新会话
+         if (inTopic && !sessionManager.isTopicInitialized(message)) {
+             log.info("话题未初始化，自动创建新会话: topicId={}", topicId);
+             return taskExecutor.executeWithNewSession(message, prompt, null);
+         }
+
+         // 已初始化，正常执行
+         return taskExecutor.executeWithAutoSession(message, prompt);
+     }
 
     /**
-     * 构建 chat 命令的快速开始提示
-     */
-    private String buildChatQuickStart() {
-        return "💬 **OpenCode 对话**\n\n" +
-               "🚀 **快速开始**\n" +
-               "  `/opencode chat 帮我写一个排序函数`\n\n" +
-               "✅ **系统会自动**\n" +
-               "  • 创建新会话\n" +
-               "  • 绑定到当前话题\n" +
-               "  • 开始对话\n\n" +
-               "💡 **提示**：首次使用会自动创建会话，无需手动配置";
-    }
+      * 构建 chat 命令的快速开始提示
+      */
+     private String buildChatQuickStart() {
+         return "💬 **OpenCode 对话**\n\n" +
+                "🚀 **快速开始**\n" +
+                "  `/opencode chatnow 帮我写一个排序函数`\n" +
+                "  或 `/opencode cn 帮我写一个排序函数`\n\n" +
+                "✅ **系统会自动**\n" +
+                "  • 创建新会话\n" +
+                "  • 绑定到当前话题\n" +
+                "  • 开始对话\n\n" +
+                "💡 **提示**：首次使用会话会自动创建并绑定，无需手动配置";
+     }
 
     private String buildInitializationRequiredMessage() {
         return "❌ **话题未初始化**\n\n" +
