@@ -59,3 +59,46 @@
 2. **OpenCodeConstants 考虑提取为独立类**：
    - 当前作为 OpenCodeSessionManager 的内部类
    - 如果需要在其他模块使用，应该提取为独立的文件
+
+## 测试修复遇到的问题（Phase 2.3）
+
+### 编译环境问题
+- 发现测试代码和生产代码存在不同步
+- 导致测试编译时找不到某些类（如 `SendResult`）
+- 需要编译整个项目确保所有模块同步
+
+### 已完成的修复
+1. **OpenCodeAppTest.getCommandWhitelist_uninitialized_excludesChatAndNew**
+   - 修复：从 UNINITIALIZED 白名单移除 "chat" 和 "new"
+   - 状态：✅ 测试通过
+
+2. **OpenCodeCommandHandlerTest** 多个 mock 问题
+   - 修复：为受限命令添加 mock override（`thenReturn(ValidationResult.restricted())`）
+   - 影响：`handleChat_nonTopic`, `handleSessions_*`, `handle_nonTopicWithNotAllowedCommand` 等
+   - 状态：部分修复，剩余问题需进一步调试
+
+3. **OpenCodeSessionManager 缺少 app 参数**
+   - 修复：添加 `FishuAppI app` 参数到构造函数
+   - 修复了 `isTopicInitialized` 调用缺失 app 的问题
+   - 这是一个**生产代码的 bug**，测试修复后需要重新编译
+
+### 阻塞情况
+- 测试无法编译到最新版本的生产代码
+- 需要运行 `mvn clean compile` 而不是只编译单个模块
+- 或者在 `pom.xml` 中确保测试和主代码同步编译
+
+### 技术债务
+1. **测试框架依赖**：全局 `@BeforeEach` mock 设置导致测试间干扰
+   - 建议：使用 `@TestInstanceSetup` 或 JUnit 5 的参数化测试
+
+2. **版本同步**：需要确保测试和主代码总是同步编译
+
+### 当前状态
+- 代码修复：已提交
+- 测试状态：运行中（遇到编译问题）
+- 计划进度：Task 2.3 进行中，其他任务待定
+
+### 下一步
+- 需要解决编译同步问题，才能完成测试验证
+- 考虑先完成其他 Phase 2 任务，或记录当前情况暂停此任务
+EOF
