@@ -51,19 +51,7 @@ public class OpenCodeCommandHandler {
         TopicState state = detectTopicState(message);
         log.info("话题状态: {}, subCommand={}", state.getDescription(), subCommand);
 
-        if (state == TopicState.UNINITIALIZED && !isInitializationCommand(subCommand) && !subCommand.equals("chat")) {
-            log.info("话题未初始化，显示初始化引导");
-            return buildInitializationGuide();
-        }
-
-        if (state == TopicState.NON_TOPIC && !subCommand.equals("connect")
-            && !subCommand.equals("help") && !subCommand.equals("projects")
-            && !subCommand.equals("p") && !subCommand.equals("reset")) {
-            log.info("非话题环境且不是允许的命令，显示连接引导");
-            return buildConnectGuide();
-        }
-
-        // 验证命令是否允许
+        // 验证命令是否允许（通过 CommandWhitelist）
         CommandWhitelist whitelist = getCommandWhitelist(state);
         if (whitelist != null) {
             ValidationResult result = commandValidator.validateCommand(subCommand, state, whitelist);
