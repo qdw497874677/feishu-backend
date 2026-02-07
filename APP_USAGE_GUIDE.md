@@ -358,12 +358,18 @@ drwxr-xr-x  20 root root 4096...
 - 权限：仅话题已初始化时可用
 
 **创建新会话**
+
+**话题已绑定（在当前项目创建新会话）**：
 ```
 /opencode new <提示词>
 ```
-在默认路径创建新会话（同 `chatnow` 命令）
+示例：
+```
+/opencode new 优化算法
+```
+→ 在当前项目创建新会话，更换话题绑定
 
-**在指定项目中创建新会话**
+**指定项目（所有场景可用）**：
 ```
 /opencode new <项目名称> <提示词>
 ```
@@ -372,6 +378,10 @@ drwxr-xr-x  20 root root 4096...
 /opencode new feishu-backend 重构登录模块
 ```
 在 `/root/workspace/feishu-backend/` 路径创建会话
+
+**话题未绑定时**：
+- ❌ 不允许：`/opencode new <提示词>`（必须指定项目）
+- ✅ 允许：`/opencode new <项目> <提示词>`
 
 #### 5.3 项目管理
 

@@ -236,15 +236,23 @@ public class OpenCodeCommandHandler {
     }
 
     /**
-     * 处理 new 命令
-     *
-     * 支持两种格式：
-     * - `/opencode new <prompt>` - 使用默认路径创建会话
-     * - `/opencode new <project> <prompt>` - 在指定项目中创建会话
-     */
-    private String handleNewCommand(String[] parts, Message message) {
+      * 处理 new 命令
+      *
+      * 支持两种格式：
+      * - `/opencode new <prompt>` - 话题已绑定时使用当前项目
+      * - `/opencode new <project> <prompt>` - 指定项目创建会话
+      *
+      * 智能行为：
+      * - 话题已绑定（INITIALIZED）：在当前项目创建新会话，更换话题绑定
+      * - 话题未绑定（UNINITIALIZED/NON_TOPIC）：必须指定项目
+      */
+     private String handleNewCommand(String[] parts, Message message) {
+        String topicId = message.getTopicId();
+        boolean inTopic = topicId != null && !topicId.isEmpty();
+        boolean isInitialized = inTopic && sessionManager.isTopicInitialized(message);
+
         if (parts.length < 3) {
-            return buildNewCommandUsage();
+            return buildNewCommandUsage(isInitialized);
         }
 
         // 判断格式：/opencode new <prompt> 还是 /opencode new <project> <prompt>
@@ -258,20 +266,46 @@ public class OpenCodeCommandHandler {
         } else {
             // /opencode new <prompt>
             prompt = parts[2].trim();
+
+            // 话题已绑定：使用当前项目
+            if (isInitialized) {
+                log.info("话题已绑定，将在当前项目创建新会话: topicId={}", topicId);
+                // project 留空，让 OpenCode 使用默认行为
+            } else {
+                // 话题未绑定：必须指定项目
+                log.warn("话题未绑定，必须指定项目名称");
+                return buildNewCommandUsage(false);
+            }
         }
 
         return taskExecutor.executeWithNewSession(message, prompt, project);
     }
 
     private String buildNewCommandUsage() {
+        return buildNewCommandUsage(false);
+    }
+
+    private String buildNewCommandUsage(boolean isTopicInitialized) {
+        if (isTopicInitialized) {
+            // 话题已绑定的使用说明
+            return "❌ **命令格式错误**\n\n" +
+                   "💡 **当前状态：话题已绑定**\n\n" +
+                   "✅ **使用方式（在当前项目创建新会话）**：\n" +
+                   "  `/opencode new <提示词>`\n" +
+                   "  示例：`/opencode new 重构登录模块`\n\n" +
+                   "🔧 **可选：指定其他项目**：\n" +
+                   "  `/opencode new <项目名称> <提示词>`\n" +
+                   "  示例：`/opencode new ai-study 优化算法`\n\n" +
+                   "💡 **提示**：不指定项目时，将在当前绑定的项目下创建新会话并更换话题绑定";
+        }
+
+        // 话题未绑定的使用说明
         return "❌ **命令格式错误**\n\n" +
-               "💡 **使用方式**\n\n" +
-               "方式1 - 使用默认路径：\n" +
-               "  `/opencode new <提示词>`\n" +
-               "  示例：`/opencode new 帮我写个排序函数`\n\n" +
-               "方式2 - 在指定项目中：\n" +
+               "💡 **当前状态：话题未绑定**\n\n" +
+               "❌ **必须指定项目**：\n" +
                "  `/opencode new <项目名称> <提示词>`\n" +
-               "  示例：`/opencode new feishu-backend 重构登录模块`";
+               "  示例：`/opencode new feishu-backend 重构登录模块`\n\n" +
+               "💡 **提示**：话题未绑定时，必须明确指定在哪个项目下创建会话";
     }
 
     /**

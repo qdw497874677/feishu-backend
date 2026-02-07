@@ -75,8 +75,8 @@ public class OpenCodeApp implements FishuAppI {
             📝 **对话命令**
               `/opencode chatnow <内容>`       - 立即对话（自动创建并绑定会话，推荐）
               `/opencode chat <内容>`         - 继续对话（话题内）
-              `/opencode new <内容>`          - 在默认路径创建新会话
-              `/opencode new <项目> <内容>`    - 在指定项目中创建新会话
+              `/opencode new <内容>`          - 在当前项目创建新会话（话题已绑定）
+              `/opencode new <项目> <内容>`    - 在指定项目创建新会话（所有场景）
 
             📁 **项目管理**
               `/opencode projects`           - 查看项目列表
@@ -117,6 +117,10 @@ public class OpenCodeApp implements FishuAppI {
               指定项目：
               `/opencode new feishu-backend 重构登录模块`
               → 在 /root/workspace/feishu-backend/ 创建会话
+
+              话题已绑定，在当前项目创建新会话：
+              `/opencode new 优化算法`
+              → 在当前项目创建新会话并更换话题绑定
 
             💡 **提示**
 
