@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+
 /**
  * OpenCode 任务执行器
  *
@@ -100,14 +102,23 @@ public class OpenCodeTaskExecutor {
      */
     private String enhancePromptWithWorkDirectory(String prompt, String project) {
         if (project == null || project.isEmpty()) {
-            // 使用默认路径：/workspace/{YYYY-MM-DD}/
-            String date = java.time.LocalDate.now().toString();
-            return String.format("[工作目录: /workspace/%s/]\n\n%s", date, prompt);
+            // 默认路径：项目根目录/workspace/{YYYY-MM-DD}/
+            String projectRoot = getProjectRoot();
+            String date = LocalDate.now().toString();
+            String workDir = projectRoot + "/workspace/" + date + "/";
+            return String.format("[工作目录: %s]\n\n%s", workDir, prompt);
         }
 
-        // 使用项目路径（这里假设项目名称就是路径，后续可以优化为查询项目列表）
-        // 为了简化，假设项目名称直接对应路径
+        // 指定项目路径
         return String.format("[工作目录: /root/workspace/%s]\n\n%s", project, prompt);
+    }
+
+    /**
+     * 获取项目根目录
+     * 使用系统属性 user.dir
+     */
+    private String getProjectRoot() {
+        return System.getProperty("user.dir", "/root/workspace/feishu-backend");
     }
 
     /**

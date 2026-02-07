@@ -78,7 +78,7 @@ public class OpenCodeCommandHandler {
             case "help" -> null;
             case "connect" -> handleConnect();
             case "new" -> handleNewCommand(parts, message);
-            case "chat" -> handleChatCommand(parts, message);
+            case "chat", "c" -> handleChatCommand(parts, message);  // c 是 chat 的简写
             case "sessions", "s" -> sessionManager.handleSessionsCommand(parts);
             case "session", "sc" -> handleSessionCommand(parts, message);
             case "projects", "p" -> openCodeGateway.listProjects();

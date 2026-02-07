@@ -35,6 +35,8 @@ opencode:
   username: ${OPencode_USERNAME:opencode}
   # HTTP 基本认证密码（通过环境变量设置）
   password: ${OPencode_SERVER_PASSWORD:}
+  # 项目根目录（默认: user.dir，即项目启动目录）
+  project-root: ${OPencode_PROJECT_ROOT:}
   # 连接超时时间（秒）
   connect-timeout: 10
   # 请求超时时间（秒）

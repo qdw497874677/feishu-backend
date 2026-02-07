@@ -35,6 +35,12 @@ public class OpenCodeProperties {
     private String password;
 
     /**
+     * 项目根目录
+     * 默认: 空（使用系统属性 user.dir）
+     */
+    private String projectRoot;
+
+    /**
      * 连接超时时间（秒）
      */
     private int connectTimeout = 10;

@@ -58,17 +58,23 @@ public class OpenCodeApp implements FishuAppI {
 
             🚀 **快速开始**（任选一种）
 
-              ⚡️ **方式1：直接对话**（推荐，简单）
-                `/opencode chat 帮我写代码`
-                系统会自动创建会话并绑定到话题
+              ⚡️ **方式1：话题外快速对话**（推荐，最简单）
+                `/opencode c 帮我写代码`
+                或 `/oc c 帮我写代码`
+                系统会在项目启动目录/workspace/{日期}/创建会话
 
-              📋 **方式2：选择现有会话**（高级，精细控制）
+              📋 **方式2：话题内继续对话**（已绑定话题）
+                `/opencode chat 继续优化`
+                或直接输入问题（无需命令前缀）
+
+              🔧 **方式3：选择现有会话**（高级，精细控制）
                 1. `/opencode sessions feishu-backend`
                 2. `/opencode sc <会话ID>`
                 3. `/opencode chat <问题>`
 
             📝 **对话命令**
-              `/opencode chat <内容>`       - 发送对话（推荐，自动创建会话）
+              `/opencode chat <内容>`       - 发送对话（话题内，使用现有会话）
+              `/opencode c <内容>`          - 快速对话（话题外，创建新会话，推荐）
               `/opencode new <内容>`        - 在默认路径创建新会话
               `/opencode new <项目> <内容>`  - 在指定项目中创建新会话
 
@@ -87,19 +93,23 @@ public class OpenCodeApp implements FishuAppI {
 
             💡 **使用示例**
 
-              快速开始：
-              `/opencode chat 帮我写个排序函数`
+              话题外快速对话：
+              `/oc c 帮我写个排序函数`
+              → 在 /root/workspace/feishu-backend/workspace/2026-02-07/ 创建会话
+
+              话题内继续对话：
+              `/opencode chat 添加单元测试`
+              或直接：`添加单元测试`
 
               指定项目：
               `/opencode new feishu-backend 重构登录模块`
-
-              继续对话（话题中）：
-              `帮我添加单元测试`（无需命令前缀）
+              → 在 /root/workspace/feishu-backend/ 创建会话
 
             💡 **提示**
 
-              - 首次使用 chat 会自动创建会话，无需手动配置
-              - 默认路径格式：/workspace/{YYYY-MM-DD}/
+              - `c` 命令用于话题外快速对话，自动创建日期文件夹
+              - `chat` 命令用于话题内继续对话
+              - 默认路径：项目启动目录/workspace/{YYYY-MM-DD}/
               - 在已绑定的话题中可直接输入问题（无需前缀）
             """;
     }
