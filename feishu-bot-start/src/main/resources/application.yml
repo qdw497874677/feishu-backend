@@ -5,8 +5,10 @@ server:
 
 # 飞书配置
 feishu:
-  appid: ${FEISHU_APPID}
-  appsecret: ${FEISHU_APPSECRET}
+  # 飞书应用 ID
+  app-id: ${FEISHU_APPID:cli_a8f66e3df8fb100d}
+  # 飞书应用 Secret
+  app-secret: ${FEISHU_APPSECRET:CFVrKX1w00ypHEqT1vInwdeKznwmYWpn}
   encrypt-key: ${FEISHU_ENCRYPT_KEY:your_encrypt_key}
   verification-token: ${FEISHU_VERIFICATION_TOKEN:your_verification_token}
   mode: listener

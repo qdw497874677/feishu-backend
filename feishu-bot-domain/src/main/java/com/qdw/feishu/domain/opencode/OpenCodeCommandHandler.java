@@ -169,13 +169,15 @@ public class OpenCodeCommandHandler {
 
     /**
      * 获取命令白名单
+     *
+     * 注意：此方法必须与 OpenCodeApp.getCommandWhitelist() 保持一致
      */
     private CommandWhitelist getCommandWhitelist(TopicState state) {
         return switch (state) {
             case NON_TOPIC -> CommandWhitelist.builder()
-                .add("connect", "help", "projects")
+                .add("help", "connect", "projects", "p", "chatnow", "cn")
                 .build();
-            case UNINITIALIZED -> CommandWhitelist.allExcept("chat", "new");
+            case UNINITIALIZED -> CommandWhitelist.allExcept("chat");
             case INITIALIZED -> CommandWhitelist.all();
         };
     }
@@ -309,13 +311,16 @@ public class OpenCodeCommandHandler {
       * - 话题已初始化 + chatnow → 自动创建新会话并绑定
       * - 话题已初始化 + chat → 使用现有会话继续对话
       */
-     private String handleChatCommand(String[] parts, Message message) {
-        String topicId = message.getTopicId();
-        boolean inTopic = topicId != null && !topicId.isEmpty();
-        String subCommand = parts.length > 1 ? parts[1].toLowerCase() : "chat";
+      private String handleChatCommand(String[] parts, Message message) {
+         String topicId = message.getTopicId();
+         boolean inTopic = topicId != null && !topicId.isEmpty();
+         String subCommand = parts.length > 1 ? parts[1].toLowerCase() : "chat";
 
-        // 检测是否是 chatnow 命令（包括别名 cn）
-        boolean isChatNow = "chatnow".equals(subCommand) || "cn".equals(subCommand);
+         boolean isChatNow = "chatnow".equals(subCommand) || "cn".equals(subCommand);
+
+         if (isChatNow) {
+             return handleChatNowCommand(message);
+         }
 
          if (parts.length < 3) {
              if (inTopic) {
@@ -328,21 +333,59 @@ public class OpenCodeCommandHandler {
 
          String prompt = extractChatContent(parts, message);
 
-         // chatnow/cn：立即对话模式（所有场景都创建新会话）
-         if (isChatNow) {
-             log.info("立即对话模式：自动创建新会话并绑定到话题");
-             return taskExecutor.executeWithNewSession(message, prompt, null);
-         }
-
-         // chat 命令：话题内继续对话模式
-         // 智能判断：话题未初始化时自动创建新会话
          if (inTopic && !sessionManager.isTopicInitialized(message)) {
              log.info("话题未初始化，自动创建新会话: topicId={}", topicId);
              return taskExecutor.executeWithNewSession(message, prompt, null);
          }
 
-         // 已初始化，正常执行
          return taskExecutor.executeWithAutoSession(message, prompt);
+     }
+
+     private String handleChatNowCommand(Message message) {
+         String topicId = message.getTopicId();
+         boolean inTopic = topicId != null && !topicId.isEmpty();
+
+         if (inTopic && sessionManager.isTopicInitialized(message)) {
+             Optional<String> currentSessionId = sessionManager.getSessionId(topicId);
+             if (currentSessionId.isPresent()) {
+                 return buildSessionInitializedInfo(topicId, currentSessionId.get());
+             }
+         }
+
+         log.info("cn 命令：创建新会话并绑定到话题");
+         sessionManager.clearSession(topicId);
+
+         try {
+             String result = taskExecutor.createSessionOnly(message);
+             Optional<String> newSessionId = sessionManager.getSessionId(message.getTopicId());
+             if (newSessionId.isPresent()) {
+                 return buildSessionInitializedInfo(message.getTopicId(), newSessionId.get());
+             }
+             return result;
+         } catch (Exception e) {
+             log.error("创建会话失败", e);
+             return "❌ 创建会话失败: " + e.getMessage();
+         }
+     }
+
+     private String buildSessionInitializedInfo(String topicId, String sessionId) {
+         StringBuilder response = new StringBuilder();
+
+         response.append("✅ **会话已创建并绑定到话题**\n\n");
+         response.append("📋 **会话信息**\n");
+         response.append("  🆔 Session ID: `").append(sessionId).append("`\n");
+         response.append("  💬 话题 ID: `").append(topicId).append("`\n");
+         response.append("  ✅ 状态: 已绑定\n\n");
+
+         response.append("💡 **开始对话**\n");
+         response.append("  在当前话题中发送：\n");
+         response.append("  `chat <你的问题>`\n");
+         response.append("  或直接输入问题\n\n");
+
+         response.append("📁 **默认工作目录**\n");
+         response.append("  `/root/workspace/feishu-backend/workspace/").append(java.time.LocalDate.now()).append("/`\n\n");
+
+         return response.toString();
      }
 
     /**

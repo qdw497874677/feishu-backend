@@ -79,18 +79,37 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
         return sendMessageSync(sessionId, prompt, timeoutSeconds, true);
     }
 
+    @Override
+    public String createSession() throws Exception {
+        return createSession(null, null);
+    }
+
+    @Override
+    public String createSession(String initialDirectory) throws Exception {
+        return createSession(null, initialDirectory);
+    }
+
     /**
-      * 创建新会话
+      * 创建新会话（支持指定父会话和工作目录）
+      * 注意：directory 参数使用 URL 查询参数传递，不是请求体字段
       */
-    private String createSession(String parentID) {
+    private String createSession(String parentID, String initialDirectory) {
         return executeWithRetry("createSession", () -> {
             try {
-                String body = parentID != null
-                    ? String.format("{\"parentID\":\"%s\"}", parentID)
-                    : "{}";
+                String url = properties.getServerUrl() + "/session";
+                if (initialDirectory != null && !initialDirectory.isEmpty()) {
+                    url += "?directory=" + URLEncoder.encode(initialDirectory, StandardCharsets.UTF_8);
+                }
+
+                String body;
+                if (parentID != null && !parentID.isEmpty()) {
+                    body = String.format("{\"parentID\":\"%s\"}", escapeJson(parentID));
+                } else {
+                    body = "{}";
+                }
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(properties.getServerUrl() + "/session"))
+                        .uri(URI.create(url))
                         .header("Content-Type", "application/json; charset=utf-8")
                         .header("Authorization", getAuthHeader())
                         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
@@ -103,7 +122,7 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
                     JsonNode json = objectMapper.readTree(response.body());
                     if (json.has("id")) {
                         String sessionId = json.get("id").asText();
-                        log.info("创建会话成功: {}", sessionId);
+                        log.info("创建会话成功: {}, directory={}", sessionId, initialDirectory);
                         return sessionId;
                     }
                 }

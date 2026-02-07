@@ -8,13 +8,20 @@ import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
-/**
- * OpenCode 应用常量
- */
-final class OpenCodeConstants {
-    
-    private OpenCodeConstants() {
-        // 防止实例化
+@Slf4j
+@Component
+public class OpenCodeSessionManager {
+
+    private final OpenCodeGateway openCodeGateway;
+    private final OpenCodeSessionGateway sessionGateway;
+    private final FishuAppI app;
+
+    public OpenCodeSessionManager(OpenCodeGateway openCodeGateway,
+                                   OpenCodeSessionGateway sessionGateway,
+                                   FishuAppI app) {
+        this.openCodeGateway = openCodeGateway;
+        this.sessionGateway = sessionGateway;
+        this.app = app;
     }
 
     /**

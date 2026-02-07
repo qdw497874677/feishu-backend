@@ -6,6 +6,7 @@ import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.exception.MessageSysException;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
+import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
@@ -16,6 +17,8 @@ import com.qdw.feishu.domain.router.AppRouter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Slf4j
 @Service
 public class BotMessageService {
@@ -25,17 +28,20 @@ public class BotMessageService {
     private final AppRegistry appRegistry;
     private final TopicMappingGateway topicMappingGateway;
     private final ReplyStrategyFactory replyStrategyFactory;
+    private final OpenCodeSessionGateway sessionGateway;
 
     public BotMessageService(FeishuGateway feishuGateway,
                             AppRouter appRouter,
                             AppRegistry appRegistry,
                             TopicMappingGateway topicMappingGateway,
-                            ReplyStrategyFactory replyStrategyFactory) {
+                            ReplyStrategyFactory replyStrategyFactory,
+                            OpenCodeSessionGateway sessionGateway) {
         this.feishuGateway = feishuGateway;
         this.appRouter = appRouter;
         this.appRegistry = appRegistry;
         this.topicMappingGateway = topicMappingGateway;
         this.replyStrategyFactory = replyStrategyFactory;
+        this.sessionGateway = sessionGateway;
     }
 
     private String extractAppId(String content) {
@@ -208,12 +214,28 @@ public class BotMessageService {
                 log.info("发送回复成功: topicId={}", result.getThreadId());
 
                 String actualThreadId = result.getThreadId();
-                // 只要返回了 threadId，就应该保存话题映射（无论哪种回复模式）
                 if (actualThreadId != null && !actualThreadId.isEmpty()) {
                     log.info("获取到飞书返回的 threadId: {}", actualThreadId);
-                    TopicMapping mapping = new TopicMapping(actualThreadId, app.getAppId());
+
+                    Optional<TopicMapping> existingMapping = topicMappingGateway.findByTopicId(actualThreadId);
+
+                    TopicMapping mapping;
+                    if (existingMapping.isPresent()) {
+                        TopicMapping old = existingMapping.get();
+                        mapping = new TopicMapping(old.getTopicId(), old.getAppId(), old.getMetadata());
+                        mapping.setLastActiveAt(System.currentTimeMillis());
+                        log.debug("话题映射已存在，保留 metadata: topicId={}", actualThreadId);
+                    } else {
+                        mapping = new TopicMapping(actualThreadId, app.getAppId());
+                        log.debug("创建新话题映射: topicId={}", actualThreadId);
+                    }
+
                     topicMappingGateway.save(mapping);
                     log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
+
+                    if (app.getAppId().equals("opencode") && replyContent.contains("Session ID: `")) {
+                        extractAndSaveSessionId(replyContent, actualThreadId);
+                    }
                 }
             } else {
                 log.error("发送回复失败: error={}", result.getErrorMessage());
@@ -230,6 +252,29 @@ public class BotMessageService {
         } catch (Exception e) {
             log.error("系统异常: 消息处理失败", e);
             throw new MessageSysException("MESSAGE_HANDLE_FAILED", "消息处理失败", e);
+        }
+    }
+
+    private void extractAndSaveSessionId(String replyContent, String topicId) {
+        try {
+            int startIndex = replyContent.indexOf("Session ID: `");
+            if (startIndex == -1) {
+                return;
+            }
+
+            startIndex += "Session ID: `".length();
+            int endIndex = replyContent.indexOf("`", startIndex);
+            if (endIndex == -1) {
+                return;
+            }
+
+            String sessionId = replyContent.substring(startIndex, endIndex);
+            log.info("从回复中提取到 sessionID: {}, topicId: {}", sessionId, topicId);
+
+            sessionGateway.saveSession(topicId, sessionId);
+            log.info("OpenCode 会话已自动绑定到话题: topicId={}, sessionId={}", topicId, sessionId);
+        } catch (Exception e) {
+            log.error("提取或保存 sessionID 失败", e);
         }
     }
 }

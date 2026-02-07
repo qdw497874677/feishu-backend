@@ -149,10 +149,10 @@ public class OpenCodeApp implements FishuAppI {
                 .add("help", "connect", "projects", "p", "chatnow", "cn")  // chatnow = chat now（话题外快速对话）
                 .build();
             case UNINITIALIZED -> CommandWhitelist.builder()
-                // 话题未初始化：允许初始化相关命令 + 快速对话
+                // 话题未初始化：允许初始化相关命令
                 .add("help", "connect", "projects", "p",           // 基础命令
                      "sessions", "s", "session", "sc",            // 会话管理
-                     "reset", "new", "commands", "chatnow", "cn")  // 重置、新建、命令列表、快速对话
+                     "reset", "commands", "chatnow", "cn")       // 重置、命令列表、快速对话
                 .build();
             case INITIALIZED -> CommandWhitelist.all();  // 话题已初始化：允许所有命令
         };
