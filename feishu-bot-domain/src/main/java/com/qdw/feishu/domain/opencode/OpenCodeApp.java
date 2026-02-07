@@ -54,40 +54,53 @@ public class OpenCodeApp implements FishuAppI {
     @Override
     public String getHelp() {
         return """
-            🤖 **OpenCode 助手** - 支持多轮对话
+            🤖 **OpenCode 助手** - AI代码助手，支持多轮对话
 
-            📝 **对话命令**：
-              `/opencode chat <内容>`       - 发送对话（推荐）
-              `/opencode new <内容>`        - 创建新会话并对话
+            🚀 **快速开始**（任选一种）
 
-            📁 **项目管理**：
-              `/opencode projects`          - 查看近期项目列表
+              ⚡️ **方式1：直接对话**（推荐，简单）
+                `/opencode chat 帮我写代码`
+                系统会自动创建会话并绑定到话题
 
-            ⚡️ **命令列表**：
-              `/opencode commands`          - 查看所有可用斜杠命令
+              📋 **方式2：选择现有会话**（高级，精细控制）
+                1. `/opencode sessions feishu-backend`
+                2. `/opencode sc <会话ID>`
+                3. `/opencode chat <问题>`
 
-            🔧 **会话管理**：
+            📝 **对话命令**
+              `/opencode chat <内容>`       - 发送对话（推荐，自动创建会话）
+              `/opencode new <内容>`        - 在默认路径创建新会话
+              `/opencode new <项目> <内容>`  - 在指定项目中创建新会话
+
+            📁 **项目管理**
+              `/opencode projects`          - 查看项目列表
+              `/opencode sessions <项目名>`  - 查看项目的最近会话
+
+            🔧 **会话管理**
               `/opencode session status`    - 查看当前会话信息
               `/opencode session list`      - 查看所有会话
-              `/opencode session continue <id>` - 继续指定会话
+              `/opencode sc <会话ID>`       - 绑定会话到话题（简写）
+              `/opencode reset`             - 重置话题（允许重新绑定）
 
-            💡 **使用提示**：
+            ⚡️ **其他命令**
+              `/opencode commands`          - 查看所有可用斜杠命令
 
-              在已绑定的话题中，可以直接输入内容（无需 `/opencode` 前缀）
-              在非绑定话题中，推荐使用 `/opencode chat <内容>` 明确表示对话
+            💡 **使用示例**
 
-            💡 **使用示例**：
+              快速开始：
+              `/opencode chat 帮我写个排序函数`
 
-              /opencode chat 帮我写个排序函数
-              /opencode new 重构登录模块
-              /opencode chat 添加单元测试    # 在话题中继续对话
+              指定项目：
+              `/opencode new feishu-backend 重构登录模块`
 
-            🚀 **快速开始**：
+              继续对话（话题中）：
+              `帮我添加单元测试`（无需命令前缀）
 
-              1. `/opencode projects` - 查看可用项目
-              2. `/opencode sessions <项目名>` - 查看项目会话
-              3. `/opencode sc <会话ID>` - 绑定会话到话题
-              4. `/opencode chat <问题>` - 开始对话
+            💡 **提示**
+
+              - 首次使用 chat 会自动创建会话，无需手动配置
+              - 默认路径格式：/workspace/{YYYY-MM-DD}/
+              - 在已绑定的话题中可直接输入问题（无需前缀）
             """;
     }
 

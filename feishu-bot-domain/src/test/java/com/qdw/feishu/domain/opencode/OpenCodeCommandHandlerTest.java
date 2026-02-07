@@ -214,7 +214,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(topicId))
             .thenReturn(Optional.of("ses_123"));
 
-        when(taskExecutor.executeWithNewSession(any(Message.class), eq(prompt)))
+        when(taskExecutor.executeWithNewSession(any(Message.class), eq(prompt), isNull()))
             .thenReturn(expectedResponse);
 
         String result = commandHandler.handle(
@@ -225,7 +225,7 @@ class OpenCodeCommandHandlerTest {
 
         // 验证返回了正确的结果并调用了正确的方法
         assertEquals(expectedResponse, result);
-        verify(taskExecutor).executeWithNewSession(any(Message.class), eq(prompt));
+        verify(taskExecutor).executeWithNewSession(any(Message.class), eq(prompt), isNull());
     }
 
     // ========== chat 命令测试 ==========
@@ -244,11 +244,13 @@ class OpenCodeCommandHandlerTest {
     }
 
     @Test
-    @DisplayName("chat 命令 - 话题未初始化")
+    @DisplayName("chat 命令 - 话题未初始化时自动创建会话")
     void handleChat_uninitializedTopic() {
         String topicId = "uninit-topic";
-        when(sessionManager.isExplicitlyInitialized(topicId))
+        when(sessionManager.isTopicInitialized(any(Message.class)))
             .thenReturn(false);
+        when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello")))
+            .thenReturn("✅ 会话已创建");
 
         String result = commandHandler.handle(
             createTestMessage("/opencode chat hello", topicId),
@@ -256,7 +258,8 @@ class OpenCodeCommandHandlerTest {
             new String[]{"/opencode", "chat", "hello"}
         );
 
-        assertTrue(result.contains("话题未初始化"));
+        assertTrue(result.contains("会话已创建"));
+        verify(taskExecutor).executeWithNewSession(any(Message.class), eq("hello"));
     }
 
     @Test
@@ -284,7 +287,7 @@ class OpenCodeCommandHandlerTest {
     void handleChat_success() {
         String topicId = "init-topic";
         String prompt = "帮我写个排序函数";
-        when(sessionManager.isExplicitlyInitialized(topicId))
+        when(sessionManager.isTopicInitialized(any(Message.class)))
             .thenReturn(true);
         when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
             .thenReturn("对话完成");
@@ -442,11 +445,13 @@ class OpenCodeCommandHandlerTest {
     // ========== 状态检测测试 ==========
 
     @Test
-    @DisplayName("话题未初始化且非初始化命令 - 应显示引导")
+    @DisplayName("话题未初始化时 chat 命令自动创建会话")
     void handle_uninitializedTopicWithNonInitCommand() {
         String topicId = "uninit-topic";
         when(sessionManager.getSessionId(topicId))
             .thenReturn(Optional.empty());
+        when(taskExecutor.executeWithNewSession(any(Message.class), eq("help")))
+            .thenReturn("✅ 会话已创建");
 
         String result = commandHandler.handle(
             createTestMessage("/opencode chat help", topicId),
@@ -454,8 +459,9 @@ class OpenCodeCommandHandlerTest {
             new String[]{"/opencode", "chat", "help"}
         );
 
-        // 未初始化话题的 chat 命令应显示初始化引导
-        assertTrue(result.contains("欢迎") || result.contains("初始化") || result.contains("话题"));
+        // 未初始化话题的 chat 命令应自动创建会话
+        assertTrue(result.contains("会话已创建"));
+        verify(taskExecutor).executeWithNewSession(any(Message.class), eq("help"));
     }
 
     @Test

@@ -259,47 +259,46 @@ drwxr-xr-x  20 root root 4096...
 
 ### 🎯 使用流程
 
-#### 5.1 快速开始（4步初始化）
+#### 5.1 快速开始（2种方式）
 
-**步骤1：查看可用项目**
+**⚡️ 方式1：直接对话（推荐，简单）**
+
+无需任何配置，直接开始对话：
+
+```
+/opencode chat 帮我写个排序函数
+```
+
+**系统自动完成**：
+- 创建新会话（默认路径：`/workspace/2026-02-07/`）
+- 绑定到当前话题
+- 开始对话
+
+**📋 方式2：选择现有会话（高级，精细控制）**
+
+步骤1 - 查看项目列表：
 ```
 /opencode projects
 ```
-或使用别名：
-```
-/opencode p
-```
 
-**步骤2：查看项目的最近会话**
-```
-/opencode sessions <项目名称>
-```
-示例：
+步骤2 - 查看项目的最近会话：
 ```
 /opencode sessions feishu-backend
 ```
-或使用别名：
+
+步骤3 - 绑定会话到话题：
 ```
-/opencode s feishu-backend
+/opencode sc ses_abc123
 ```
 
-**步骤3：绑定会话到话题**
+步骤4 - 开始对话：
 ```
-/opencode session continue <会话ID>
-```
-或使用简写：
-```
-/opencode sc <会话ID>
+/opencode chat 帮我重构登录模块
 ```
 
-**步骤4：开始对话**
+在已绑定的话题中，也可以直接输入问题（无需命令前缀）：
 ```
-/opencode chat <你的问题>
-```
-
-在已初始化的话题中，也可以直接输入问题（无需命令前缀）：
-```
-帮我写个排序函数
+帮我添加单元测试
 ```
 
 #### 5.2 对话命令
@@ -308,11 +307,24 @@ drwxr-xr-x  20 root root 4096...
 ```
 /opencode chat <内容>
 ```
+- 话题未初始化 → 自动创建新会话
+- 话题已初始化 → 使用现有会话继续对话
 
 **创建新会话**
 ```
 /opencode new <提示词>
 ```
+在默认路径创建新会话
+
+**在指定项目中创建新会话**
+```
+/opencode new <项目名称> <提示词>
+```
+示例：
+```
+/opencode new feishu-backend 重构登录模块
+```
+在 `/root/workspace/feishu-backend/` 路径创建会话
 
 #### 5.3 项目管理
 
@@ -320,10 +332,18 @@ drwxr-xr-x  20 root root 4096...
 ```
 /opencode projects
 ```
+或使用别名：
+```
+/opencode p
+```
 
 **查看项目会话**
 ```
 /opencode sessions <项目名称>
+```
+或使用别名：
+```
+/opencode s <项目名称>
 ```
 
 #### 5.4 会话管理

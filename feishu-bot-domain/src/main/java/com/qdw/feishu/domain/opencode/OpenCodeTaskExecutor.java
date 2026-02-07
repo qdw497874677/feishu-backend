@@ -68,13 +68,46 @@ public class OpenCodeTaskExecutor {
      * - 执行任务
      */
     public String executeWithNewSession(Message message, String prompt) {
+        return executeWithNewSession(message, prompt, null);
+    }
+
+    /**
+     * 使用新会话执行任务（支持指定项目）
+     *
+     * - 清除旧会话（如果有）
+     * - 在指定项目的工作目录中执行任务
+     *
+     * @param message 消息对象
+     * @param prompt 提示词
+     * @param project 项目名称（可选，用于指定工作目录）
+     * @return 执行结果
+     */
+    public String executeWithNewSession(Message message, String prompt, String project) {
         String topicId = message.getTopicId();
 
         // 如果在话题中，清除旧会话
         sessionManager.clearSession(topicId);
 
+        // 如果指定了项目，在 prompt 前添加工作目录说明
+        String enhancedPrompt = enhancePromptWithWorkDirectory(prompt, project);
+
         // 执行任务（不指定 sessionID，让 OpenCode 创建新会话）
-        return executeTask(message, prompt, null);
+        return executeTask(message, enhancedPrompt, null);
+    }
+
+    /**
+     * 在 prompt 前添加工作目录说明
+     */
+    private String enhancePromptWithWorkDirectory(String prompt, String project) {
+        if (project == null || project.isEmpty()) {
+            // 使用默认路径：/workspace/{YYYY-MM-DD}/
+            String date = java.time.LocalDate.now().toString();
+            return String.format("[工作目录: /workspace/%s/]\n\n%s", date, prompt);
+        }
+
+        // 使用项目路径（这里假设项目名称就是路径，后续可以优化为查询项目列表）
+        // 为了简化，假设项目名称直接对应路径
+        return String.format("[工作目录: /root/workspace/%s]\n\n%s", project, prompt);
     }
 
     /**

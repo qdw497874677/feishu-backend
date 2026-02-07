@@ -60,7 +60,8 @@ class OpenCodeExplicitInitializationTest {
             commandValidator
         );
 
-        when(sessionGateway.getSessionId(anyString())).thenReturn(Optional.of("ses_old_123"));
+        // 默认返回 empty，表示话题未初始化
+        when(sessionGateway.getSessionId(anyString())).thenReturn(Optional.empty());
         when(sessionGateway.isExplicitlyInitialized(anyString())).thenReturn(false);
         when(commandValidator.validateCommand(anyString(), any(), any()))
             .thenReturn(ValidationResult.allowed());
@@ -153,27 +154,34 @@ class OpenCodeExplicitInitializationTest {
     }
 
     @Test
-    void handleChatCommand_whenNotInitialized_showsInitializationGuide() {
+    void handleChatCommand_whenNotInitialized_autoCreatesSession() {
         String topicId = "test-topic-789";
         Message message = createTestMessage("/opencode chat hello", topicId);
         when(sessionGateway.isExplicitlyInitialized(topicId)).thenReturn(false);
+        when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
+            .thenReturn("✅ 会话已创建");
 
-        String response = commandHandler.handle(message, "chat", new String[]{"hello"});
+        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"});
 
-        assertTrue(response.contains("话题未初始化"));
+        assertTrue(response.contains("会话已创建"));
+        verify(taskExecutor).executeWithNewSession(any(Message.class), eq("hello"), isNull());
     }
 
     @Test
-    void handleChatCommand_withExistingSessionIdButNotExplicit_showsGuide() {
+    void handleChatCommand_withExistingSessionIdButNotExplicit_autoCreatesSession() {
         String topicId = "test-topic-789";
         Message message = createTestMessage("/opencode chat hello", topicId);
 
         when(sessionGateway.isExplicitlyInitialized(topicId)).thenReturn(false);
+        // 覆盖默认设置，模拟有 sessionId 但未显式初始化的情况
         when(sessionGateway.getSessionId(topicId)).thenReturn(Optional.of("ses_old_session"));
+        when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
+            .thenReturn("✅ 会话已创建");
 
-        String response = commandHandler.handle(message, "chat", new String[]{"hello"});
+        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"});
 
-        assertTrue(response.contains("话题未初始化"));
+        assertTrue(response.contains("会话已创建"));
+        verify(taskExecutor).executeWithNewSession(any(Message.class), eq("hello"), isNull());
     }
 
     @Test

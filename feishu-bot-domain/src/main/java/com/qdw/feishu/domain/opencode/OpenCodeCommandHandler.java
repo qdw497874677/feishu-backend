@@ -63,11 +63,6 @@ public class OpenCodeCommandHandler {
             return buildConnectGuide();
         }
 
-        if (subCommand.equals("chat") && shouldRequireInitialization(message)) {
-            log.info("chat 命令需要先完成初始化");
-            return buildInitializationRequiredMessage();
-        }
-
         // 验证命令是否允许
         CommandWhitelist whitelist = getCommandWhitelist(state);
         if (whitelist != null) {
@@ -242,18 +237,49 @@ public class OpenCodeCommandHandler {
 
     /**
      * 处理 new 命令
+     *
+     * 支持两种格式：
+     * - `/opencode new <prompt>` - 使用默认路径创建会话
+     * - `/opencode new <project> <prompt>` - 在指定项目中创建会话
      */
     private String handleNewCommand(String[] parts, Message message) {
         if (parts.length < 3) {
-            return "❌ 用法：`/opencode new <提示词>`\n\n" +
-                   "示例：`/opencode new 重构登录模块`";
+            return buildNewCommandUsage();
         }
-        String prompt = parts[2].trim();
-        return taskExecutor.executeWithNewSession(message, prompt);
+
+        // 判断格式：/opencode new <prompt> 还是 /opencode new <project> <prompt>
+        String project = null;
+        String prompt;
+
+        if (parts.length >= 4) {
+            // /opencode new <project> <prompt>
+            project = parts[2].trim();
+            prompt = String.join(" ", Arrays.copyOfRange(parts, 3, parts.length));
+        } else {
+            // /opencode new <prompt>
+            prompt = parts[2].trim();
+        }
+
+        return taskExecutor.executeWithNewSession(message, prompt, project);
+    }
+
+    private String buildNewCommandUsage() {
+        return "❌ **命令格式错误**\n\n" +
+               "💡 **使用方式**\n\n" +
+               "方式1 - 使用默认路径：\n" +
+               "  `/opencode new <提示词>`\n" +
+               "  示例：`/opencode new 帮我写个排序函数`\n\n" +
+               "方式2 - 在指定项目中：\n" +
+               "  `/opencode new <项目名称> <提示词>`\n" +
+               "  示例：`/opencode new feishu-backend 重构登录模块`";
     }
 
     /**
      * 处理 chat 命令
+     *
+     * 智能行为：
+     * - 话题未初始化 → 自动创建新会话并绑定
+     * - 话题已初始化 → 使用现有会话继续对话
      */
     private String handleChatCommand(String[] parts, Message message) {
         String topicId = message.getTopicId();
@@ -263,20 +289,35 @@ public class OpenCodeCommandHandler {
             if (inTopic) {
                 return sessionManager.getSessionId(topicId)
                     .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
-                    .orElse(buildInitializationRequiredMessage());
+                    .orElse(buildChatQuickStart());
             }
-            return "❌ 用法：`/opencode chat <对话内容>`\n\n" +
-                   "示例：`/opencode chat 帮我写一个排序函数`\n\n" +
-                   "💡 提示：在已绑定的话题中，也可以直接输入内容（无前缀）";
-        }
-
-        if (inTopic && !sessionManager.isExplicitlyInitialized(topicId)) {
-            log.warn("话题未显式初始化，要求先执行初始化流程: topicId={}", topicId);
-            return buildInitializationRequiredMessage();
+            return buildChatQuickStart();
         }
 
         String prompt = extractChatContent(parts, message);
+
+        // 智能判断：话题未初始化时自动创建新会话
+        if (inTopic && !sessionManager.isTopicInitialized(message)) {
+            log.info("话题未初始化，自动创建新会话: topicId={}", topicId);
+            return taskExecutor.executeWithNewSession(message, prompt, null);
+        }
+
+        // 已初始化，正常执行
         return taskExecutor.executeWithAutoSession(message, prompt);
+    }
+
+    /**
+     * 构建 chat 命令的快速开始提示
+     */
+    private String buildChatQuickStart() {
+        return "💬 **OpenCode 对话**\n\n" +
+               "🚀 **快速开始**\n" +
+               "  `/opencode chat 帮我写一个排序函数`\n\n" +
+               "✅ **系统会自动**\n" +
+               "  • 创建新会话\n" +
+               "  • 绑定到当前话题\n" +
+               "  • 开始对话\n\n" +
+               "💡 **提示**：首次使用会自动创建会话，无需手动配置";
     }
 
     private String buildInitializationRequiredMessage() {
