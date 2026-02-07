@@ -73,8 +73,8 @@ public class OpenCodeApp implements FishuAppI {
                 3. `/opencode chat <问题>`
 
             📝 **对话命令**
-              `/opencode chat <内容>`       - 发送对话（话题内，使用现有会话）
-              `/opencode c <内容>`          - 快速对话（话题外，创建新会话，推荐）
+              `/opencode c <内容>`          - 快速对话（话题外，推荐）
+              `/opencode chat <内容>`       - 继续对话（话题内）
               `/opencode new <内容>`        - 在默认路径创建新会话
               `/opencode new <项目> <内容>`  - 在指定项目中创建新会话
 
@@ -90,6 +90,19 @@ public class OpenCodeApp implements FishuAppI {
 
             ⚡️ **其他命令**
               `/opencode commands`          - 查看所有可用斜杠命令
+
+            💡 **使用场景**
+
+              **话题外**（无 topicId）：
+              ✅ 允许：`/opencode c`, `/opencode help`, `/opencode projects`
+              ❌ 禁止：`/opencode chat`, `/opencode session`, `/opencode sc`
+
+              **话题未初始化**（有 topicId 但未绑定会话）：
+              ✅ 允许：`/opencode c`, `/opencode sc`, `/opencode sessions`, `/opencode reset`
+              ❌ 禁止：`/opencode chat`（需先绑定会话）
+
+              **话题已初始化**（已绑定会话）：
+              ✅ 允许：所有命令
 
             💡 **使用示例**
 
@@ -128,10 +141,16 @@ public class OpenCodeApp implements FishuAppI {
     public CommandWhitelist getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState state) {
         return switch (state) {
             case NON_TOPIC -> CommandWhitelist.builder()
-                .add("connect", "help", "projects")
+                // 话题外允许的命令：基础命令 + 快速对话
+                .add("help", "connect", "projects", "p", "c")  // c = 快速对话（话题外）
                 .build();
-            case UNINITIALIZED -> CommandWhitelist.allExcept("chat", "new");
-            case INITIALIZED -> CommandWhitelist.all();
+            case UNINITIALIZED -> CommandWhitelist.builder()
+                // 话题未初始化：允许初始化相关命令 + 快速对话
+                .add("help", "connect", "projects", "p",           // 基础命令
+                     "sessions", "s", "session", "sc",            // 会话管理
+                     "reset", "new", "commands", "c")              // 重置、新建、命令列表、快速对话
+                .build();
+            case INITIALIZED -> CommandWhitelist.all();  // 话题已初始化：允许所有命令
         };
     }
 
