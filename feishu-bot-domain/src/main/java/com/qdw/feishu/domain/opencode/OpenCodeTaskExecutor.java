@@ -44,7 +44,9 @@ public class OpenCodeTaskExecutor {
      */
     public String executeWithAutoSession(Message message, String prompt) {
         String topicId = message.getTopicId();
-
+        
+        log.info("自动选择会话执行: topicId={}, prompt='{}'", topicId, prompt);
+        
         // 如果不在话题中，使用新会话执行
         if (topicId == null || topicId.isEmpty()) {
             log.info("不在话题中，使用临时会话执行");
@@ -122,13 +124,13 @@ public class OpenCodeTaskExecutor {
     }
 
     /**
-     * 使用指定会话执行任务
-     *
-     * @param message 消息对象
-     * @param prompt 提示词
-     * @param sessionId 指定会话 ID
-     * @return 执行结果
-     */
+      * 使用指定会话执行任务
+      *
+      * @param message 消息对象
+      * @param prompt 提示词
+      * @param sessionId 指定会话 ID
+      * @return 执行结果
+      */
     public String executeWithSpecificSession(Message message, String prompt, String sessionId) {
         log.info("使用指定会话执行: sessionId={}", sessionId);
 
@@ -141,6 +143,80 @@ public class OpenCodeTaskExecutor {
         }
 
         return executeTask(message, prompt, sessionId);
+    }
+
+    /**
+      * 仅创建会话（不执行任务）
+      *
+      * 用于 /oc cn 命令，创建新会话并绑定到话题，但不执行任何任务
+      *
+      * @param message 消息对象
+      * @return 执行结果
+      * @throws Exception 执行异常
+      */
+    public String createSessionOnly(Message message) throws Exception {
+        String topicId = message.getTopicId();
+
+        log.info("创建新会话（不执行任务）: topicId={}", topicId);
+
+        String date = LocalDate.now().toString();
+        String projectRoot = getProjectRoot();
+        String workDir = projectRoot + "/workspace/" + date + "/";
+        log.info("使用默认工作目录创建会话: {}", workDir);
+
+        String sessionId = openCodeGateway.createSession(workDir);
+
+        if (sessionId != null && !sessionId.isEmpty()) {
+            log.info("会话创建成功: sessionId={}, 工作目录={}", sessionId, workDir);
+
+            String response = buildSessionCreatedResponse(topicId, sessionId, workDir);
+
+            if (topicId != null && !topicId.isEmpty()) {
+                sessionManager.saveSession(topicId, sessionId);
+            } else {
+                log.info("topicId 为空，将在飞书返回 threadId 后保存会话");
+                response += "\n\n⚠️ **提示**：会话已创建，将在话题创建后自动绑定";
+            }
+
+            return response;
+        } else {
+             log.warn("会话创建失败");
+             return "❌ 会话创建失败，请稍后重试";
+         }
+     }
+
+    /**
+      * 构建会话创建成功响应
+      */
+    private String buildSessionCreatedResponse(String topicId, String sessionId) {
+        String date = LocalDate.now().toString();
+        String projectRoot = getProjectRoot();
+        String workDir = projectRoot + "/workspace/" + date + "/";
+        return buildSessionCreatedResponse(topicId, sessionId, workDir);
+    }
+
+    /**
+      * 构建会话创建成功响应
+      */
+    private String buildSessionCreatedResponse(String topicId, String sessionId, String workDir) {
+        StringBuilder response = new StringBuilder();
+        response.append("✅ **会话已创建并绑定到话题**\n\n");
+        response.append("📋 **会话信息**\n");
+        response.append("  🆔 Session ID: `").append(sessionId).append("`\n");
+        if (topicId != null && !topicId.isEmpty()) {
+            response.append("  💬 话题 ID: `").append(topicId).append("`\n");
+        }
+        response.append("  ✅ 状态: 已绑定\n\n");
+
+        response.append("💡 **开始对话**\n");
+        response.append("  在当前话题中发送：\n");
+        response.append("  `chat <你的问题>`\n");
+        response.append("  或直接输入问题\n\n");
+
+        response.append("📁 **工作目录**\n");
+        response.append("  `").append(workDir).append("`\n\n");
+
+        return response.toString();
     }
 
     /**
