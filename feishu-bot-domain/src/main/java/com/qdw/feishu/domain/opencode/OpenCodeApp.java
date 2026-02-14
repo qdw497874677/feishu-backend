@@ -10,6 +10,8 @@ import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -145,8 +147,10 @@ public class OpenCodeApp implements FishuAppI {
     public CommandWhitelist getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState state) {
         return switch (state) {
             case NON_TOPIC -> CommandWhitelist.builder()
-                // 话题外允许的命令：基础命令 + 快速对话
-                .add("help", "connect", "projects", "p", "chatnow", "cn")  // chatnow = chat now（话题外快速对话）
+                // 话题外允许的命令：基础命令 + 初始化命令 + 快速对话
+                .add("help", "connect", "projects", "p",           // 基础命令
+                     "sessions", "s", "session", "sc",            // 会话管理（初始化命令）
+                     "chatnow", "cn")                              // chatnow = chat now（话题外快速对话）
                 .build();
             case UNINITIALIZED -> CommandWhitelist.builder()
                 // 话题未初始化：允许初始化相关命令
