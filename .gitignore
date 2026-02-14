@@ -40,3 +40,4 @@ start-feishu.sh
 # *.db
 # data/*.db
 *.deb
+.worktrees/
