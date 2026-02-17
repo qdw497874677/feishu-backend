@@ -1,9 +1,11 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.ChatHistory;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +40,35 @@ public class HistoryApp implements FishuAppI {
     @Override
     public ReplyMode getReplyMode() {
         return ReplyMode.TOPIC;
+    }
+
+    @Override
+    public BizResult execute(UnifiedCommand command) {
+        String topicId = command.getTopicId();
+        if (topicId == null || topicId.isEmpty()) {
+            return BizResult.failure("此命令仅在话题中可用");
+        }
+        
+        ChatHistory history = feishuGateway.listMessages(null, topicId, 10, null);
+
+        if (history.getMessages() == null || history.getMessages().isEmpty()) {
+            return BizResult.of("暂无历史消息");
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== 历史消息 ===\n\n");
+
+        for (ChatHistory.HistoryMessage msg : history.getMessages()) {
+            sb.append(String.format("[%s] %s\n",
+                    msg.getSendTime().format(FORMATTER),
+                    msg.getContent()));
+        }
+
+        if (history.isHasMore()) {
+            sb.append("\n(还有更多消息...)");
+        }
+
+        return BizResult.of(sb.toString());
     }
 
     @Override

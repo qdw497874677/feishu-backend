@@ -1,7 +1,9 @@
 package com.qdw.feishu.domain.app;
 
+import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +46,13 @@ public class TimeApp implements FishuAppI {
     @Override
     public ReplyMode getReplyMode() {
         return ReplyMode.TOPIC;
+    }
+
+    @Override
+    public BizResult execute(UnifiedCommand command) {
+        LocalDateTime now = LocalDateTime.now();
+        String formattedTime = now.format(FORMATTER);
+        return BizResult.of("当前时间：" + formattedTime);
     }
 
     @Override

@@ -1,10 +1,12 @@
 package com.qdw.feishu.domain.app;
 
 import com.qdw.feishu.domain.command.CommandWhitelistValidator;
+import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.history.BashHistoryManager;
 import com.qdw.feishu.domain.history.CommandExecution;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -13,7 +15,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -68,6 +69,81 @@ public class BashApp implements FishuAppI {
     }
 
     @Override
+    public BizResult execute(UnifiedCommand command) {
+        String[] args = command.getArgs();
+        if (args == null || args.length == 0) {
+            String subCommand = command.getSubCommand();
+            if (subCommand == null || subCommand.isEmpty()) {
+                return BizResult.of(getHelp());
+            }
+            String bashCmd = subCommand;
+            if (command.getArgs() != null && command.getArgs().length > 0) {
+                bashCmd = bashCmd + " " + String.join(" ", command.getArgs());
+            }
+            return executeBashCommand(bashCmd);
+        }
+        
+        String bashCmd = String.join(" ", args);
+        return executeBashCommand(bashCmd);
+    }
+    
+    private BizResult executeBashCommand(String command) {
+        if (command.equals("history")) {
+            return BizResult.of(formatHistory());
+        }
+        
+        if (!validator.isValidCommand(command)) {
+            return BizResult.failure("错误：命令不在白名单中或包含非法操作符");
+        }
+        
+        try {
+            String result = executeCommandSync(command, 5, TimeUnit.SECONDS);
+            return BizResult.of(result);
+        } catch (TimeoutException e) {
+            return BizResult.of("命令正在执行中，结果将稍后返回...");
+        } catch (Exception e) {
+            log.error("Command execution failed", e);
+            historyManager.recordExecution(command, "错误: " + e.getMessage(), false);
+            return BizResult.failure("错误：" + e.getMessage());
+        }
+    }
+    
+    private String executeCommandSync(String command, long timeout, TimeUnit unit) throws Exception {
+        File workspaceDir = ensureWorkspaceExists();
+        String baseCommand = extractBaseCommand(command);
+        String[] args = getArgsAsArray(command);
+
+        java.util.List<String> commandList = new java.util.ArrayList<>();
+        commandList.add(baseCommand);
+        commandList.addAll(java.util.Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(commandList);
+        pb.directory(workspaceDir);
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<String> future = executor.submit(() -> readProcessOutput(process));
+
+        try {
+            String output = future.get(timeout, unit);
+            int exitCode = process.waitFor();
+
+            boolean success = exitCode == 0;
+            String truncatedOutput = truncateOutput(output);
+            historyManager.recordExecution(command, truncatedOutput, success);
+
+            return output.isEmpty() ? "命令执行完成，无输出" : output;
+        } catch (TimeoutException e) {
+            process.destroyForcibly();
+            throw e;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Override
     public String execute(Message message) {
         String content = message.getContent().trim();
         String[] parts = content.split("\\s+", 2);
@@ -90,10 +166,8 @@ public class BashApp implements FishuAppI {
         String result = null;
 
         try {
-            // Try sync execution with 5 second timeout
             result = executeCommandSync(message, command, 5, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            // Command takes >5 seconds - send "执行中..." and continue async
             feishuGateway.sendMessage(message, "命令正在执行中，结果将稍后返回...",
                                       message.getTopicId());
             executeCommandAsync(message, command);
@@ -107,7 +181,6 @@ public class BashApp implements FishuAppI {
         long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
 
         if (durationMs > 2000 && result != null) {
-            // Command took 2-5 seconds - send "执行中..." first
             feishuGateway.sendMessage(message, "命令正在执行中，结果将稍后返回...",
                                       message.getTopicId());
         }

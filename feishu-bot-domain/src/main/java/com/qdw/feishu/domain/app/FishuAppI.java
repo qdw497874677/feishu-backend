@@ -1,8 +1,11 @@
 package com.qdw.feishu.domain.app;
 
 import com.qdw.feishu.domain.command.CommandWhitelist;
+import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.result.BizResult;
 import com.qdw.feishu.domain.topic.TopicState;
 import java.util.Collections;
 import java.util.List;
@@ -19,7 +22,44 @@ public interface FishuAppI {
         return "用法：" + getTriggerCommand();
     }
 
+    /**
+     * 旧版执行方法：接收 Message，返回字符串
+     * @deprecated 请使用 {@link #execute(UnifiedCommand)} 代替
+     */
+    @Deprecated
     String execute(Message message);
+
+    /**
+     * 新版执行方法：接收统一命令，返回业务结果
+     */
+    default BizResult execute(UnifiedCommand command) {
+        Message message = createMessage(command);
+        String result = execute(message);
+        return result != null ? BizResult.of(result) : BizResult.failure("应用返回空结果");
+    }
+
+    /**
+     * 从 UnifiedCommand 创建 Message 对象（辅助方法）
+     */
+    default Message createMessage(UnifiedCommand command) {
+        Message message = new Message();
+        message.setMessageId(command.getMessageId());
+        Sender sender = new Sender();
+        sender.setOpenId(command.getOpenId());
+        message.setSender(sender);
+        message.setTopicId(command.getTopicId());
+        StringBuilder content = new StringBuilder("/").append(command.getAppId());
+        if (command.getSubCommand() != null && !command.getSubCommand().isEmpty()) {
+            content.append(" ").append(command.getSubCommand());
+        }
+        if (command.getArgs() != null && command.getArgs().length > 0) {
+            for (String arg : command.getArgs()) {
+                content.append(" ").append(arg);
+            }
+        }
+        message.setContent(content.toString());
+        return message;
+    }
 
     default String getTriggerCommand() {
         return "/" + getAppId();
