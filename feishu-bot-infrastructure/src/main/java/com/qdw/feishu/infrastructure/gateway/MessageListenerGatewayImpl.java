@@ -7,6 +7,7 @@ import com.lark.oapi.ws.Client;
 import com.qdw.feishu.domain.gateway.MessageEventParser;
 import com.qdw.feishu.domain.gateway.MessageListenerGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.processor.EventProcessor;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,7 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     private final FeishuProperties properties;
     private final EventDispatcher eventDispatcher;
     private final MessageEventParser messageEventParser;
+    private final EventProcessor eventProcessor;
     private Client wsClient;
 
     private final AtomicReference<ConnectionStatus> connectionStatus;
@@ -29,9 +31,11 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     private Consumer<Message> messageHandler;
 
     public MessageListenerGatewayImpl(FeishuProperties properties, 
-                                     MessageEventParser messageEventParser) {
+                                     MessageEventParser messageEventParser,
+                                     EventProcessor eventProcessor) {
         this.properties = properties;
         this.messageEventParser = messageEventParser;
+        this.eventProcessor = eventProcessor;
         this.connectionStatus = new AtomicReference<>(ConnectionStatus.DISCONNECTED);
         this.running = new AtomicBoolean(false);
 
@@ -44,9 +48,8 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
                 log.info("Received message event");
 
                 if (messageHandler != null) {
-                    // 使用防腐层解析事件
-                    Message message = messageEventParser.parse(event);
-                    messageHandler.accept(message);
+                    // 使用统一事件处理器
+                    eventProcessor.process(event);
                 }
             }
         }).build();
