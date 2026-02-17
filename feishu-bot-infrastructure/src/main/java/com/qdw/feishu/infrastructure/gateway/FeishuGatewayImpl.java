@@ -47,10 +47,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         log.info("Feishu SDK Client initialized with appId: {}", config.getAppId());
     }
 
-    /**
-     * 使用指数退避策略执行带重试的操作
-     * 仅对 UnknownHostException 进行重试
-     */
     private <T> T executeWithRetry(String operationName, Supplier<T> operation) {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
@@ -120,7 +116,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         return executeWithRetry("sendMessage", () -> {
             try {
                 if (topicId != null && !topicId.isEmpty()) {
-                    // 回复到现有话题：直接使用 rootId 回复话题根消息
                     log.info("Replying to existing thread: topicId={}", topicId);
                     String rootId = message.getRootId();
                     if (rootId != null && !rootId.isEmpty()) {
@@ -131,7 +126,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
                         return sendReplyToTopic(topicId, content);
                     }
                 } else {
-                    // 创建新话题：使用 reply API + replyInThread=true 回复原消息
                     log.info("Creating new thread by replying to original message: messageId={}", message.getMessageId());
                     return sendReplyToMessage(message.getMessageId(), content);
                 }
@@ -180,9 +174,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         });
     }
 
-    /**
-     * 创建新话题（发送消息到会话）
-     */
     private SendResult sendMessageToChat(String chatId, String content) throws Exception {
         Map<String, String> textContent = new HashMap<>();
         textContent.put("text", content);
@@ -363,5 +354,40 @@ public class FeishuGatewayImpl implements FeishuGateway {
     public UserInfo getUserInfo(String openId) {
         log.info("Getting user info for: {}", openId);
         return new UserInfo(openId, "unknown", "Unknown User");
+    }
+
+    @Override
+    public void updateCard(String token, String content) {
+        log.info("Updating card with token: {}", token);
+        log.warn("updateCard not yet implemented - token: {}", token);
+    }
+
+    @Override
+    public void sendCardReply(String messageId, String content) {
+        log.info("Sending card reply for messageId: {}", messageId);
+        try {
+            Map<String, String> textContent = new HashMap<>();
+            textContent.put("text", content);
+            String jsonContent = objectMapper.writeValueAsString(textContent);
+            
+            ReplyMessageReq req = ReplyMessageReq.newBuilder()
+                .messageId(messageId)
+                .replyMessageReqBody(com.lark.oapi.service.im.v1.model.ReplyMessageReqBody.newBuilder()
+                    .content(jsonContent)
+                    .msgType("text")
+                    .build())
+                .build();
+            
+            ReplyMessageResp resp = httpClient.im().message().reply(req);
+            
+            if (resp.getCode() != 0) {
+                log.error("Failed to send card reply: code={}, msg={}", resp.getCode(), resp.getMsg());
+                throw new SysException("CARD_REPLY_FAILED", resp.getMsg());
+            }
+            log.info("Card reply sent successfully");
+        } catch (Exception e) {
+            log.error("Exception sending card reply", e);
+            throw new SysException("CARD_REPLY_ERROR", "Failed to send card reply", e);
+        }
     }
 }

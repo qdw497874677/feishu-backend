@@ -58,4 +58,20 @@ public interface FeishuGateway {
      * @return 历史消息列表
      */
     ChatHistory listMessages(String chatId, String threadId, Integer pageSize, String pageToken);
+
+    /**
+     * 更新卡片消息
+     *
+     * @param token 卡片 token
+     * @param content 新的卡片内容
+     */
+    void updateCard(String token, String content);
+
+    /**
+     * 发送卡片回复消息
+     *
+     * @param messageId 消息 ID
+     * @param content 回复内容
+     */
+    void sendCardReply(String messageId, String content);
 }

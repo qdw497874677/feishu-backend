@@ -14,14 +14,11 @@ public class OpenCodeSessionManager {
 
     private final OpenCodeGateway openCodeGateway;
     private final OpenCodeSessionGateway sessionGateway;
-    private final FishuAppI app;
 
     public OpenCodeSessionManager(OpenCodeGateway openCodeGateway,
-                                   OpenCodeSessionGateway sessionGateway,
-                                   FishuAppI app) {
+                                   OpenCodeSessionGateway sessionGateway) {
         this.openCodeGateway = openCodeGateway;
         this.sessionGateway = sessionGateway;
-        this.app = app;
     }
 
     /**
@@ -35,25 +32,6 @@ public class OpenCodeSessionManager {
      * 字符串长度限制
      */
     static final int MAX_PROJECT_NAME_LENGTH = 100;
-}
-
-/**
- * OpenCode 会话管理器
- *
- * 负责会话的创建、查询、状态管理和绑定
- */
-@Slf4j
-@Component
-public class OpenCodeSessionManager {
-
-    private final OpenCodeGateway openCodeGateway;
-    private final OpenCodeSessionGateway sessionGateway;
-
-    public OpenCodeSessionManager(OpenCodeGateway openCodeGateway,
-                                   OpenCodeSessionGateway sessionGateway) {
-        this.openCodeGateway = openCodeGateway;
-        this.sessionGateway = sessionGateway;
-    }
 
     /**
      * 检查话题是否已初始化（绑定了会话）
@@ -123,17 +101,17 @@ public class OpenCodeSessionManager {
         }
         
         // 输入验证：检查项目名称长度
-        if (project.length() > OpenCodeConstants.MAX_PROJECT_NAME_LENGTH) {
-            return "❌ 项目名称过长（最多" + OpenCodeConstants.MAX_PROJECT_NAME_LENGTH + "个字符）";
+        if (project.length() > MAX_PROJECT_NAME_LENGTH) {
+            return "❌ 项目名称过长（最多" + MAX_PROJECT_NAME_LENGTH + "个字符）";
         }
         
-        int limit = OpenCodeConstants.DEFAULT_SESSION_LIMIT;
+        int limit = DEFAULT_SESSION_LIMIT;
         
         if (parts.length >= 4) {
             try {
                 limit = Integer.parseInt(parts[3].trim());
-                if (limit < OpenCodeConstants.MIN_SESSION_LIMIT || limit > OpenCodeConstants.MAX_SESSION_LIMIT) {
-                    return "❌ 数量必须在 " + OpenCodeConstants.MIN_SESSION_LIMIT + "-" + OpenCodeConstants.MAX_SESSION_LIMIT + " 之间";
+                if (limit < MIN_SESSION_LIMIT || limit > MAX_SESSION_LIMIT) {
+                    return "❌ 数量必须在 " + MIN_SESSION_LIMIT + "-" + MAX_SESSION_LIMIT + " 之间";
                 }
             } catch (NumberFormatException e) {
                 log.warn("无效的数量参数，使用默认值: {}", parts[3]);
