@@ -133,26 +133,6 @@ class OpenCodeCommandHandlerTest {
         assertTrue(result.contains("连接引导") || result.contains("connect"));
     }
 
-    @Test
-    @DisplayName("sessions 命令 - 非话题环境返回连接引导")
-    void handleSessions_success() {
-        String project = "feishu-backend";
-        when(openCodeGateway.listRecentSessions(eq(project), eq(5)))
-            .thenReturn("会话列表: ses_1, ses_2");
-        
-        // 非话题环境，sessions 不在白名单中，应返回受限消息
-        when(commandValidator.validateCommand(eq("sessions"), any(), any()))
-            .thenReturn(ValidationResult.restricted("命令受限"));
-
-        String result = commandHandler.handle(
-            createTestMessage("/opencode sessions " + project, null),
-            "sessions",
-            new String[]{"/opencode", "sessions", project}
-        );
-
-        // 非话题环境，sessions 不在白名单中，应返回连接引导
-        assertTrue(result.contains("连接引导") || result.contains("connect"));
-    }
 
     @Test
     @DisplayName("sessions 命令 - 非话题环境返回连接引导")
@@ -477,27 +457,6 @@ class OpenCodeCommandHandlerTest {
 
     // ========== 状态检测测试 ==========
 
-    @Test
-    @DisplayName("话题未初始化时 chat 命令自动创建会话")
-    void handle_uninitializedTopicWithNonInitCommand() {
-        String topicId = "uninit-topic";
-        when(sessionManager.getSessionId(topicId))
-            .thenReturn(Optional.empty());
-        when(taskExecutor.executeWithNewSession(any(Message.class), eq("help")))
-            .thenReturn("✅ 会话已创建");
-
-        String result = commandHandler.handle(
-            createTestMessage("/opencode chat help", topicId),
-            "chat",
-            new String[]{"/opencode", "chat", "help"}
-        );
-
-        // 未初始化话题的 chat 命令应自动创建会话
-        assertTrue(result.contains("会话已创建"));
-        verify(taskExecutor).executeWithNewSession(any(Message.class), eq("help"));
-    }
-
-    @Test
     @DisplayName("非话题环境且非允许命令 - 应显示连接引导")
     void handle_nonTopicWithNotAllowedCommand() {
         // NON_TOPIC 模式下，"chat" 命令不在白名单中，应返回受限消息

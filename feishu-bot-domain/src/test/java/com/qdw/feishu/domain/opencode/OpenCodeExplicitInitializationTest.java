@@ -185,8 +185,6 @@ class OpenCodeExplicitInitializationTest {
         when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
             .thenReturn("✅ 会话已创建");
 
-        // 模拟 app 已初始化状态
-        when(sessionManager.getApp()).thenReturn(Optional.of(mockApp));
 
         when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
             .thenReturn("对话完成");
