@@ -9,12 +9,12 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-public class CommandRouter {
+public class UnifiedCommandRouter {
     private final AppRegistry appRegistry;
     
-    public CommandRouter(AppRegistry appRegistry) {
+    public UnifiedCommandRouter(AppRegistry appRegistry) {
         this.appRegistry = appRegistry;
-        log.info("CommandRouter initialized");
+        log.info("UnifiedCommandRouter initialized");
     }
     
     public BizResult route(UnifiedCommand command) {
@@ -31,7 +31,7 @@ public class CommandRouter {
         try {
             log.debug("Executing app: {}", app.getAppId());
             // 先使用旧接口兼容，后续迁移应用后切换
-            return BizResult.of(app.getAppName() + " - 功能开发中");
+            return app.execute(command);
         } catch (Exception e) {
             log.error("App execution failed: {}", app.getAppId(), e);
             return BizResult.failure("应用执行失败: " + e.getMessage());

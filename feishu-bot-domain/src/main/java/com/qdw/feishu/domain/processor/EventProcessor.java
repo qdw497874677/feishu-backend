@@ -6,7 +6,7 @@ import com.qdw.feishu.domain.adapter.ResponseAdapter;
 import com.qdw.feishu.domain.adapter.ResponseAdapterFactory;
 import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.result.BizResult;
-import com.qdw.feishu.domain.router.CommandRouter;
+import com.qdw.feishu.domain.router.UnifiedCommandRouter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -14,11 +14,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class EventProcessor {
     private final CommandAdapterFactory commandAdapterFactory;
-    private final CommandRouter commandRouter;
+    private final UnifiedCommandRouter commandRouter;
     private final ResponseAdapterFactory responseAdapterFactory;
     
     public EventProcessor(CommandAdapterFactory commandAdapterFactory,
-                         CommandRouter commandRouter,
+                         UnifiedCommandRouter commandRouter,
                          ResponseAdapterFactory responseAdapterFactory) {
         this.commandAdapterFactory = commandAdapterFactory;
         this.commandRouter = commandRouter;
