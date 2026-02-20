@@ -172,28 +172,20 @@ class OpenCodeExplicitInitializationTest {
         String topicId = "test-topic-789";
         Message message = createTestMessage("/opencode chat hello", topicId);
 
-        when(sessionGateway.isExplicitlyInitialized(topicId)).thenReturn(false);
+        // 设置：话题有 sessionId（已绑定），此时 isTopicInitialized 会返回 true
+        // 因为 sessionManager.isTopicInitialized() 内部调用 sessionGateway.getSessionId()
         when(sessionGateway.getSessionId(topicId)).thenReturn(Optional.of("ses_old_session"));
-        when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
-            .thenReturn("✅ 会话已创建");
-
-        // 模拟话题已初始化（有 sessionId 但未显式初始化）
-        // 但由于有 sessionId，chatnow 应该使用现有会话，而不是创建新会话
-        when(sessionManager.isTopicInitialized(message)).thenReturn(true);
         when(sessionGateway.isExplicitlyInitialized(topicId)).thenReturn(false);
-        when(sessionGateway.getSessionId(topicId)).thenReturn(Optional.of("ses_old_session"));
-        when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
-            .thenReturn("✅ 会话已创建");
-
-
+        
+        // chat 命令在 INITIALIZED 状态下允许，使用现有会话
         when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
             .thenReturn("对话完成");
 
         String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"});
 
         // 验证使用了现有会话，而不是创建新会话
-        assertFalse(response.contains("会话已创建"));
-        verify(taskExecutor, never()).executeWithNewSession(any(Message.class), eq("hello"));
+        assertTrue(response.contains("对话完成"));
+        verify(taskExecutor, never()).executeWithNewSession(any(Message.class), eq("hello"), isNull());
         verify(taskExecutor).executeWithAutoSession(any(Message.class), eq("hello"));
     }
 
