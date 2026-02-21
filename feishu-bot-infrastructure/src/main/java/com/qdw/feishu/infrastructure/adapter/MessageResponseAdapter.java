@@ -7,8 +7,6 @@ import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.message.Sender;
-import com.qdw.feishu.domain.reply.ReplyStrategy;
-import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -17,12 +15,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class MessageResponseAdapter implements ResponseAdapter {
     private final FeishuGateway feishuGateway;
-    private final ReplyStrategyFactory replyStrategyFactory;
     
-    public MessageResponseAdapter(FeishuGateway feishuGateway,
-                                  ReplyStrategyFactory replyStrategyFactory) {
+    public MessageResponseAdapter(FeishuGateway feishuGateway) {
         this.feishuGateway = feishuGateway;
-        this.replyStrategyFactory = replyStrategyFactory;
     }
     
     @Override
@@ -30,10 +25,9 @@ public class MessageResponseAdapter implements ResponseAdapter {
         String content = formatContent(result);
         
         Message message = createMessage(command);
-        ReplyStrategy strategy = replyStrategyFactory.getStrategy(
-            com.qdw.feishu.domain.core.ReplyMode.DEFAULT);
         
-        SendResult sendResult = strategy.reply(message, content, command.getTopicId());
+        // 直接使用 feishuGateway 发送消息
+        SendResult sendResult = feishuGateway.sendMessage(message, content, command.getTopicId());
         
         if (sendResult.isSuccess()) {
             log.info("Message response sent: messageId={}", command.getMessageId());

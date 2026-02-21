@@ -5,12 +5,22 @@ import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1Data;
 import com.qdw.feishu.domain.adapter.CommandAdapter;
 import com.qdw.feishu.domain.command.EventSource;
 import com.qdw.feishu.domain.command.UnifiedCommand;
+import com.qdw.feishu.domain.gateway.TopicMappingGateway;
+import com.qdw.feishu.domain.model.TopicMapping;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 @Slf4j
 @Component
 public class MessageCommandAdapter implements CommandAdapter {
+    
+    private final TopicMappingGateway topicMappingGateway;
+    
+    public MessageCommandAdapter(TopicMappingGateway topicMappingGateway) {
+        this.topicMappingGateway = topicMappingGateway;
+    }
     
     @Override
     public UnifiedCommand adapt(Object event) {
@@ -19,11 +29,38 @@ public class MessageCommandAdapter implements CommandAdapter {
         
         String content = data.getMessage().getContent();
         String topicId = extractTopicId(msgEvent);
+        String chatId = data.getMessage().getChatId();
         
         String[] parts = parseCommand(content);
-        String appId = parts.length > 0 ? parts[0] : "help";
-        String subCommand = parts.length > 1 ? parts[1] : null;
-        String[] args = parts.length > 2 ? extractArgs(parts) : new String[0];
+        String appId;
+        String subCommand;
+        String[] args;
+        
+        if (content.trim().startsWith("/")) {
+            // 有命令前缀，直接解析
+            appId = parts.length > 0 ? parts[0] : "help";
+            subCommand = parts.length > 1 ? parts[1] : null;
+            args = parts.length > 2 ? extractArgs(parts) : new String[0];
+        } else if (topicId != null && !topicId.isEmpty()) {
+            // 话题中的消息，检查话题映射
+            Optional<TopicMapping> mapping = topicMappingGateway.findByTopicId(topicId);
+            if (mapping.isPresent()) {
+                appId = mapping.get().getAppId();
+                subCommand = parts.length > 0 ? parts[0] : null;
+                args = parts.length > 1 ? extractArgsFromContent(parts) : new String[0];
+                log.debug("话题消息映射到应用: topicId={}, appId={}", topicId, appId);
+            } else {
+                // 没有映射，使用 help
+                appId = "help";
+                subCommand = null;
+                args = new String[0];
+            }
+        } else {
+            // 非话题且无命令前缀
+            appId = "help";
+            subCommand = null;
+            args = new String[0];
+        }
         
         UnifiedCommand command = UnifiedCommand.builder()
             .appId(appId)
@@ -35,7 +72,7 @@ public class MessageCommandAdapter implements CommandAdapter {
             .source(EventSource.MESSAGE)
             .build();
         
-        log.debug("Adapted message to command: appId={}, subCommand={}", appId, subCommand);
+        log.debug("Adapted message to command: appId={}, subCommand={}, chatId={}", appId, subCommand, chatId);
         return command;
     }
     
@@ -58,15 +95,27 @@ public class MessageCommandAdapter implements CommandAdapter {
         }
         content = content.trim();
         if (!content.startsWith("/")) {
-            return new String[]{"help"};
+            return content.split("\\s+");
         }
         content = content.substring(1);
         return content.split("\\s+");
     }
     
     private String[] extractArgs(String[] parts) {
+        if (parts.length <= 2) {
+            return new String[0];
+        }
         String[] args = new String[parts.length - 2];
         System.arraycopy(parts, 2, args, 0, args.length);
+        return args;
+    }
+    
+    private String[] extractArgsFromContent(String[] parts) {
+        if (parts.length <= 1) {
+            return new String[0];
+        }
+        String[] args = new String[parts.length - 1];
+        System.arraycopy(parts, 1, args, 0, args.length);
         return args;
     }
 }

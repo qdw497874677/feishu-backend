@@ -137,6 +137,29 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
         });
     }
 
+
+    /**
+     * 检查会话是否存在
+     */
+    private boolean checkSessionExists(String sessionId) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId))
+                    .header("Authorization", getAuthHeader())
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            log.warn("检查会话存在失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
     /**
       * 同步发送消息并等待响应
       */
@@ -145,6 +168,12 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
         if (properties.isHealthCheckEnabled() && !isServerHealthy()) {
             log.warn("OpenCode 服务不可达，跳过请求");
             return "❌ 无法连接到 OpenCode 服务，请确保服务已启动";
+        }
+        
+        // 检查会话是否存在
+        if (!checkSessionExists(sessionId)) {
+            log.warn("会话不存在: {}", sessionId);
+            return "❌ 会话不存在或已失效，请使用 `/opencode cn` 重新创建会话";
         }
 
         return executeWithRetry("sendMessageSync", () -> {
@@ -167,6 +196,9 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
                 if (response.statusCode() == 200) {
                     return parseMessageResponse(response.body());
+                } else if (response.statusCode() == 404) {
+                    log.error("会话不存在: {}", sessionId);
+                    return "❌ 会话不存在或已失效，请使用 `/opencode cn` 重新创建会话";
                 } else {
                     log.error("发送消息失败，状态码: {}, 响应: {}", response.statusCode(), response.body());
                     return "❌ OpenCode 服务异常 (状态码: " + response.statusCode() + ")";

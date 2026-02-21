@@ -48,8 +48,8 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
                 log.info("Received message event");
 
                 if (messageHandler != null) {
-                    // 使用统一事件处理器
-                    eventProcessor.process(event);
+                    Message message = messageEventParser.parse(event);
+                    messageHandler.accept(message);
                 }
             }
         }).build();
