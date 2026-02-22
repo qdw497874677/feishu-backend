@@ -74,7 +74,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         throw new SysException("RETRY_FAILED", "All retry attempts failed for: " + operationName);
     }
 
-    @Override
     public SendResult sendReply(String receiveOpenId, String content) {
         log.info("Sending reply to: {}, content: {}", receiveOpenId, content);
 
@@ -109,7 +108,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         });
     }
 
-    @Override
     public SendResult sendMessage(Message message, String content, String topicId) {
         log.info("Sending message to chatId: {}, content: {}, topicId: {}", message.getChatId(), content, topicId);
 
@@ -136,7 +134,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         });
     }
 
-    @Override
     public SendResult sendDirectReply(Message message, String content) {
         log.info("Sending direct reply to chatId: {}, content: {}", message.getChatId(), content);
 
@@ -261,7 +258,6 @@ public class FeishuGatewayImpl implements FeishuGateway {
         });
     }
 
-    @Override
     public ChatHistory listMessages(String chatId, String threadId, Integer pageSize, String pageToken) {
         log.info("Querying chat history: chatId={}, threadId={}, pageSize={}, pageToken={}", chatId, threadId, pageSize, pageToken);
 
@@ -350,19 +346,16 @@ public class FeishuGatewayImpl implements FeishuGateway {
         }
     }
 
-    @Override
     public UserInfo getUserInfo(String openId) {
         log.info("Getting user info for: {}", openId);
         return new UserInfo(openId, "unknown", "Unknown User");
     }
 
-    @Override
     public void updateCard(String token, String content) {
         log.info("Updating card with token: {}", token);
         log.warn("updateCard not yet implemented - token: {}", token);
     }
 
-    @Override
     public void sendCardReply(String messageId, String content) {
         log.info("Sending card reply for messageId: {}", messageId);
         try {
@@ -390,4 +383,30 @@ public class FeishuGatewayImpl implements FeishuGateway {
             throw new SysException("CARD_REPLY_ERROR", "Failed to send card reply", e);
         }
     }
+
+    public void addReaction(String messageId, String emojiType) {
+        log.info("Adding reaction {} to message {}", emojiType, messageId);
+        try {
+            com.lark.oapi.service.im.v1.model.CreateMessageReactionReq req = 
+                com.lark.oapi.service.im.v1.model.CreateMessageReactionReq.newBuilder()
+                    .messageId(messageId)
+                    .createMessageReactionReqBody(
+                        com.lark.oapi.service.im.v1.model.CreateMessageReactionReqBody.newBuilder()
+                            .reactionType(com.lark.oapi.service.im.v1.model.Emoji.newBuilder().emojiType(emojiType).build())
+                            .build()
+                    )
+                    .build();
+            
+            var resp = httpClient.im().messageReaction().create(req);
+            
+            if (resp.getCode() != 0) {
+                log.warn("Failed to add reaction: code={}, msg={}", resp.getCode(), resp.getMsg());
+            } else {
+                log.info("Reaction added successfully");
+            }
+        } catch (Exception e) {
+            log.warn("Exception adding reaction to message {}", messageId, e);
+        }
+    }
+
 }

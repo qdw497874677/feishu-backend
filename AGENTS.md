@@ -87,13 +87,48 @@
 
 ## 🚀 启动与部署
 
+### 首次设置
+
+1. **创建本地启动脚本**（包含凭证，不提交到 git）：
+```bash
+# 复制模板
+cp start-feishu.sh run-local.sh
+
+# 编辑文件，添加凭证
+vim run-local.sh
+# 在文件开头添加：
+# export FEISHU_APPID='cli_a8f66e3df8fb100d'
+# export FEISHU_APPSECRET='CFVrKX1w00ypHEqT1vInwdeKznwmYWpn'
+```
+
+2. **脚本已自动加入 .gitignore**，凭证不会被提交。
+
 ### 快速启动
 
 ```bash
+# 本地开发（推荐）
+./run-local.sh
+
+# 或手动启动
+export FEISHU_APPID='cli_a8f66e3df8fb100d'
+export FEISHU_APPSECRET='CFVrKX1w00ypHEqT1vInwdeKznwmYWpn'
 ./start-feishu.sh
 ```
 
-**详细指南**：👉 [RESTART-GUIDE.md](./RESTART-GUIDE.md)
+### 重启服务
+
+```bash
+# 方式1：使用本地脚本
+./run-local.sh
+
+# 方式2：手动操作
+pkill -f "feishu-bot-start"  # 停止
+./run-local.sh              # 启动
+
+# 查看日志
+tail -f /tmp/feishu-run.log
+```
+
 
 ### 验证启动成功
 

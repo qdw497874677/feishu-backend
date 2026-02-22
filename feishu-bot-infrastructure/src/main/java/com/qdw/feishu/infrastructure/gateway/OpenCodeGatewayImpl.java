@@ -63,7 +63,7 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
             return "❌ 创建会话失败";
         }
 
-        return sendMessageSync(sessionId, prompt, timeoutSeconds, true);
+        return sendMessageSync(sessionId, prompt, timeoutSeconds, true, getDefaultDirectory());
     }
 
     /**
@@ -76,7 +76,7 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
             return getSessionDetails(sessionId);
         }
 
-        return sendMessageSync(sessionId, prompt, timeoutSeconds, true);
+        return sendMessageSync(sessionId, prompt, timeoutSeconds, true, getDefaultDirectory());
     }
 
     @Override
@@ -161,21 +161,33 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     /**
+     * 构建发送消息的 URL（包含 directory 参数）
+     */
+    private String buildMessageUrl(String sessionId, String directory) {
+        String baseUrl = properties.getServerUrl() + "/session/" + sessionId + "/message";
+        if (directory != null && !directory.isEmpty()) {
+            return baseUrl + "?directory=" + URLEncoder.encode(directory, StandardCharsets.UTF_8);
+        }
+        return baseUrl;
+    }
+
+    /**
+     * 获取默认工作目录
+     */
+    private String getDefaultDirectory() {
+        return System.getProperty("user.dir", "/root/workspace/feishu-backend");
+    }
+
+    /**
       * 同步发送消息并等待响应
       */
-    private String sendMessageSync(String sessionId, String prompt, int timeoutSeconds, boolean returnNullOnTimeout) {
+    private String sendMessageSync(String sessionId, String prompt, int timeoutSeconds, boolean returnNullOnTimeout, String directory) {
         // 首先检查服务连通性（如果启用）
         if (properties.isHealthCheckEnabled() && !isServerHealthy()) {
             log.warn("OpenCode 服务不可达，跳过请求");
             return "❌ 无法连接到 OpenCode 服务，请确保服务已启动";
         }
         
-        // 检查会话是否存在
-        if (!checkSessionExists(sessionId)) {
-            log.warn("会话不存在: {}", sessionId);
-            return "❌ 会话不存在或已失效，请使用 `/opencode cn` 重新创建会话";
-        }
-
         return executeWithRetry("sendMessageSync", () -> {
             try {
                 String body = String.format(
@@ -184,7 +196,7 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
                 );
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(properties.getServerUrl() + "/session/" + sessionId + "/message"))
+                        .uri(URI.create(buildMessageUrl(sessionId, directory)))
                         .header("Content-Type", "application/json; charset=utf-8")
                         .header("Authorization", getAuthHeader())
                         .timeout(Duration.ofSeconds(timeoutSeconds > 0 ? timeoutSeconds : properties.getRequestTimeout()))

@@ -192,6 +192,9 @@ public class BotMessageService {
                 }
             }
 
+            // 对用户消息添加表情回应（默认能力）
+            feishuGateway.addReaction(message.getMessageId(), "THUMBSUP");
+
             String replyContent = app.execute(message);
             if (replyContent == null || replyContent.isEmpty()) {
                 log.warn("应用返回空回复");
