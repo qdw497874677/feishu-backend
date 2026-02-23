@@ -5,6 +5,7 @@ import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
+import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -111,7 +112,7 @@ class OpenCodeExplicitInitializationTest {
         Message message = createTestMessage("/opencode reset", topicId);
         when(sessionGateway.getSessionId(topicId)).thenReturn(Optional.of("ses_abc123"));
 
-        String response = commandHandler.handle(message, "reset", new String[]{});
+        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
 
         verify(sessionGateway).clearExplicitlyInitialized(topicId);
         verify(sessionGateway).clearSession(topicId);
@@ -125,7 +126,7 @@ class OpenCodeExplicitInitializationTest {
         Message message = createTestMessage("/opencode reset", topicId);
         when(sessionGateway.getSessionId(topicId)).thenReturn(Optional.of(sessionId));
 
-        String response = commandHandler.handle(message, "reset", new String[]{});
+        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
 
         assertTrue(response.contains(sessionId));
         assertTrue(response.contains("话题已重置"));
@@ -137,7 +138,7 @@ class OpenCodeExplicitInitializationTest {
         Message message = createTestMessage("/opencode reset", topicId);
         when(sessionGateway.getSessionId(topicId)).thenReturn(Optional.empty());
 
-        String response = commandHandler.handle(message, "reset", new String[]{});
+        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
 
         assertTrue(response.contains("话题已重置"));
         assertTrue(response.contains("/opencode p"));
@@ -147,7 +148,7 @@ class OpenCodeExplicitInitializationTest {
     void handleResetCommand_inNonTopicEnvironment_showsErrorMessage() {
         Message message = createTestMessage("/opencode reset", null);
 
-        String response = commandHandler.handle(message, "reset", new String[]{});
+        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
 
         assertTrue(response.contains("只能在话题中使用"));
         verify(sessionGateway, never()).clearExplicitlyInitialized(anyString());
@@ -161,7 +162,7 @@ class OpenCodeExplicitInitializationTest {
         when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
             .thenReturn("✅ 会话已创建");
 
-        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"});
+        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
 
         assertTrue(response.contains("会话已创建"));
         verify(taskExecutor).executeWithNewSession(any(Message.class), eq("hello"), isNull());
@@ -181,7 +182,7 @@ class OpenCodeExplicitInitializationTest {
         when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
             .thenReturn("对话完成");
 
-        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"});
+        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
 
         // 验证使用了现有会话，而不是创建新会话
         assertTrue(response.contains("对话完成"));
@@ -200,7 +201,7 @@ class OpenCodeExplicitInitializationTest {
         when(taskExecutor.executeWithSpecificSession(eq(message), isNull(), eq(sessionId)))
             .thenReturn("✅ **会话已绑定**\n\nSession ID: " + sessionId);
 
-        String response = commandHandler.handle(message, "sc", new String[]{"/opencode", "sc", sessionId});
+        String response = commandHandler.handle(message, "sc", new String[]{"/opencode", "sc", sessionId}, CommandWhitelist.all());
 
         verify(taskExecutor).executeWithSpecificSession(eq(message), isNull(), eq(sessionId));
         assertTrue(response.contains("会话已绑定"));

@@ -165,7 +165,7 @@ class OpenCodeAppTest {
         String result = app.execute(message);
 
         assertTrue(result.contains("OpenCode 助手"));
-        verify(commandHandler, never()).handle(any(), anyString(), any());
+        verify(commandHandler, never()).handle(any(), anyString(), any(), any());
     }
 
     @Test
@@ -176,7 +176,7 @@ class OpenCodeAppTest {
         String result = app.execute(message);
 
         assertTrue(result.contains("OpenCode 助手"));
-        verify(commandHandler, never()).handle(any(), anyString(), any());
+        verify(commandHandler, never()).handle(any(), anyString(), any(), any());
     }
 
     @Test
@@ -186,13 +186,13 @@ class OpenCodeAppTest {
         String expectedResponse = "会话列表";
         Message message = createTestMessage("/opencode sessions feishu-backend", topicId);
 
-        when(commandHandler.handle(eq(message), eq("sessions"), any()))
+        when(commandHandler.handle(eq(message), eq("sessions"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
 
         assertEquals(expectedResponse, result);
-        verify(commandHandler).handle(eq(message), eq("sessions"), any());
+        verify(commandHandler).handle(eq(message), eq("sessions"), any(), any());
     }
 
     @Test
@@ -202,13 +202,13 @@ class OpenCodeAppTest {
         String expectedResponse = "项目列表";
         Message message = createTestMessage("/opencode projects", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any()))
+        when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
 
         assertEquals(expectedResponse, result);
-        verify(commandHandler).handle(eq(message), eq("projects"), any());
+        verify(commandHandler).handle(eq(message), eq("projects"), any(), any());
     }
 
     @Test
@@ -218,7 +218,7 @@ class OpenCodeAppTest {
         String expectedResponse = "对话响应";
         Message message = createTestMessage("/opencode chat 帮我写代码", topicId);
 
-        when(commandHandler.handle(eq(message), eq("chat"), any()))
+        when(commandHandler.handle(eq(message), eq("chat"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
@@ -233,7 +233,7 @@ class OpenCodeAppTest {
         String expectedResponse = "新会话已创建";
         Message message = createTestMessage("/opencode new 重构模块", topicId);
 
-        when(commandHandler.handle(eq(message), eq("new"), any()))
+        when(commandHandler.handle(eq(message), eq("new"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
@@ -249,7 +249,7 @@ class OpenCodeAppTest {
         String expectedResponse = "会话已绑定";
         Message message = createTestMessage("/opencode sc " + sessionId, topicId);
 
-        when(commandHandler.handle(eq(message), eq("sc"), any()))
+        when(commandHandler.handle(eq(message), eq("sc"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
@@ -263,7 +263,7 @@ class OpenCodeAppTest {
         String topicId = "test-topic";
         Message message = createTestMessage("/opencode unknown", topicId);
 
-        when(commandHandler.handle(any(), anyString(), any()))
+        when(commandHandler.handle(any(), anyString(), any(), any()))
             .thenReturn(null);
 
         String result = app.execute(message);
@@ -278,13 +278,13 @@ class OpenCodeAppTest {
         String expectedResponse = "响应";
         Message message = createTestMessage("/opencode PROJECTS", topicId);
 
-        when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class)))
+        when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class)))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
 
         assertEquals(expectedResponse, result);
-        verify(commandHandler).handle(any(Message.class), eq("projects"), any(String[].class));
+        verify(commandHandler).handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class));
     }
 
     @Test
@@ -294,7 +294,7 @@ class OpenCodeAppTest {
         String expectedResponse = "响应";
         Message message = createTestMessage("/opencode   projects   ", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any()))
+        when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);
@@ -309,7 +309,7 @@ class OpenCodeAppTest {
         String expectedResponse = "响应";
         Message message = createTestMessage("  /opencode projects  ", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any()))
+        when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
             .thenReturn(expectedResponse);
 
         String result = app.execute(message);

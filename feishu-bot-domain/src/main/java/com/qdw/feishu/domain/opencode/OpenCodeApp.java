@@ -9,6 +9,7 @@ import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
+import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -167,6 +168,15 @@ public class OpenCodeApp implements FishuAppI {
         return sessionManager.isTopicInitialized(message);
     }
 
+    private TopicState detectTopicState(Message message) {
+        String topicId = message.getTopicId();
+        if (topicId == null || topicId.isEmpty()) {
+            return TopicState.NON_TOPIC;
+        }
+        boolean hasSession = sessionManager.getSessionId(topicId).isPresent();
+        return hasSession ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
+    }
+
     @Override
     public String execute(Message message) {
         String content = message.getContent().trim();
@@ -186,8 +196,10 @@ public class OpenCodeApp implements FishuAppI {
             return getHelp();
         }
 
-        // 委托给命令处理器
-        String result = commandHandler.handle(message, subCommand, parts);
+        // 委托给命令处理器（传递白名单确保一致性）
+        TopicState state = detectTopicState(message);
+        CommandWhitelist whitelist = getCommandWhitelist(state);
+        String result = commandHandler.handle(message, subCommand, parts, whitelist);
         if (result != null) {
             return result;
         }

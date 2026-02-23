@@ -89,7 +89,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode connect", null),
             "connect",
-            new String[]{"/opencode", "connect"}
+            new String[]{"/opencode", "connect"},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("连接成功"));
@@ -108,7 +109,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode connect", null),
             "connect",
-            new String[]{"/opencode", "connect"}
+            new String[]{"/opencode", "connect"},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("连接成功") || result.contains("无法获取"));
@@ -126,7 +128,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode sessions", null),
             "sessions",
-            new String[]{"/opencode", "sessions"}
+            new String[]{"/opencode", "sessions"},
+            CommandWhitelist.all()
         );
 
         // 验证返回受限消息
@@ -145,7 +148,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode sessions " + project, null),
             "sessions",
-            new String[]{"/opencode", "sessions", project}
+            new String[]{"/opencode", "sessions", project},
+            CommandWhitelist.all()
         );
 
         // 验证返回受限消息
@@ -164,7 +168,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode p", null),
             "p",
-            new String[]{"/opencode", "p"}
+            new String[]{"/opencode", "p"},
+            CommandWhitelist.builder().add("p").build()
         );
 
         // p 命令在非话题环境允许直接执行，应调用listProjects并返回结果
@@ -181,7 +186,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode projects", null),
             "projects",
-            new String[]{"/opencode", "projects"}
+            new String[]{"/opencode", "projects"},
+            CommandWhitelist.builder().add("projects").build()
         );
 
         assertEquals("项目列表", result);
@@ -200,7 +206,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode new", topicId),
             "new",
-            new String[]{"/opencode", "new"}
+            new String[]{"/opencode", "new"},
+            CommandWhitelist.all()
         );
 
         // new 命令参数不足时返回包含"用法"的错误提示
@@ -226,7 +233,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode new " + prompt, topicId),
             "new",
-            new String[]{"/opencode", "new", prompt}
+            new String[]{"/opencode", "new", prompt},
+            CommandWhitelist.all()
         );
 
         // 验证返回了正确的结果并调用了正确的方法
@@ -246,7 +254,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode chat 帮我", null),
             "chat",
-            new String[]{"/opencode", "chat", "帮我"}
+            new String[]{"/opencode", "chat", "帮我"},
+            CommandWhitelist.builder().add("chat").build()
         );
 
         // 非话题环境，chat 不在白名单中，应返回连接引导
@@ -270,7 +279,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode cn hello", topicId),
             "cn",
-            new String[]{"/opencode", "cn", "hello"}
+            new String[]{"/opencode", "cn", "hello"},
+            CommandWhitelist.builder().add("cn").build()
         );
 
         assertNotNull(result);
@@ -289,7 +299,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode chat", topicId),
             "chat",
-            new String[]{"/opencode", "chat"}
+            new String[]{"/opencode", "chat"},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("当前会话信息"));
@@ -309,7 +320,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode chat " + prompt, topicId),
             "chat",
-            new String[]{"/opencode", "chat", prompt}
+            new String[]{"/opencode", "chat", prompt},
+            CommandWhitelist.all()
         );
 
         assertEquals("对话完成", result);
@@ -331,7 +343,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
             "session",
-            new String[]{"/opencode", "session", "status"}
+            new String[]{"/opencode", "session", "status"},
+            CommandWhitelist.all()
         );
 
         assertNotNull(result, "session status 命令不应返回 null");
@@ -350,7 +363,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
             "session",
-            new String[]{"/opencode", "session", "status"}
+            new String[]{"/opencode", "session", "status"},
+            CommandWhitelist.all()
         );
 
         assertNotNull(result, "session status 命令不应返回 null");
@@ -367,7 +381,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode session list", "test-topic"),
             "session",
-            new String[]{"/opencode", "session", "list"}
+            new String[]{"/opencode", "session", "list"},
+            CommandWhitelist.all()
         );
 
         // 验证返回了正确的会话列表
@@ -386,7 +401,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode sc " + sessionId, topicId),
             "sc",
-            new String[]{"/opencode", "sc", sessionId}
+            new String[]{"/opencode", "sc", sessionId},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("会话已绑定"));
@@ -399,7 +415,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode sc", "test-topic"),
             "sc",
-            new String[]{"/opencode", "sc"}
+            new String[]{"/opencode", "sc"},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("用法"));
@@ -414,7 +431,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode reset", null),
             "reset",
-            new String[]{"/opencode", "reset"}
+            new String[]{"/opencode", "reset"},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("只能在话题中使用"));
@@ -432,7 +450,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode reset", topicId),
             "reset",
-            new String[]{"/opencode", "reset"}
+            new String[]{"/opencode", "reset"},
+            CommandWhitelist.all()
         );
 
         assertTrue(result.contains("话题已重置"));
@@ -449,7 +468,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode unknown", "test-topic"),
             "unknown",
-            new String[]{"/opencode", "unknown"}
+            new String[]{"/opencode", "unknown"},
+            CommandWhitelist.all()
         );
 
         // 实现返回未知命令提示
@@ -467,7 +487,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode chat help", null),
             "chat",
-            new String[]{"/opencode", "chat", "help"}
+            new String[]{"/opencode", "chat", "help"},
+            CommandWhitelist.builder().add("chat").build()
         );
 
         assertEquals("命令受限", result);
@@ -489,7 +510,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode chat help", topicId),
             "chat",
-            new String[]{"/opencode", "chat", "help"}
+            new String[]{"/opencode", "chat", "help"},
+            CommandWhitelist.builder().add("chat").build()
         );
 
         // 未初始化话题的 chat 命令应返回受限消息
@@ -515,7 +537,8 @@ class OpenCodeCommandHandlerTest {
         String result = commandHandler.handle(
             createTestMessage("/opencode chat help", topicId),
             "chat",
-            new String[]{"/opencode", "chat", "help"}
+            new String[]{"/opencode", "chat", "help"},
+            CommandWhitelist.all()
         );
 
         // 验证返回了验证失败的消息

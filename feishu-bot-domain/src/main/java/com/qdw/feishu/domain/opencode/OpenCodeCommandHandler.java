@@ -43,16 +43,16 @@ public class OpenCodeCommandHandler {
      * @param message 消息对象
      * @param subCommand 子命令
      * @param parts 解析后的命令部分
+     * @param whitelist 命令白名单（由 OpenCodeApp 提供，确保一致性）
      * @return 命令响应
      */
-    public String handle(Message message, String subCommand, String[] parts) {
+    public String handle(Message message, String subCommand, String[] parts, CommandWhitelist whitelist) {
         log.info("准备验证命令: subCommand={}", subCommand);
 
         TopicState state = detectTopicState(message);
         log.info("话题状态: {}, subCommand={}", state.getDescription(), subCommand);
 
         // 验证命令是否允许（通过 CommandWhitelist）
-        CommandWhitelist whitelist = getCommandWhitelist(state);
         if (whitelist != null) {
             ValidationResult result = commandValidator.validateCommand(subCommand, state, whitelist);
             if (!result.isAllowed()) {
@@ -165,21 +165,6 @@ public class OpenCodeCommandHandler {
         response.append("  • 创建会话并开始对话\n");
 
         return response.toString();
-    }
-
-    /**
-     * 获取命令白名单
-     *
-     * 注意：此方法必须与 OpenCodeApp.getCommandWhitelist() 保持一致
-     */
-    private CommandWhitelist getCommandWhitelist(TopicState state) {
-        return switch (state) {
-            case NON_TOPIC -> CommandWhitelist.builder()
-                .add("help", "connect", "projects", "p", "chatnow", "cn")
-                .build();
-            case UNINITIALIZED -> CommandWhitelist.allExcept("chat");
-            case INITIALIZED -> CommandWhitelist.all();
-        };
     }
 
     /**
