@@ -9,6 +9,7 @@ import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.gateway.TopicMappingGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.ReactionEmoji;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.model.TopicMapping;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
@@ -250,7 +251,7 @@ public class BotMessageService {
     }
 
     private void addDefaultReaction(Message message) {
-        boolean success = feishuGateway.addReaction(message.getMessageId(), "THUMBSUP");
+        boolean success = feishuGateway.addReaction(message.getMessageId(), ReactionEmoji.THUMBSUP);
         if (!success) {
             log.debug("表情添加失败，但不影响主流程");
         }

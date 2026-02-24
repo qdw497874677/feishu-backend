@@ -2,6 +2,7 @@ package com.qdw.feishu.domain.gateway;
 
 import com.qdw.feishu.domain.message.ChatHistory;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.ReactionEmoji;
 import com.qdw.feishu.domain.message.SendResult;
 
 /**
@@ -27,8 +28,8 @@ public interface FeishuGateway {
      * 对消息添加表情回应
      *
      * @param messageId 消息 ID
-     * @param emojiType 表情类型（如 "THUMBSUP", "HEART", "ROCKET", "HOURGLASS", "CHECK", "CROSS" 等）
+     * @param emoji 表情类型
      * @return true 表示成功，false 表示失败
      */
-    boolean addReaction(String messageId, String emojiType);
+    boolean addReaction(String messageId, ReactionEmoji emoji);
 }

@@ -3,6 +3,7 @@ package com.qdw.feishu.domain.opencode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.ReactionEmoji;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -12,14 +13,12 @@ import org.springframework.stereotype.Component;
  *
  * 所有对话统一走异步处理：
  * - 开始：添加 HEART 表情（BotMessageService 的 THUMBSUP 会在消息处理时添加）
- * - 完成：添加 THUMBSUP 表情
+ * - 完成：添加 CLAP 表情
  */
 @Slf4j
 @Component
 public class OpenCodeTaskExecutor {
 
-    private static final String EMOJI_START = "HEART";
-    private static final String EMOJI_DONE = "CLAP";
     private static final int EXECUTE_TIMEOUT = 120;
 
     private final OpenCodeGateway openCodeGateway;
@@ -139,7 +138,7 @@ public class OpenCodeTaskExecutor {
         String messageId = message.getMessageId();
         log.info("提交异步任务: sessionId={}, prompt='{}'", sessionId, prompt);
         
-        boolean reactionAdded = feishuGateway.addReaction(messageId, EMOJI_START);
+        boolean reactionAdded = feishuGateway.addReaction(messageId, ReactionEmoji.HEART);
         if (!reactionAdded) {
             log.debug("表情添加失败，但不影响主流程");
         }
@@ -163,11 +162,11 @@ public class OpenCodeTaskExecutor {
                 return;
             }
 
-            boolean reactionAdded = feishuGateway.addReaction(messageId, EMOJI_DONE);
+            boolean reactionAdded = feishuGateway.addReaction(messageId, ReactionEmoji.CLAP);
             if (!reactionAdded) {
                 log.debug("完成表情添加失败，但不影响主流程");
             }
-            log.info("异步完成，添加表情: {}", EMOJI_DONE);
+            log.info("异步完成，添加表情: CLAP");
 
             String extractedSessionId = responseFormatter.extractSessionId(result);
             if (extractedSessionId != null && message.getTopicId() != null) {

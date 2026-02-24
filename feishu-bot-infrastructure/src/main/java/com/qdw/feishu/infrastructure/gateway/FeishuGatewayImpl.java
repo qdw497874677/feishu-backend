@@ -18,6 +18,7 @@ import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.UserInfo;
 import com.qdw.feishu.domain.message.ChatHistory;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.ReactionEmoji;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -384,7 +385,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
         }
     }
 
-    public boolean addReaction(String messageId, String emojiType) {
+    public boolean addReaction(String messageId, ReactionEmoji emoji) {
+        String emojiType = emoji.getEmojiType();
         log.info("Adding reaction {} to message {}", emojiType, messageId);
         try {
             com.lark.oapi.service.im.v1.model.CreateMessageReactionReq req = 
