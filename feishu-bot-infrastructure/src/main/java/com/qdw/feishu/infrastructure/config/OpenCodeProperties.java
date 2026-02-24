@@ -83,6 +83,31 @@ public class OpenCodeProperties {
      */
     private boolean asyncEnabled = true;
 
+    /**
+     * 是否启用 SSE 事件订阅
+     */
+    private boolean sseEnabled = true;
+
+    /**
+     * SSE 重连间隔（毫秒）
+     */
+    private long sseReconnectInterval = 5000;
+
+    /**
+     * SSE 心跳超时（毫秒）
+     */
+    private long sseHeartbeatTimeout = 60000;
+
+    /**
+     * 流式回复缓冲区大小（字符数）
+     */
+    private int streamingBufferSize = 100;
+
+    /**
+     * 流式回复刷新间隔（毫秒）
+     */
+    private long streamingFlushInterval = 2000;
+
     // ===== 以下字段已废弃，仅用于兼容 CLI 模式 =====
 
     /**
