@@ -28,6 +28,7 @@ public interface FeishuGateway {
      *
      * @param messageId 消息 ID
      * @param emojiType 表情类型（如 "THUMBSUP", "HEART", "ROCKET", "HOURGLASS", "CHECK", "CROSS" 等）
+     * @return true 表示成功，false 表示失败
      */
-    void addReaction(String messageId, String emojiType);
+    boolean addReaction(String messageId, String emojiType);
 }

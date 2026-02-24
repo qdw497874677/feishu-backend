@@ -139,7 +139,10 @@ public class OpenCodeTaskExecutor {
         String messageId = message.getMessageId();
         log.info("提交异步任务: sessionId={}, prompt='{}'", sessionId, prompt);
         
-        feishuGateway.addReaction(messageId, EMOJI_START);
+        boolean reactionAdded = feishuGateway.addReaction(messageId, EMOJI_START);
+        if (!reactionAdded) {
+            log.debug("表情添加失败，但不影响主流程");
+        }
         executeAsync(message, prompt, sessionId);
         return "";
     }
@@ -160,7 +163,10 @@ public class OpenCodeTaskExecutor {
                 return;
             }
 
-            feishuGateway.addReaction(messageId, EMOJI_DONE);
+            boolean reactionAdded = feishuGateway.addReaction(messageId, EMOJI_DONE);
+            if (!reactionAdded) {
+                log.debug("完成表情添加失败，但不影响主流程");
+            }
             log.info("异步完成，添加表情: {}", EMOJI_DONE);
 
             String extractedSessionId = responseFormatter.extractSessionId(result);

@@ -250,7 +250,10 @@ public class BotMessageService {
     }
 
     private void addDefaultReaction(Message message) {
-        feishuGateway.addReaction(message.getMessageId(), "THUMBSUP");
+        boolean success = feishuGateway.addReaction(message.getMessageId(), "THUMBSUP");
+        if (!success) {
+            log.debug("表情添加失败，但不影响主流程");
+        }
     }
 
     private SendResult sendReply(Message message, FishuAppI app, String replyContent) {

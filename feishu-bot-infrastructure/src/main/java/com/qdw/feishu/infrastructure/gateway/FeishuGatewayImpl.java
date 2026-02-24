@@ -384,7 +384,7 @@ public class FeishuGatewayImpl implements FeishuGateway {
         }
     }
 
-    public void addReaction(String messageId, String emojiType) {
+    public boolean addReaction(String messageId, String emojiType) {
         log.info("Adding reaction {} to message {}", emojiType, messageId);
         try {
             com.lark.oapi.service.im.v1.model.CreateMessageReactionReq req = 
@@ -401,11 +401,13 @@ public class FeishuGatewayImpl implements FeishuGateway {
             
             if (resp.getCode() != 0) {
                 log.warn("Failed to add reaction: code={}, msg={}", resp.getCode(), resp.getMsg());
-            } else {
-                log.info("Reaction added successfully");
+                return false;
             }
+            log.info("Reaction added successfully");
+            return true;
         } catch (Exception e) {
             log.warn("Exception adding reaction to message {}", messageId, e);
+            return false;
         }
     }
 
