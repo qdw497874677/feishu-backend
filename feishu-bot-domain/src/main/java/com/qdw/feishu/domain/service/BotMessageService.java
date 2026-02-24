@@ -100,153 +100,27 @@ public class BotMessageService {
 
         try {
             message.validate();
-            log.info("消息验证通过");
-
-            String topicId = message.getTopicId();
-            boolean inTopicWithMapping = false;
-            FishuAppI app;
-
-            if (topicId != null && !topicId.isEmpty()) {
-                log.info("消息来自话题: topicId={}", topicId);
-                var mapping = topicMappingGateway.findByTopicId(topicId);
-                if (mapping.isPresent()) {
-                    TopicMapping topicMapping = mapping.get();
-                    String appId = topicMapping.getAppId();
-                    log.info("找到话题映射: topicId={}, appId={}", topicId, appId);
-                    app = appRegistry.getApp(appId).orElse(null);
-                    if (app == null) {
-                        log.error("应用不存在: appId={}", appId);
-                        sendErrorReply(message, "应用不可用");
-                        message.markProcessed();
-                        return SendResult.failure("应用不可用");
-                    }
-                    inTopicWithMapping = true;
-                    topicMapping.activate();
-                    topicMappingGateway.save(topicMapping);
-                } else {
-                    log.warn("话题映射不存在: topicId={}，降级为默认处理", topicId);
-                    handleUnknownTopic(message);
-                    message.markProcessed();
-                    return SendResult.failure("话题已失效");
-                }
-                } else {
-                    String content = message.getContent().trim();
-                    if (!content.startsWith("/")) {
-                        log.info("不是命令，路由到 help 应用");
-                        app = appRegistry.getApp("help").orElse(null);
-                        if (app == null) {
-                            log.warn("未找到帮助应用");
-                            message.markProcessed();
-                            return SendResult.failure("未找到帮助应用");
-                        }
-                    } else {
-                        String command = extractAppId(content);
-                        log.info("检测到命令: {}", command);
-                        
-                        app = findAppByCommandOrAlias(command);
-                        if (app == null) {
-                            log.warn("应用不存在: command={}", command);
-
-                            String availableApps = appRegistry.getAllApps().stream()
-                                    .flatMap(a -> a.getAllTriggerCommands().stream())
-                                    .reduce((a, b) -> a + ", " + b)
-                                    .orElse("无");
-
-                            String errorMessage = String.format(
-                                    "❌ 未找到应用: `%s`\n\n" +
-                                    "📋 可用应用列表:\n%s\n\n" +
-                                    "💡 提示: 请使用正确的命令前缀",
-                                    command, availableApps
-                            );
-
-                            log.info("发送应用不存在提示: {}", errorMessage);
-                            feishuGateway.sendDirectReply(message, errorMessage);
-
-                            message.markProcessed();
-                            return SendResult.failure("应用不存在: " + command);
-                        }
-                        
-                        log.info("找到应用: appId={}, appName={}", app.getAppId(), app.getAppName());
-                    }
-                }
-
-            if (inTopicWithMapping) {
-                String content = message.getContent().trim();
-                String appId = app.getAppId();
-                String expectedPrefix = "/" + appId;
-                
-                if (content.startsWith(expectedPrefix + " ") || content.equals(expectedPrefix)) {
-                    log.info("话题中的消息包含命令前缀，去除前缀: {}", content);
-                    if (content.length() > expectedPrefix.length()) {
-                        content = content.substring(expectedPrefix.length()).trim();
-                    } else {
-                        content = "";
-                    }
-                    message.setContent(content);
-                    log.info("话题消息处理后的内容: '{}'", content);
-                } else {
-                    log.info("话题中的消息不包含前缀，添加前缀: '{}'", content);
-                    content = expectedPrefix + " " + content;
-                    message.setContent(content);
-                    log.info("话题消息处理后的内容: '{}'", content);
-                }
+            
+            FishuAppI app = resolveApp(message);
+            if (app == null) {
+                return SendResult.failure("应用不存在");
             }
-
-            // 对用户消息添加表情回应（默认能力）
-            feishuGateway.addReaction(message.getMessageId(), "THUMBSUP");
-
+            
+            preprocessContent(message, app);
+            addDefaultReaction(message);
+            
             String replyContent = app.execute(message);
-            if (replyContent == null || replyContent.isEmpty()) {
+            if (isEmpty(replyContent)) {
                 log.warn("应用返回空回复");
                 message.markProcessed();
                 return SendResult.failure("应用返回空回复");
             }
-
-            // 使用策略模式处理回复
-            ReplyMode replyMode = app.getReplyMode();
-            ReplyStrategy strategy = replyStrategyFactory.getStrategy(replyMode);
             
-            if (strategy == null) {
-                log.warn("未找到回复模式 {} 的策略，使用默认策略", replyMode);
-                strategy = replyStrategyFactory.getStrategy(ReplyMode.DEFAULT);
-            }
-
-            SendResult result = strategy.reply(message, replyContent, topicId);
-
-            if (result.isSuccess()) {
-                log.info("发送回复成功: topicId={}", result.getThreadId());
-
-                String actualThreadId = result.getThreadId();
-                if (actualThreadId != null && !actualThreadId.isEmpty()) {
-                    log.info("获取到飞书返回的 threadId: {}", actualThreadId);
-
-                    Optional<TopicMapping> existingMapping = topicMappingGateway.findByTopicId(actualThreadId);
-
-                    TopicMapping mapping;
-                    if (existingMapping.isPresent()) {
-                        TopicMapping old = existingMapping.get();
-                        mapping = new TopicMapping(old.getTopicId(), old.getAppId(), old.getMetadata());
-                        mapping.setLastActiveAt(System.currentTimeMillis());
-                        log.debug("话题映射已存在，保留 metadata: topicId={}", actualThreadId);
-                    } else {
-                        mapping = new TopicMapping(actualThreadId, app.getAppId());
-                        log.debug("创建新话题映射: topicId={}", actualThreadId);
-                    }
-
-                    topicMappingGateway.save(mapping);
-                    log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
-
-                    if (app.getAppId().equals("opencode") && replyContent.contains("Session ID: `")) {
-                        extractAndSaveSessionId(replyContent, actualThreadId);
-                    }
-                }
-            } else {
-                log.error("发送回复失败: error={}", result.getErrorMessage());
-            }
-
+            SendResult result = sendReply(message, app, replyContent);
+            saveTopicMapping(result, app, replyContent);
+            
             message.markProcessed();
             log.info("=== BotMessageService.handleMessage 完成 ===\n");
-
             return result;
 
         } catch (MessageBizException e) {
@@ -256,6 +130,185 @@ public class BotMessageService {
             log.error("系统异常: 消息处理失败", e);
             throw new MessageSysException("MESSAGE_HANDLE_FAILED", "消息处理失败", e);
         }
+    }
+
+    private FishuAppI resolveApp(Message message) {
+        String topicId = message.getTopicId();
+        
+        if (topicId != null && !topicId.isEmpty()) {
+            log.info("消息来自话题: topicId={}", topicId);
+            return resolveAppFromTopic(message, topicId);
+        } else {
+            return resolveAppFromCommand(message);
+        }
+    }
+
+    private FishuAppI resolveAppFromTopic(Message message, String topicId) {
+        var mapping = topicMappingGateway.findByTopicId(topicId);
+        if (!mapping.isPresent()) {
+            log.warn("话题映射不存在: topicId={}，降级为默认处理", topicId);
+            handleUnknownTopic(message);
+            message.markProcessed();
+            return null;
+        }
+        
+        TopicMapping topicMapping = mapping.get();
+        String appId = topicMapping.getAppId();
+        log.info("找到话题映射: topicId={}, appId={}", topicId, appId);
+        
+        FishuAppI app = appRegistry.getApp(appId).orElse(null);
+        if (app == null) {
+            log.error("应用不存在: appId={}", appId);
+            sendErrorReply(message, "应用不可用");
+            message.markProcessed();
+            return null;
+        }
+        
+        topicMapping.activate();
+        topicMappingGateway.save(topicMapping);
+        return app;
+    }
+
+    private FishuAppI resolveAppFromCommand(Message message) {
+        String content = message.getContent().trim();
+        
+        if (!content.startsWith("/")) {
+            log.info("不是命令，路由到 help 应用");
+            FishuAppI app = appRegistry.getApp("help").orElse(null);
+            if (app == null) {
+                log.warn("未找到帮助应用");
+                message.markProcessed();
+                return null;
+            }
+            return app;
+        }
+        
+        String command = extractAppId(content);
+        log.info("检测到命令: {}", command);
+        
+        FishuAppI app = findAppByCommandOrAlias(command);
+        if (app == null) {
+            handleUnknownApp(message, command);
+            return null;
+        }
+        
+        log.info("找到应用: appId={}, appName={}", app.getAppId(), app.getAppName());
+        return app;
+    }
+
+    private void handleUnknownApp(Message message, String command) {
+        log.warn("应用不存在: command={}", command);
+        
+        String availableApps = appRegistry.getAllApps().stream()
+                .flatMap(a -> a.getAllTriggerCommands().stream())
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("无");
+
+        String errorMessage = String.format(
+                "❌ 未找到应用: `%s`\n\n" +
+                "📋 可用应用列表:\n%s\n\n" +
+                "💡 提示: 请使用正确的命令前缀",
+                command, availableApps
+        );
+
+        log.info("发送应用不存在提示: {}", errorMessage);
+        feishuGateway.sendDirectReply(message, errorMessage);
+        message.markProcessed();
+    }
+
+    private void preprocessContent(Message message, FishuAppI app) {
+        String topicId = message.getTopicId();
+        
+        if (topicId == null || topicId.isEmpty()) {
+            return;
+        }
+        
+        var mapping = topicMappingGateway.findByTopicId(topicId);
+        if (!mapping.isPresent()) {
+            return;
+        }
+        
+        String content = message.getContent().trim();
+        String appId = app.getAppId();
+        String expectedPrefix = "/" + appId;
+        
+        if (content.startsWith(expectedPrefix + " ") || content.equals(expectedPrefix)) {
+            log.info("话题中的消息包含命令前缀，去除前缀: {}", content);
+            if (content.length() > expectedPrefix.length()) {
+                content = content.substring(expectedPrefix.length()).trim();
+            } else {
+                content = "";
+            }
+            message.setContent(content);
+            log.info("话题消息处理后的内容: '{}'", content);
+        } else {
+            log.info("话题中的消息不包含前缀，添加前缀: '{}'", content);
+            content = expectedPrefix + " " + content;
+            message.setContent(content);
+            log.info("话题消息处理后的内容: '{}'", content);
+        }
+    }
+
+    private void addDefaultReaction(Message message) {
+        feishuGateway.addReaction(message.getMessageId(), "THUMBSUP");
+    }
+
+    private SendResult sendReply(Message message, FishuAppI app, String replyContent) {
+        ReplyMode replyMode = app.getReplyMode();
+        ReplyStrategy strategy = replyStrategyFactory.getStrategy(replyMode);
+        
+        if (strategy == null) {
+            log.warn("未找到回复模式 {} 的策略，使用默认策略", replyMode);
+            strategy = replyStrategyFactory.getStrategy(ReplyMode.DEFAULT);
+        }
+
+        String topicId = message.getTopicId();
+        SendResult result = strategy.reply(message, replyContent, topicId);
+        
+        if (result.isSuccess()) {
+            log.info("发送回复成功: topicId={}", result.getThreadId());
+        } else {
+            log.error("发送回复失败: error={}", result.getErrorMessage());
+        }
+        
+        return result;
+    }
+
+    private void saveTopicMapping(SendResult result, FishuAppI app, String replyContent) {
+        if (!result.isSuccess()) {
+            return;
+        }
+        
+        String actualThreadId = result.getThreadId();
+        if (actualThreadId == null || actualThreadId.isEmpty()) {
+            return;
+        }
+        
+        log.info("获取到飞书返回的 threadId: {}", actualThreadId);
+        
+        Optional<TopicMapping> existingMapping = topicMappingGateway.findByTopicId(actualThreadId);
+        
+        TopicMapping mapping;
+        if (existingMapping.isPresent()) {
+            TopicMapping old = existingMapping.get();
+            mapping = new TopicMapping(old.getTopicId(), old.getAppId(), old.getMetadata());
+            mapping.setLastActiveAt(System.currentTimeMillis());
+            log.debug("话题映射已存在，保留 metadata: topicId={}", actualThreadId);
+        } else {
+            mapping = new TopicMapping(actualThreadId, app.getAppId());
+            log.debug("创建新话题映射: topicId={}", actualThreadId);
+        }
+
+        topicMappingGateway.save(mapping);
+        log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
+
+        if (app.getAppId().equals("opencode") && replyContent.contains("Session ID: `")) {
+            extractAndSaveSessionId(replyContent, actualThreadId);
+        }
+    }
+
+    private boolean isEmpty(String str) {
+        return str == null || str.isEmpty();
     }
 
     private void extractAndSaveSessionId(String replyContent, String topicId) {
