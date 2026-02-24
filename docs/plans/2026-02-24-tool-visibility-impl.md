@@ -1,495 +1,180 @@
-# Tool Visibility Implementation Plan
+# Tool Visibility Implementation Plan (SSE 版本)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 实现 OpenCode 工具执行可见性，让用户看到 AI 执行了哪些操作（读取文件、编辑代码、执行命令等）
+**Goal:** 通过 SSE 事件订阅实现 OpenCode 工具执行可见性和流式响应
 
-**Architecture:** Phase 1 通过解析 HTTP 响应中的 `tool_use` 信息，提取工具名称和执行结果，格式化为用户友好的摘要显示。采用表情反应 + 消息内容组合方案。
+**Architecture:** 
+- 使用 OpenCode 的 SSE 端点 `/event` 订阅实时事件
+- 过滤目标会话的 `message.part.updated` 和 `session.status` 事件
+- 实现流式文本回复和工具执行状态显示
 
-**Tech Stack:** Java 17, Spring Boot, Jackson (JSON), Lombok
+**Tech Stack:** Java 17, Spring Boot, Spring WebClient (响应式 SSE), Jackson, Lombok
+
+---
+
+## 调研结论
+
+### OpenCode SSE 事件系统
+
+| 属性 | 值 |
+|------|-----|
+| **端点** | `GET /event` |
+| **协议** | SSE (Server-Sent Events) |
+| **认证** | Basic Auth（与 HTTP API 相同） |
+| **心跳** | 每 30 秒发送 `server.heartbeat` |
+
+### 关键事件类型
+
+| 事件类型 | 用途 | 字段 |
+|---------|------|------|
+| `message.part.updated` | 流式文本增量 | `sessionID`, `part`, `delta` |
+| `session.status` | 会话状态变化 | `sessionID`, `status.type` (idle/busy) |
+| `server.connected` | 连接建立 | - |
+| `server.heartbeat` | 心跳 | - |
+
+### 事件 JSON 格式
+
+```json
+{
+  "type": "message.part.updated",
+  "properties": {
+    "part": {
+      "id": "prt_xxx",
+      "sessionID": "ses_xxx",
+      "messageID": "msg_xxx",
+      "type": "text",
+      "text": "完整文本..."
+    },
+    "delta": "新增的文本片段"
+  }
+}
+```
 
 ---
 
 ## 前置检查
 
 ```bash
-# 确认当前分支状态
 git status
-
-# 确认项目可编译
 mvn clean compile -q
 ```
 
 ---
 
-## Task 1: 创建 ToolExecution 数据模型
+## Task 1: 添加 Spring WebFlux 依赖
 
 **Files:**
-- Create: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/ToolExecution.java`
+- Modify: `feishu-bot-infrastructure/pom.xml`
 
-**Step 1: 创建 ToolExecution 类**
+**Step 1: 添加 WebFlux 依赖**
+
+在 `<dependencies>` 中添加：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webflux</artifactId>
+</dependency>
+```
+
+**Step 2: 验证依赖**
+
+Run: `mvn dependency:resolve -pl feishu-bot-infrastructure -q`
+Expected: 依赖解析成功
+
+**Step 3: Commit**
+
+```bash
+git add feishu-bot-infrastructure/pom.xml
+git commit -m "feat(deps): add spring-boot-starter-webflux for SSE support"
+```
+
+---
+
+## Task 2: 创建 OpenCodeEvent 数据模型
+
+**Files:**
+- Create: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeEvent.java`
+
+**Step 1: 创建事件类**
 
 ```java
 package com.qdw.feishu.domain.opencode;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Builder;
 import lombok.Data;
 
 /**
- * 工具执行记录
+ * OpenCode SSE 事件
  *
- * 记录 OpenCode 执行的单个工具调用信息
+ * 封装从 OpenCode SSE 端点接收到的事件
  */
 @Data
 @Builder
-public class ToolExecution {
+public class OpenCodeEvent {
 
-    private String toolName;
+    private String type;
 
-    private String action;
+    private JsonNode properties;
 
-    private String status;
-
-    private String summary;
-
-    public boolean isSuccess() {
-        return "success".equalsIgnoreCase(status);
-    }
-}
-```
-
-**Step 2: 编译验证**
-
-Run: `mvn compile -pl feishu-bot-domain -q`
-Expected: BUILD SUCCESS
-
-**Step 3: Commit**
-
-```bash
-git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/ToolExecution.java
-git commit -m "feat(opencode): add ToolExecution data model"
-```
-
----
-
-## Task 2: 创建 CommandResult 数据模型
-
-**Files:**
-- Create: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/CommandResult.java`
-
-**Step 1: 创建 CommandResult 类**
-
-```java
-package com.qdw.feishu.domain.opencode;
-
-import lombok.Builder;
-import lombok.Data;
-
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * 命令执行结果
- *
- * 包含 AI 响应内容和工具执行列表
- */
-@Data
-@Builder
-public class CommandResult {
-
-    private String content;
-
-    @Builder.Default
-    private List<ToolExecution> tools = new ArrayList<>();
-
-    private boolean success;
-
-    private String errorMessage;
-
-    private String sessionId;
-
-    public int getToolCount() {
-        return tools != null ? tools.size() : 0;
-    }
-
-    public boolean hasTools() {
-        return getToolCount() > 0;
-    }
-
-    public static CommandResult error(String errorMessage) {
-        return CommandResult.builder()
-                .success(false)
-                .errorMessage(errorMessage)
-                .build();
-    }
-
-    public static CommandResult success(String content) {
-        return CommandResult.builder()
-                .content(content)
-                .success(true)
-                .build();
-    }
-}
-```
-
-**Step 2: 编译验证**
-
-Run: `mvn compile -pl feishu-bot-domain -q`
-Expected: BUILD SUCCESS
-
-**Step 3: Commit**
-
-```bash
-git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/CommandResult.java
-git commit -m "feat(opencode): add CommandResult data model"
-```
-
----
-
-## Task 3: 创建工具图标映射枚举
-
-**Files:**
-- Create: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/ToolIcon.java`
-
-**Step 1: 创建 ToolIcon 枚举**
-
-```java
-package com.qdw.feishu.domain.opencode;
-
-import java.util.HashMap;
-import java.util.Map;
-
-/**
- * 工具图标映射
- *
- * 为不同工具类型提供友好的表情图标
- */
-public enum ToolIcon {
-
-    READ("read", "📖", "读取文件"),
-    EDIT("edit", "✏️", "编辑文件"),
-    BASH("bash", "⚡", "执行命令"),
-    GREP("grep", "🔍", "搜索内容"),
-    GLOB("glob", "📁", "查找文件"),
-    WRITE("write", "📝", "写入文件"),
-    LIST("list_directory", "📂", "列出目录"),
-    WEB("web", "🌐", "网络请求"),
-    UNKNOWN("unknown", "🔧", "执行操作");
-
-    private final String toolName;
-    private final String icon;
-    private final String description;
-
-    private static final Map<String, ToolIcon> TOOL_MAP = new HashMap<>();
-
-    static {
-        for (ToolIcon tool : values()) {
-            TOOL_MAP.put(tool.toolName, tool);
-        }
-    }
-
-    ToolIcon(String toolName, String icon, String description) {
-        this.toolName = toolName;
-        this.icon = icon;
-        this.description = description;
-    }
-
-    public static ToolIcon fromToolName(String toolName) {
-        if (toolName == null) {
-            return UNKNOWN;
-        }
-        String lowerName = toolName.toLowerCase();
-        for (Map.Entry<String, ToolIcon> entry : TOOL_MAP.entrySet()) {
-            if (lowerName.contains(entry.getKey())) {
-                return entry.getValue();
-            }
-        }
-        return UNKNOWN;
-    }
-
-    public String getIcon() {
-        return icon;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-}
-```
-
-**Step 2: 编译验证**
-
-Run: `mvn compile -pl feishu-bot-domain -q`
-Expected: BUILD SUCCESS
-
-**Step 3: Commit**
-
-```bash
-git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/ToolIcon.java
-git commit -m "feat(opencode): add ToolIcon enum for tool visualization"
-```
-
----
-
-## Task 4: 更新 OpenCodeResponseFormatter 支持工具解析
-
-**Files:**
-- Modify: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeResponseFormatter.java`
-
-**Step 1: 添加工具解析方法**
-
-在 `OpenCodeResponseFormatter` 类中添加以下方法：
-
-```java
-/**
- * 解析 OpenCode 响应为 CommandResult
- *
- * @param rawOutput 原始 JSON 响应
- * @return CommandResult 包含内容和工具列表
- */
-public CommandResult parseResponse(String rawOutput) {
-    if (rawOutput == null || rawOutput.isEmpty()) {
-        return CommandResult.success("✅ 执行完成，无输出");
-    }
-
-    try {
-        JsonNode root = objectMapper.readTree(rawOutput);
+    public String getSessionId() {
+        if (properties == null) return null;
         
-        CommandResult.CommandResultBuilder builder = CommandResult.builder()
-                .success(true);
-
-        StringBuilder contentBuilder = new StringBuilder();
-        List<ToolExecution> tools = new ArrayList<>();
-
-        if (root.has("parts") && root.get("parts").isArray()) {
-            JsonNode parts = root.get("parts");
-            for (JsonNode part : parts) {
-                String type = part.has("type") ? part.get("type").asText() : "";
-
-                if ("text".equals(type)) {
-                    extractTextContent(part, contentBuilder);
-                } else if ("tool_use".equals(type)) {
-                    ToolExecution tool = extractToolExecution(part);
-                    if (tool != null) {
-                        tools.add(tool);
-                    }
-                }
-            }
+        if (properties.has("sessionID")) {
+            return properties.get("sessionID").asText();
         }
-
-        String sessionId = extractSessionIdFromJson(root);
-        
-        return builder
-                .content(contentBuilder.toString().trim())
-                .tools(tools)
-                .sessionId(sessionId)
-                .build();
-
-    } catch (Exception e) {
-        log.warn("JSON 解析失败，返回原始内容: {}", e.getMessage());
-        return CommandResult.success(rawOutput);
-    }
-}
-
-private void extractTextContent(JsonNode part, StringBuilder contentBuilder) {
-    if (part.has("text")) {
-        JsonNode textNode = part.get("text");
-        if (textNode.isTextual()) {
-            contentBuilder.append(textNode.asText()).append("\n");
-        } else if (textNode.has("content")) {
-            contentBuilder.append(textNode.get("content").asText()).append("\n");
+        if (properties.has("part") && properties.get("part").has("sessionID")) {
+            return properties.get("part").get("sessionID").asText();
         }
-    }
-}
-
-private ToolExecution extractToolExecution(JsonNode part) {
-    if (!part.has("toolUse")) {
         return null;
     }
 
-    JsonNode toolUse = part.get("toolUse");
-    String toolName = toolUse.has("name") ? toolUse.get("name").asText() : "unknown";
-    
-    String action = extractToolAction(toolUse);
-    String summary = extractToolSummary(toolUse, toolName);
-    String status = toolUse.has("output") ? "success" : "error";
-
-    return ToolExecution.builder()
-            .toolName(toolName)
-            .action(action)
-            .status(status)
-            .summary(summary)
-            .build();
-}
-
-private String extractToolAction(JsonNode toolUse) {
-    if (!toolUse.has("input")) {
-        return "";
-    }
-
-    JsonNode input = toolUse.get("input");
-    
-    if (input.has("file_path")) {
-        return input.get("file_path").asText();
-    }
-    if (input.has("command")) {
-        return input.get("command").asText();
-    }
-    if (input.has("pattern")) {
-        return input.get("pattern").asText();
-    }
-
-    return "";
-}
-
-private String extractToolSummary(JsonNode toolUse, String toolName) {
-    ToolIcon icon = ToolIcon.fromToolName(toolName);
-    String action = extractToolAction(toolUse);
-    
-    if (action.isEmpty()) {
-        return String.format("%s %s", icon.getIcon(), icon.getDescription());
-    }
-
-    if (action.length() > 50) {
-        action = action.substring(0, 47) + "...";
-    }
-
-    return String.format("%s %s: %s", icon.getIcon(), icon.getDescription(), action);
-}
-
-private String extractSessionIdFromJson(JsonNode root) {
-    if (root.has("session_id")) {
-        return root.get("session_id").asText();
-    }
-
-    if (root.has("parts") && root.get("parts").isArray()) {
-        for (JsonNode part : root.get("parts")) {
-            if (part.has("session_id")) {
-                return part.get("session_id").asText();
-            }
+    public String getDelta() {
+        if (properties != null && properties.has("delta")) {
+            return properties.get("delta").asText();
         }
+        return null;
     }
 
-    return null;
-}
-```
-
-**Step 2: 添加格式化方法**
-
-```java
-/**
- * 格式化 CommandResult 为用户友好的消息
- *
- * @param result 命令结果
- * @return 格式化后的消息
- */
-public String formatResult(CommandResult result) {
-    if (!result.isSuccess()) {
-        return formatErrorResult(result);
-    }
-
-    StringBuilder sb = new StringBuilder();
-
-    if (result.hasTools()) {
-        sb.append("✅ 完成（执行了 ").append(result.getToolCount()).append(" 个操作）\n\n");
-    } else {
-        sb.append("✅ 完成\n\n");
-    }
-
-    if (result.getContent() != null && !result.getContent().isEmpty()) {
-        sb.append("📝 **AI 响应**：\n");
-        sb.append(result.getContent()).append("\n");
-    }
-
-    if (result.hasTools()) {
-        sb.append("\n---\n\n");
-        sb.append("🔧 **执行的操作**：\n");
-        for (ToolExecution tool : result.getTools()) {
-            sb.append("• ").append(tool.getSummary());
-            if (!tool.isSuccess()) {
-                sb.append(" ❌");
-            }
-            sb.append("\n");
+    public String getText() {
+        if (properties != null && properties.has("part") && properties.get("part").has("text")) {
+            return properties.get("part").get("text").asText();
         }
+        return null;
     }
 
-    if (result.getSessionId() != null && !result.getSessionId().isEmpty()) {
-        sb.append("\n💾 _会话ID: `").append(result.getSessionId()).append("`_");
+    public String getStatus() {
+        if (properties != null && properties.has("status") && properties.get("status").has("type")) {
+            return properties.get("status").get("type").asText();
+        }
+        return null;
     }
 
-    String output = sb.toString();
-    
-    if (output.length() > 3500) {
-        output = output.substring(0, 3450) + "\n\n...(输出过长，已截断)";
+    public boolean isSessionIdle() {
+        return "idle".equals(getStatus());
     }
 
-    return output;
+    public boolean isSessionBusy() {
+        return "busy".equals(getStatus());
+    }
+
+    public boolean isTextUpdate() {
+        return "message.part.updated".equals(type);
+    }
+
+    public boolean isStatusUpdate() {
+        return "session.status".equals(type);
+    }
+
+    public static OpenCodeEvent of(String type, JsonNode properties) {
+        return OpenCodeEvent.builder()
+                .type(type)
+                .properties(properties)
+                .build();
+    }
 }
-
-private String formatErrorResult(CommandResult result) {
-    StringBuilder sb = new StringBuilder();
-    sb.append("❌ 执行失败\n\n");
-
-    if (result.getErrorMessage() != null) {
-        sb.append("**错误信息**：").append(result.getErrorMessage()).append("\n\n");
-    }
-
-    sb.append("💡 **建议**：\n");
-    sb.append("• 检查 OpenCode 服务是否启动\n");
-    sb.append("• 使用 /opencode status 查看服务状态\n");
-
-    return sb.toString();
-}
-```
-
-**Step 3: 添加必要的 import**
-
-在文件顶部添加：
-
-```java
-import com.qdw.feishu.domain.opencode.CommandResult;
-import com.qdw.feishu.domain.opencode.ToolExecution;
-import com.qdw.feishu.domain.opencode.ToolIcon;
-import java.util.List;
-import java.util.ArrayList;
-```
-
-**Step 4: 编译验证**
-
-Run: `mvn compile -pl feishu-bot-domain -q`
-Expected: BUILD SUCCESS
-
-**Step 5: Commit**
-
-```bash
-git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeResponseFormatter.java
-git commit -m "feat(opencode): add tool parsing and formatting to ResponseFormatter"
-```
-
----
-
-## Task 5: 更新 OpenCodeGateway 接口
-
-**Files:**
-- Modify: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/gateway/OpenCodeGateway.java`
-
-**Step 1: 添加新方法**
-
-在接口中添加：
-
-```java
-import com.qdw.feishu.domain.opencode.CommandResult;
-
-/**
- * 执行命令并返回结构化结果
- *
- * @param prompt 提示词
- * @param sessionId 会话 ID（可为 null）
- * @param timeoutSeconds 超时时间（秒）
- * @return CommandResult 结构化结果
- * @throws Exception 执行异常
- */
-CommandResult executeCommandWithResult(String prompt, String sessionId, int timeoutSeconds) throws Exception;
 ```
 
 **Step 2: 编译验证**
@@ -500,386 +185,758 @@ Expected: BUILD SUCCESS
 **Step 3: Commit**
 
 ```bash
-git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/gateway/OpenCodeGateway.java
-git commit -m "feat(opencode): add executeCommandWithResult method to Gateway interface"
+git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeEvent.java
+git commit -m "feat(opencode): add OpenCodeEvent data model for SSE events"
 ```
 
 ---
 
-## Task 6: 实现 OpenCodeGatewayImpl 新方法
+## Task 3: 创建 OpenCodeEventGateway 接口
 
 **Files:**
-- Modify: `feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/gateway/OpenCodeGatewayImpl.java`
+- Create: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/gateway/OpenCodeEventGateway.java`
 
-**Step 1: 添加 import**
-
-```java
-import com.qdw.feishu.domain.opencode.CommandResult;
-import com.qdw.feishu.domain.opencode.OpenCodeResponseFormatter;
-import org.springframework.beans.factory.annotation.Autowired;
-```
-
-**Step 2: 注入 ResponseFormatter**
-
-在类中添加：
+**Step 1: 创建接口**
 
 ```java
-private final OpenCodeResponseFormatter responseFormatter;
+package com.qdw.feishu.domain.gateway;
 
-public OpenCodeGatewayImpl(OpenCodeProperties properties, 
-                           @Autowired(required = false) OpenCodeResponseFormatter responseFormatter) {
-    this.properties = properties;
-    this.responseFormatter = responseFormatter;
-    this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(properties.getConnectTimeout()))
-            .build();
-    log.info("OpenCode Gateway 初始化完成，服务端: {}", properties.getServerUrl());
+import com.qdw.feishu.domain.opencode.OpenCodeEvent;
+
+import java.util.function.Consumer;
+
+/**
+ * OpenCode 事件订阅网关接口
+ *
+ * 用于订阅 OpenCode SSE 事件流
+ */
+public interface OpenCodeEventGateway {
+
+    /**
+     * 启动 SSE 连接并订阅所有事件
+     *
+     * @param handler 事件处理器
+     */
+    void subscribe(Consumer<OpenCodeEvent> handler);
+
+    /**
+     * 检查 SSE 连接是否活跃
+     *
+     * @return true 如果连接活跃
+     */
+    boolean isConnected();
+
+    /**
+     * 断开 SSE 连接
+     */
+    void disconnect();
 }
 ```
 
-**Step 3: 实现 executeCommandWithResult 方法**
+**Step 2: 编译验证**
 
-```java
-@Override
-public CommandResult executeCommandWithResult(String prompt, String sessionId, int timeoutSeconds) throws Exception {
-    String rawResponse = executeCommand(prompt, sessionId, timeoutSeconds);
-    
-    if (rawResponse == null) {
-        return CommandResult.error("执行超时");
-    }
+Run: `mvn compile -pl feishu-bot-domain -q`
+Expected: BUILD SUCCESS
 
-    if (rawResponse.startsWith("❌")) {
-        return CommandResult.error(rawResponse);
-    }
+**Step 3: Commit**
 
-    if (responseFormatter != null) {
-        return responseFormatter.parseResponse(rawResponse);
-    }
-
-    return CommandResult.success(rawResponse);
-}
+```bash
+git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/gateway/OpenCodeEventGateway.java
+git commit -m "feat(opencode): add OpenCodeEventGateway interface"
 ```
 
-**Step 4: 编译验证**
+---
+
+## Task 4: 创建 SSE 配置类
+
+**Files:**
+- Modify: `feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/config/OpenCodeProperties.java`
+
+**Step 1: 添加 SSE 配置字段**
+
+在 `OpenCodeProperties` 类中添加：
+
+```java
+/**
+ * 是否启用 SSE 事件订阅
+ */
+private boolean sseEnabled = true;
+
+/**
+ * SSE 重连间隔（毫秒）
+ */
+private long sseReconnectInterval = 5000;
+
+/**
+ * SSE 心跳超时（毫秒）
+ */
+private long sseHeartbeatTimeout = 60000;
+
+/**
+ * 流式回复缓冲区大小（字符数）
+ */
+private int streamingBufferSize = 100;
+
+/**
+ * 流式回复刷新间隔（毫秒）
+ */
+private long streamingFlushInterval = 2000;
+```
+
+**Step 2: 编译验证**
 
 Run: `mvn compile -pl feishu-bot-infrastructure -q`
 Expected: BUILD SUCCESS
 
-**Step 5: Commit**
+**Step 3: Commit**
 
 ```bash
-git add feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/gateway/OpenCodeGatewayImpl.java
-git commit -m "feat(opencode): implement executeCommandWithResult in GatewayImpl"
+git add feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/config/OpenCodeProperties.java
+git commit -m "feat(opencode): add SSE configuration properties"
 ```
 
 ---
 
-## Task 7: 更新 OpenCodeTaskExecutor 使用新格式
+## Task 5: 实现 OpenCodeEventGatewayImpl
 
 **Files:**
-- Modify: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeTaskExecutor.java`
+- Create: `feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/gateway/OpenCodeEventGatewayImpl.java`
 
-**Step 1: 修改 executeAsync 方法**
-
-将原来的 `executeAsync` 方法修改为：
+**Step 1: 创建实现类**
 
 ```java
-@Async("opencodeExecutor")
-public void executeAsync(Message message, String prompt, String sessionId) {
-    String messageId = message.getMessageId();
-    log.info("异步执行开始: messageId={}, sessionId={}", messageId, sessionId);
+package com.qdw.feishu.infrastructure.gateway;
 
-    try {
-        CommandResult result = openCodeGateway.executeCommandWithResult(prompt, sessionId, EXECUTE_TIMEOUT);
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qdw.feishu.domain.gateway.OpenCodeEventGateway;
+import com.qdw.feishu.domain.opencode.OpenCodeEvent;
+import com.qdw.feishu.infrastructure.config.OpenCodeProperties;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 
-        if (result == null || (!result.isSuccess() && result.getErrorMessage() != null && result.getErrorMessage().contains("超时"))) {
-            log.warn("异步执行超时（{}秒）", EXECUTE_TIMEOUT);
-            feishuGateway.sendMessage(message, 
-                "⚠️ 任务执行超时，请稍后重试或尝试简化问题。", 
-                message.getTopicId());
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.function.Consumer;
+
+/**
+ * OpenCode SSE 事件订阅实现
+ *
+ * 使用 Spring WebClient 订阅 OpenCode 的 /event SSE 端点
+ */
+@Slf4j
+@Component
+@ConditionalOnProperty(prefix = "opencode", name = "sse-enabled", havingValue = "true", matchIfMissing = true)
+public class OpenCodeEventGatewayImpl implements OpenCodeEventGateway {
+
+    private final OpenCodeProperties properties;
+    private final WebClient webClient;
+    private final ObjectMapper objectMapper;
+
+    private volatile Disposable subscription;
+    private volatile boolean connected = false;
+    private volatile Consumer<OpenCodeEvent> eventHandler;
+
+    public OpenCodeEventGatewayImpl(OpenCodeProperties properties, ObjectMapper objectMapper) {
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.webClient = WebClient.builder()
+                .baseUrl(properties.getServerUrl())
+                .defaultHeader("Authorization", getAuthHeader())
+                .build();
+        log.info("OpenCode SSE Gateway 初始化完成: {}", properties.getServerUrl());
+    }
+
+    private String getAuthHeader() {
+        if (properties.getPassword() == null || properties.getPassword().isEmpty()) {
+            return "";
+        }
+        String auth = properties.getUsername() + ":" + properties.getPassword();
+        return "Basic " + Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Override
+    public synchronized void subscribe(Consumer<OpenCodeEvent> handler) {
+        if (subscription != null && !subscription.isDisposed()) {
+            log.warn("SSE 连接已存在，跳过重复订阅");
             return;
         }
 
-        boolean reactionAdded = feishuGateway.addReaction(messageId, ReactionEmoji.CLAP);
-        if (!reactionAdded) {
-            log.debug("完成表情添加失败，但不影响主流程");
+        this.eventHandler = handler;
+        startSubscription();
+    }
+
+    private void startSubscription() {
+        log.info("开始订阅 OpenCode SSE 事件: {}/event", properties.getServerUrl());
+
+        Flux<String> eventStream = webClient.get()
+                .uri("/event")
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .retrieve()
+                .bodyToFlux(String.class)
+                .doOnSubscribe(s -> {
+                    connected = true;
+                    log.info("SSE 连接已建立");
+                })
+                .doOnError(e -> {
+                    connected = false;
+                    log.error("SSE 连接错误: {}", e.getMessage());
+                })
+                .doOnCancel(() -> {
+                    connected = false;
+                    log.info("SSE 连接已取消");
+                });
+
+        subscription = eventStream
+                .retryWhen(reactor.util.retry.Retry.backoff(Long.MAX_VALUE, Duration.ofMillis(properties.getSseReconnectInterval()))
+                        .maxBackoff(Duration.ofSeconds(30))
+                        .doBeforeRetry(signal -> log.warn("SSE 重连中，第 {} 次尝试", signal.totalRetries() + 1)))
+                .subscribe(
+                        this::handleRawEvent,
+                        error -> log.error("SSE 订阅异常", error)
+                );
+    }
+
+    private void handleRawEvent(String rawData) {
+        try {
+            JsonNode json = objectMapper.readTree(rawData);
+            String type = json.has("type") ? json.get("type").asText() : null;
+            JsonNode properties = json.has("properties") ? json.get("properties") : null;
+
+            if (type == null) {
+                return;
+            }
+
+            if ("server.connected".equals(type)) {
+                connected = true;
+                log.info("收到 server.connected 事件，SSE 连接就绪");
+                return;
+            }
+
+            if ("server.heartbeat".equals(type)) {
+                log.debug("收到心跳事件");
+                return;
+            }
+
+            OpenCodeEvent event = OpenCodeEvent.of(type, properties);
+            
+            if (eventHandler != null) {
+                eventHandler.accept(event);
+            }
+
+        } catch (Exception e) {
+            log.warn("解析 SSE 事件失败: {}", e.getMessage());
         }
-        log.info("异步完成，添加表情: CLAP");
+    }
 
-        String extractedSessionId = result.getSessionId();
-        if (extractedSessionId != null && message.getTopicId() != null) {
-            sessionManager.saveSession(message.getTopicId(), extractedSessionId);
+    @Override
+    public boolean isConnected() {
+        return connected && subscription != null && !subscription.isDisposed();
+    }
+
+    @Override
+    public synchronized void disconnect() {
+        if (subscription != null && !subscription.isDisposed()) {
+            subscription.dispose();
+            subscription = null;
+            connected = false;
+            log.info("SSE 连接已断开");
         }
+    }
 
-        String formatted = responseFormatter.formatResult(result);
-        feishuGateway.sendMessage(message, formatted, message.getTopicId());
-
-    } catch (Exception e) {
-        log.error("异步执行失败", e);
-        feishuGateway.sendMessage(message, "❌ 执行失败: " + e.getMessage(), message.getTopicId());
+    @PreDestroy
+    public void destroy() {
+        disconnect();
     }
 }
 ```
 
-**Step 2: 添加 import**
+**Step 2: 编译验证**
 
-```java
-import com.qdw.feishu.domain.opencode.CommandResult;
+Run: `mvn compile -pl feishu-bot-infrastructure -q`
+Expected: BUILD SUCCESS
+
+**Step 3: Commit**
+
+```bash
+git add feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/gateway/OpenCodeEventGatewayImpl.java
+git commit -m "feat(opencode): implement SSE event subscription with WebClient"
 ```
 
-**Step 3: 编译验证**
+---
+
+## Task 6: 创建流式响应处理器
+
+**Files:**
+- Create: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeStreamingHandler.java`
+
+**Step 1: 创建处理器**
+
+```java
+package com.qdw.feishu.domain.opencode;
+
+import com.qdw.feishu.domain.gateway.FeishuGateway;
+import com.qdw.feishu.domain.message.Message;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 流式响应处理器
+ *
+ * 处理 SSE 事件，累积文本增量，定期发送到飞书
+ */
+@Slf4j
+@Component
+public class OpenCodeStreamingHandler {
+
+    private final FeishuGateway feishuGateway;
+    private final OpenCodePropertiesReader config;
+    private final ScheduledExecutorService scheduler;
+
+    private final Map<String, StringBuilder> textBuffers = new ConcurrentHashMap<>();
+    private final Map<String, String> sessionToTopicMap = new ConcurrentHashMap<>();
+    private final Map<String, Message> sessionToMessageMap = new ConcurrentHashMap<>();
+    private final Map<String, ScheduledFuture<?>> flushTasks = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastFlushTime = new ConcurrentHashMap<>();
+
+    public OpenCodeStreamingHandler(FeishuGateway feishuGateway) {
+        this.feishuGateway = feishuGateway;
+        this.config = new OpenCodePropertiesReader();
+        this.scheduler = Executors.newScheduledThreadPool(2);
+    }
+
+    public void registerSession(String sessionId, Message message) {
+        String topicId = message.getTopicId();
+        sessionToTopicMap.put(sessionId, topicId);
+        sessionToMessageMap.put(sessionId, message);
+        textBuffers.put(sessionId, new StringBuilder());
+        lastFlushTime.put(sessionId, System.currentTimeMillis());
+        log.info("注册会话流式处理: sessionId={}, topicId={}", sessionId, topicId);
+    }
+
+    public void unregisterSession(String sessionId) {
+        textBuffers.remove(sessionId);
+        sessionToTopicMap.remove(sessionId);
+        sessionToMessageMap.remove(sessionId);
+        lastFlushTime.remove(sessionId);
+        
+        ScheduledFuture<?> task = flushTasks.remove(sessionId);
+        if (task != null) {
+            task.cancel(false);
+        }
+        log.info("注销会话流式处理: sessionId={}", sessionId);
+    }
+
+    public void handleEvent(OpenCodeEvent event) {
+        String sessionId = event.getSessionId();
+        if (sessionId == null || !sessionToTopicMap.containsKey(sessionId)) {
+            return;
+        }
+
+        if (event.isTextUpdate()) {
+            handleTextDelta(sessionId, event);
+        } else if (event.isStatusUpdate() && event.isSessionIdle()) {
+            handleSessionComplete(sessionId);
+        }
+    }
+
+    private void handleTextDelta(String sessionId, OpenCodeEvent event) {
+        String delta = event.getDelta();
+        if (delta == null || delta.isEmpty()) {
+            return;
+        }
+
+        StringBuilder buffer = textBuffers.get(sessionId);
+        if (buffer == null) {
+            return;
+        }
+
+        buffer.append(delta);
+        log.debug("累积文本增量: sessionId={}, delta长度={}, buffer长度={}", 
+                sessionId, delta.length(), buffer.length());
+
+        scheduleFlush(sessionId);
+    }
+
+    private void scheduleFlush(String sessionId) {
+        if (flushTasks.containsKey(sessionId)) {
+            return;
+        }
+
+        ScheduledFuture<?> task = scheduler.schedule(() -> {
+            flushBuffer(sessionId);
+            flushTasks.remove(sessionId);
+        }, config.getStreamingFlushInterval(), TimeUnit.MILLISECONDS);
+
+        flushTasks.put(sessionId, task);
+    }
+
+    private synchronized void flushBuffer(String sessionId) {
+        StringBuilder buffer = textBuffers.get(sessionId);
+        String topicId = sessionToTopicMap.get(sessionId);
+        Message message = sessionToMessageMap.get(sessionId);
+
+        if (buffer == null || topicId == null || message == null) {
+            return;
+        }
+
+        String text = buffer.toString();
+        if (text.isEmpty()) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        Long lastFlush = lastFlushTime.get(sessionId);
+        if (lastFlush != null && (now - lastFlush) < 1000) {
+            return;
+        }
+
+        buffer.setLength(0);
+        lastFlushTime.put(sessionId, now);
+
+        String formattedText = formatStreamingText(text);
+        feishuGateway.sendMessage(message, formattedText, topicId);
+        log.info("发送流式更新: sessionId={}, length={}", sessionId, text.length());
+    }
+
+    private void handleSessionComplete(String sessionId) {
+        flushBuffer(sessionId);
+        
+        StringBuilder buffer = textBuffers.get(sessionId);
+        if (buffer != null && buffer.length() > 0) {
+            String finalText = buffer.toString();
+            Message message = sessionToMessageMap.get(sessionId);
+            String topicId = sessionToTopicMap.get(sessionId);
+            
+            if (message != null && topicId != null) {
+                feishuGateway.sendMessage(message, 
+                    "✅ 完成\n\n" + finalText, topicId);
+            }
+        }
+        
+        unregisterSession(sessionId);
+        log.info("会话完成: sessionId={}", sessionId);
+    }
+
+    private String formatStreamingText(String text) {
+        return "⏳ 处理中...\n\n" + text;
+    }
+
+    private static class OpenCodePropertiesReader {
+        long getStreamingFlushInterval() {
+            return 2000;
+        }
+    }
+}
+```
+
+**Step 2: 编译验证**
 
 Run: `mvn compile -pl feishu-bot-domain -q`
 Expected: BUILD SUCCESS
 
-**Step 4: Commit**
+**Step 3: Commit**
+
+```bash
+git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeStreamingHandler.java
+git commit -m "feat(opencode): add streaming response handler"
+```
+
+---
+
+## Task 7: 集成到 OpenCodeTaskExecutor
+
+**Files:**
+- Modify: `feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeTaskExecutor.java`
+
+**Step 1: 注入依赖并修改**
+
+添加字段和修改方法：
+
+```java
+// 添加字段
+private final OpenCodeStreamingHandler streamingHandler;
+
+// 修改构造函数
+public OpenCodeTaskExecutor(OpenCodeGateway openCodeGateway,
+                            FeishuGateway feishuGateway,
+                            OpenCodeResponseFormatter responseFormatter,
+                            OpenCodeSessionManager sessionManager,
+                            OpenCodeStreamingHandler streamingHandler) {
+    this.openCodeGateway = openCodeGateway;
+    this.feishuGateway = feishuGateway;
+    this.responseFormatter = responseFormatter;
+    this.sessionManager = sessionManager;
+    this.streamingHandler = streamingHandler;
+}
+
+// 在 executeWithSpecificSession 方法中注册流式处理
+public String executeWithSpecificSession(Message message, String prompt, String sessionId) {
+    log.info("使用指定会话执行: sessionId={}", sessionId);
+    String topicId = message.getTopicId();
+    sessionManager.saveSession(topicId, sessionId);
+
+    // 注册流式处理
+    streamingHandler.registerSession(sessionId, message);
+
+    if (prompt == null || prompt.isEmpty()) {
+        return buildInitializationSuccessResponse(topicId, sessionId);
+    }
+    return executeTask(message, prompt, sessionId);
+}
+```
+
+**Step 2: 编译验证**
+
+Run: `mvn compile -pl feishu-bot-domain -q`
+Expected: BUILD SUCCESS
+
+**Step 3: Commit**
 
 ```bash
 git add feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/OpenCodeTaskExecutor.java
-git commit -m "feat(opencode): integrate tool visibility in TaskExecutor"
+git commit -m "feat(opencode): integrate streaming handler in TaskExecutor"
 ```
 
 ---
 
-## Task 8: 编写单元测试
+## Task 8: 创建 SSE 初始化配置
 
 **Files:**
-- Create: `feishu-bot-domain/src/test/java/com/qdw/feishu/domain/opencode/OpenCodeResponseFormatterTest.java`
+- Create: `feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/config/OpenCodeSseConfig.java`
+
+**Step 1: 创建配置类**
+
+```java
+package com.qdw.feishu.infrastructure.config;
+
+import com.qdw.feishu.domain.gateway.OpenCodeEventGateway;
+import com.qdw.feishu.domain.opencode.OpenCodeEvent;
+import com.qdw.feishu.domain.opencode.OpenCodeStreamingHandler;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * OpenCode SSE 配置
+ *
+ * 在应用启动时自动订阅 SSE 事件
+ */
+@Slf4j
+@Configuration
+@ConditionalOnProperty(prefix = "opencode", name = "sse-enabled", havingValue = "true", matchIfMissing = true)
+public class OpenCodeSseConfig {
+
+    private final OpenCodeEventGateway eventGateway;
+    private final OpenCodeStreamingHandler streamingHandler;
+
+    public OpenCodeSseConfig(
+            @Autowired(required = false) OpenCodeEventGateway eventGateway,
+            OpenCodeStreamingHandler streamingHandler) {
+        this.eventGateway = eventGateway;
+        this.streamingHandler = streamingHandler;
+    }
+
+    @PostConstruct
+    public void init() {
+        if (eventGateway == null) {
+            log.warn("OpenCodeEventGateway 未启用，流式响应功能不可用");
+            return;
+        }
+
+        log.info("初始化 OpenCode SSE 订阅...");
+        eventGateway.subscribe(event -> {
+            log.debug("收到事件: type={}, sessionId={}", event.getType(), event.getSessionId());
+            streamingHandler.handleEvent(event);
+        });
+    }
+}
+```
+
+**Step 2: 编译验证**
+
+Run: `mvn compile -pl feishu-bot-infrastructure -q`
+Expected: BUILD SUCCESS
+
+**Step 3: Commit**
+
+```bash
+git add feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/config/OpenCodeSseConfig.java
+git commit -m "feat(opencode): add SSE initialization config"
+```
+
+---
+
+## Task 9: 更新 application.yml 配置
+
+**Files:**
+- Modify: `feishu-bot-start/src/main/resources/application.yml`
+
+**Step 1: 添加 SSE 配置**
+
+在 `opencode:` 部分添加：
+
+```yaml
+opencode:
+  server-url: http://localhost:4096
+  username: opencode
+  password: ${OPENCODE_SERVER_PASSWORD:}
+  
+  # SSE 配置
+  sse-enabled: true
+  sse-reconnect-interval: 5000
+  sse-heartbeat-timeout: 60000
+  
+  # 流式回复配置
+  streaming-buffer-size: 100
+  streaming-flush-interval: 2000
+```
+
+**Step 2: Commit**
+
+```bash
+git add feishu-bot-start/src/main/resources/application.yml
+git commit -m "feat(config): add SSE configuration to application.yml"
+```
+
+---
+
+## Task 10: 编写单元测试
+
+**Files:**
+- Create: `feishu-bot-domain/src/test/java/com/qdw/feishu/domain/opencode/OpenCodeEventTest.java`
 
 **Step 1: 创建测试类**
 
 ```java
 package com.qdw.feishu.domain.opencode;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class OpenCodeResponseFormatterTest {
+class OpenCodeEventTest {
 
-    private OpenCodeResponseFormatter formatter;
-
-    @BeforeEach
-    void setUp() {
-        formatter = new OpenCodeResponseFormatter(new ObjectMapper());
-    }
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void should_parseTextContent_when_givenTextPart() {
-        String json = """
-            {
-              "parts": [
-                {
-                  "type": "text",
-                  "text": {"content": "Hello World"}
-                }
-              ]
-            }
-            """;
+    void should_extractSessionId_fromProperties() throws Exception {
+        String json = "{\"sessionID\": \"ses_123\"}";
+        JsonNode properties = objectMapper.readTree(json);
 
-        CommandResult result = formatter.parseResponse(json);
-
-        assertTrue(result.isSuccess());
-        assertEquals("Hello World", result.getContent());
-        assertFalse(result.hasTools());
-    }
-
-    @Test
-    void should_parseToolExecution_when_givenToolUsePart() {
-        String json = """
-            {
-              "parts": [
-                {
-                  "type": "tool_use",
-                  "toolUse": {
-                    "name": "read",
-                    "input": {"file_path": "/src/main.java"},
-                    "output": "file content"
-                  }
-                }
-              ]
-            }
-            """;
-
-        CommandResult result = formatter.parseResponse(json);
-
-        assertTrue(result.isSuccess());
-        assertTrue(result.hasTools());
-        assertEquals(1, result.getToolCount());
-        
-        ToolExecution tool = result.getTools().get(0);
-        assertEquals("read", tool.getToolName());
-        assertTrue(tool.getSummary().contains("📖"));
-    }
-
-    @Test
-    void should_parseMultipleTools_when_givenMultipleToolUseParts() {
-        String json = """
-            {
-              "parts": [
-                {
-                  "type": "tool_use",
-                  "toolUse": {
-                    "name": "read",
-                    "input": {"file_path": "/src/main.java"},
-                    "output": "content"
-                  }
-                },
-                {
-                  "type": "tool_use",
-                  "toolUse": {
-                    "name": "edit",
-                    "input": {"file_path": "/src/main.java"},
-                    "output": "edited"
-                  }
-                }
-              ]
-            }
-            """;
-
-        CommandResult result = formatter.parseResponse(json);
-
-        assertEquals(2, result.getToolCount());
-    }
-
-    @Test
-    void should_returnSuccessWithRawContent_when_jsonParseFails() {
-        String invalidJson = "This is not JSON";
-
-        CommandResult result = formatter.parseResponse(invalidJson);
-
-        assertTrue(result.isSuccess());
-        assertEquals("This is not JSON", result.getContent());
-    }
-
-    @Test
-    void should_formatResultCorrectly_when_hasTools() {
-        CommandResult result = CommandResult.builder()
-                .success(true)
-                .content("AI response text")
-                .tools(java.util.List.of(
-                    ToolExecution.builder()
-                        .toolName("read")
-                        .summary("📖 读取文件: /src/main.java")
-                        .status("success")
-                        .build()
-                ))
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("session.status")
+                .properties(properties)
                 .build();
 
-        String formatted = formatter.formatResult(result);
-
-        assertTrue(formatted.contains("✅ 完成"));
-        assertTrue(formatted.contains("执行了 1 个操作"));
-        assertTrue(formatted.contains("🔧 **执行的操作**"));
-        assertTrue(formatted.contains("📖 读取文件"));
+        assertEquals("ses_123", event.getSessionId());
     }
 
     @Test
-    void should_formatErrorResult_when_resultIsNotSuccess() {
-        CommandResult result = CommandResult.error("Connection failed");
+    void should_extractSessionId_fromPart() throws Exception {
+        String json = "{\"part\": {\"sessionID\": \"ses_456\"}}";
+        JsonNode properties = objectMapper.readTree(json);
 
-        String formatted = formatter.formatResult(result);
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("message.part.updated")
+                .properties(properties)
+                .build();
 
-        assertTrue(formatted.contains("❌ 执行失败"));
-        assertTrue(formatted.contains("Connection failed"));
+        assertEquals("ses_456", event.getSessionId());
     }
 
     @Test
-    void should_returnErrorResult_when_inputIsNull() {
-        CommandResult result = formatter.parseResponse(null);
+    void should_extractDelta() throws Exception {
+        String json = "{\"delta\": \"新增文本\"}";
+        JsonNode properties = objectMapper.readTree(json);
 
-        assertTrue(result.isSuccess());
-        assertTrue(result.getContent().contains("无输出"));
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("message.part.updated")
+                .properties(properties)
+                .build();
+
+        assertEquals("新增文本", event.getDelta());
+    }
+
+    @Test
+    void should_extractStatus() throws Exception {
+        String json = "{\"status\": {\"type\": \"idle\"}}";
+        JsonNode properties = objectMapper.readTree(json);
+
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("session.status")
+                .properties(properties)
+                .build();
+
+        assertEquals("idle", event.getStatus());
+        assertTrue(event.isSessionIdle());
+    }
+
+    @Test
+    void should_detectTextUpdate() {
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("message.part.updated")
+                .build();
+
+        assertTrue(event.isTextUpdate());
+        assertFalse(event.isStatusUpdate());
+    }
+
+    @Test
+    void should_detectStatusUpdate() {
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("session.status")
+                .build();
+
+        assertTrue(event.isStatusUpdate());
+        assertFalse(event.isTextUpdate());
+    }
+
+    @Test
+    void should_returnNull_when_sessionIdNotPresent() {
+        OpenCodeEvent event = OpenCodeEvent.builder()
+                .type("server.heartbeat")
+                .build();
+
+        assertNull(event.getSessionId());
     }
 }
 ```
 
 **Step 2: 运行测试**
 
-Run: `mvn test -pl feishu-bot-domain -Dtest=OpenCodeResponseFormatterTest -q`
-Expected: Tests run: 7, Failures: 0, Errors: 0
+Run: `mvn test -pl feishu-bot-domain -Dtest=OpenCodeEventTest -q`
+Expected: Tests run: 7, Failures: 0
 
 **Step 3: Commit**
 
 ```bash
-git add feishu-bot-domain/src/test/java/com/qdw/feishu/domain/opencode/OpenCodeResponseFormatterTest.java
-git commit -m "test(opencode): add unit tests for ResponseFormatter tool parsing"
+git add feishu-bot-domain/src/test/java/com/qdw/feishu/domain/opencode/OpenCodeEventTest.java
+git commit -m "test(opencode): add unit tests for OpenCodeEvent"
 ```
 
 ---
 
-## Task 9: 编写 ToolIcon 测试
-
-**Files:**
-- Create: `feishu-bot-domain/src/test/java/com/qdw/feishu/domain/opencode/ToolIconTest.java`
-
-**Step 1: 创建测试类**
-
-```java
-package com.qdw.feishu.domain.opencode;
-
-import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class ToolIconTest {
-
-    @Test
-    void should_returnReadIcon_when_toolNameIsRead() {
-        ToolIcon icon = ToolIcon.fromToolName("read");
-        assertEquals("📖", icon.getIcon());
-        assertEquals("读取文件", icon.getDescription());
-    }
-
-    @Test
-    void should_returnEditIcon_when_toolNameIsEdit() {
-        ToolIcon icon = ToolIcon.fromToolName("edit");
-        assertEquals("✏️", icon.getIcon());
-    }
-
-    @Test
-    void should_returnBashIcon_when_toolNameIsBash() {
-        ToolIcon icon = ToolIcon.fromToolName("bash");
-        assertEquals("⚡", icon.getIcon());
-    }
-
-    @Test
-    void should_returnUnknownIcon_when_toolNameIsUnknown() {
-        ToolIcon icon = ToolIcon.fromToolName("unknown_tool");
-        assertEquals("🔧", icon.getIcon());
-    }
-
-    @Test
-    void should_returnUnknownIcon_when_toolNameIsNull() {
-        ToolIcon icon = ToolIcon.fromToolName(null);
-        assertEquals("🔧", icon.getIcon());
-    }
-
-    @Test
-    void should_matchByPartialName_when_toolNameContains() {
-        ToolIcon icon = ToolIcon.fromToolName("read_file");
-        assertEquals("📖", icon.getIcon());
-    }
-}
-```
-
-**Step 2: 运行测试**
-
-Run: `mvn test -pl feishu-bot-domain -Dtest=ToolIconTest -q`
-Expected: Tests run: 6, Failures: 0, Errors: 0
-
-**Step 3: Commit**
-
-```bash
-git add feishu-bot-domain/src/test/java/com/qdw/feishu/domain/opencode/ToolIconTest.java
-git commit -m "test(opencode): add unit tests for ToolIcon enum"
-```
-
----
-
-## Task 10: 全量测试和构建验证
+## Task 11: 全量测试和构建
 
 **Step 1: 运行所有测试**
 
@@ -895,13 +952,13 @@ Expected: BUILD SUCCESS
 
 ```bash
 git add -A
-git commit -m "feat(opencode): complete tool visibility implementation (Phase 1)
+git commit -m "feat(opencode): complete SSE-based streaming response implementation
 
-- Add CommandResult and ToolExecution data models
-- Add ToolIcon enum for tool visualization
-- Enhance OpenCodeResponseFormatter with tool parsing
-- Update OpenCodeGateway interface with executeCommandWithResult
-- Integrate tool visibility in OpenCodeTaskExecutor
+- Add OpenCodeEvent data model for SSE events
+- Implement OpenCodeEventGateway with WebClient SSE subscription
+- Add OpenCodeStreamingHandler for buffering and flushing text deltas
+- Integrate streaming handler with OpenCodeTaskExecutor
+- Add SSE configuration in application.yml
 - Add comprehensive unit tests"
 ```
 
@@ -911,9 +968,9 @@ git commit -m "feat(opencode): complete tool visibility implementation (Phase 1)
 
 - [ ] `mvn compile` 无错误
 - [ ] `mvn test` 全部通过
-- [ ] 新代码有单元测试覆盖
-- [ ] 所有新类有 Javadoc 注释
-- [ ] 代码符合项目规范（COLA 架构）
+- [ ] SSE 连接可正常建立
+- [ ] 流式文本可正常累积和发送
+- [ ] 会话完成时正确清理资源
 
 ---
 
@@ -921,23 +978,25 @@ git commit -m "feat(opencode): complete tool visibility implementation (Phase 1)
 
 部署后测试：
 
-1. **纯文本对话测试**
+1. **SSE 连接测试**
+   ```bash
+   # 查看日志确认 SSE 连接
+   grep "SSE 连接已建立" /tmp/feishu-run.log
+   ```
+
+2. **流式响应测试**
+   ```
+   /opencode chat 写一个 Hello World 程序
+   ```
+   预期：看到 "⏳ 处理中..." 的流式更新，最后显示 "✅ 完成"
+
+3. **多轮对话测试**
    ```
    /opencode chat 你好
+   # 等待完成
+   /opencode chat 再见
    ```
-   预期：显示 "✅ 完成" 无工具摘要
-
-2. **工具执行测试**
-   ```
-   /opencode chat 读取 pom.xml 文件
-   ```
-   预期：显示 "✅ 完成（执行了 1 个操作）" + 工具摘要
-
-3. **多工具测试**
-   ```
-   /opencode chat 查找所有 Java 文件并列出它们
-   ```
-   预期：显示多个工具执行摘要
+   预期：每次都正确处理流式响应
 
 ---
 
