@@ -1,8 +1,12 @@
 package com.qdw.feishu.domain.message;
 
 import com.alibaba.cola.exception.BizException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 
@@ -11,9 +15,12 @@ import java.time.LocalDateTime;
  * 
  * 封装飞书消息的领域概念和行为
  */
+@Slf4j
 @Data
 @NoArgsConstructor
 public class Message {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /** 事件ID（用于去重）*/
     private String eventId;
@@ -91,25 +98,14 @@ public class Message {
             return "";
         }
 
-        // 如果是 JSON 格式，尝试提取 text 字段（使用简单字符串解析）
         if (content.trim().startsWith("{")) {
             try {
-                // 查找 "text":"..." 模式
-                int textIndex = content.indexOf("\"text\"");
-                if (textIndex != -1) {
-                    int colonIndex = content.indexOf(":", textIndex);
-                    if (colonIndex != -1) {
-                        int quoteStart = content.indexOf("\"", colonIndex);
-                        if (quoteStart != -1) {
-                            int quoteEnd = content.indexOf("\"", quoteStart + 1);
-                            if (quoteEnd != -1) {
-                                return content.substring(quoteStart + 1, quoteEnd);
-                            }
-                        }
-                    }
+                JsonNode node = OBJECT_MAPPER.readTree(content);
+                if (node.has("text")) {
+                    return node.get("text").asText();
                 }
-            } catch (Exception e) {
-                // 解析失败，返回原内容
+            } catch (JsonProcessingException e) {
+                log.debug("JSON解析失败，返回原内容: {}", e.getMessage());
             }
         }
 
