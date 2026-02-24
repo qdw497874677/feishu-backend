@@ -3,6 +3,7 @@ package com.qdw.feishu.domain.opencode;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -43,6 +44,21 @@ public class OpenCodeSessionManager {
         }
         Optional<String> sessionIdOpt = sessionGateway.getSessionId(topicId);
         return sessionIdOpt.isPresent();
+    }
+
+    /**
+     * 检测话题状态
+     * 
+     * @param message 消息对象
+     * @return 话题状态：NON_TOPIC（无话题）、UNINITIALIZED（话题未初始化）、INITIALIZED（话题已初始化）
+     */
+    public TopicState detectTopicState(Message message) {
+        String topicId = message.getTopicId();
+        if (topicId == null || topicId.isEmpty()) {
+            return TopicState.NON_TOPIC;
+        }
+        boolean hasSession = getSessionId(topicId).isPresent();
+        return hasSession ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
     }
 
     /**

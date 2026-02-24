@@ -20,6 +20,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import com.qdw.feishu.domain.topic.TopicState;
+
 /**
  * Unit tests for OpenCodeApp
  */
@@ -41,6 +43,10 @@ class OpenCodeAppTest {
     @BeforeEach
     void setUp() {
         app = new OpenCodeApp(openCodeGateway, commandHandler, sessionManager);
+        
+        // 默认 mock 设置 - detectTopicState 返回 INITIALIZED 状态
+        when(sessionManager.detectTopicState(any(Message.class)))
+            .thenReturn(TopicState.INITIALIZED);
     }
 
     // ========== 辅助方法 ==========

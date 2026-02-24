@@ -55,6 +55,19 @@ class OpenCodeCommandHandlerTest {
         when(commandValidator.validateCommand(anyString(), any(), any()))
             .thenReturn(ValidationResult.allowed());
 
+        // 默认 mock 设置 - detectTopicState 返回 NON_TOPIC 状态（无 topicId）
+        when(sessionManager.detectTopicState(any(Message.class)))
+            .thenAnswer(invocation -> {
+                Message msg = invocation.getArgument(0);
+                String topicId = msg.getTopicId();
+                if (topicId == null || topicId.isEmpty()) {
+                    return TopicState.NON_TOPIC;
+                }
+                return sessionManager.getSessionId(topicId).isPresent() 
+                    ? TopicState.INITIALIZED 
+                    : TopicState.UNINITIALIZED;
+            });
+
         // 默认 mock 设置 - 话题未初始化（无sessionId）
         when(sessionManager.getSessionId(anyString()))
             .thenReturn(Optional.empty());

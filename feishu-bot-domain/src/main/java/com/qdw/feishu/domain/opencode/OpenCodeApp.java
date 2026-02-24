@@ -168,15 +168,6 @@ public class OpenCodeApp implements FishuAppI {
         return sessionManager.isTopicInitialized(message);
     }
 
-    private TopicState detectTopicState(Message message) {
-        String topicId = message.getTopicId();
-        if (topicId == null || topicId.isEmpty()) {
-            return TopicState.NON_TOPIC;
-        }
-        boolean hasSession = sessionManager.getSessionId(topicId).isPresent();
-        return hasSession ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
-    }
-
     @Override
     public String execute(Message message) {
         String content = message.getContent().trim();
@@ -197,7 +188,7 @@ public class OpenCodeApp implements FishuAppI {
         }
 
         // 委托给命令处理器（传递白名单确保一致性）
-        TopicState state = detectTopicState(message);
+        TopicState state = sessionManager.detectTopicState(message);
         CommandWhitelist whitelist = getCommandWhitelist(state);
         String result = commandHandler.handle(message, subCommand, parts, whitelist);
         if (result != null) {

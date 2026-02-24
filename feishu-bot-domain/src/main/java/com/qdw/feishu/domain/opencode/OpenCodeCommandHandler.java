@@ -49,7 +49,7 @@ public class OpenCodeCommandHandler {
     public String handle(Message message, String subCommand, String[] parts, CommandWhitelist whitelist) {
         log.info("准备验证命令: subCommand={}", subCommand);
 
-        TopicState state = detectTopicState(message);
+        TopicState state = sessionManager.detectTopicState(message);
         log.info("话题状态: {}, subCommand={}", state.getDescription(), subCommand);
 
         // 验证命令是否允许（通过 CommandWhitelist）
@@ -74,53 +74,6 @@ public class OpenCodeCommandHandler {
             case "reset" -> handleResetCommand(message);
             default -> handleUnknownCommand(message, subCommand, parts);
         };
-    }
-
-    private TopicState detectTopicState(Message message) {
-        String topicId = message.getTopicId();
-
-        if (topicId == null || topicId.isEmpty()) {
-            return TopicState.NON_TOPIC;
-        }
-
-        boolean hasSession = sessionManager.getSessionId(topicId).isPresent();
-        return hasSession ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
-    }
-
-    private boolean hasActiveSession(Message message) {
-        String topicId = message.getTopicId();
-        if (topicId == null || topicId.isEmpty()) {
-            return false;
-        }
-        return sessionManager.getSessionId(topicId).isPresent();
-    }
-
-    private boolean shouldRequireInitialization(Message message) {
-        String topicId = message.getTopicId();
-        if (topicId == null || topicId.isEmpty()) {
-            return true;
-        }
-        return !sessionManager.isExplicitlyInitialized(topicId);
-    }
-
-    private void clearStaleSessionData(Message message) {
-        String topicId = message.getTopicId();
-        if (topicId != null && !topicId.isEmpty()) {
-            sessionManager.clearSession(topicId);
-            log.info("已清除话题的陈旧会话数据: topicId={}", topicId);
-        }
-    }
-
-    private boolean isInitializationCommand(String subCommand) {
-        return subCommand.equals("help")
-            || subCommand.equals("connect")
-            || subCommand.equals("projects")
-            || subCommand.equals("p")
-            || subCommand.equals("sessions")
-            || subCommand.equals("s")
-            || subCommand.equals("session")
-            || subCommand.equals("sc")
-            || subCommand.equals("reset");
     }
 
     private String buildInitializationGuide() {
