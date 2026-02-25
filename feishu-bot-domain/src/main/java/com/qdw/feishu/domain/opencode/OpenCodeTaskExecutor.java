@@ -25,15 +25,18 @@ public class OpenCodeTaskExecutor {
     private final FeishuGateway feishuGateway;
     private final OpenCodeResponseFormatter responseFormatter;
     private final OpenCodeSessionManager sessionManager;
+    private final OpenCodeStreamingHandler streamingHandler;
 
     public OpenCodeTaskExecutor(OpenCodeGateway openCodeGateway,
                                  FeishuGateway feishuGateway,
                                  OpenCodeResponseFormatter responseFormatter,
-                                 OpenCodeSessionManager sessionManager) {
+                                 OpenCodeSessionManager sessionManager,
+                                 OpenCodeStreamingHandler streamingHandler) {
         this.openCodeGateway = openCodeGateway;
         this.feishuGateway = feishuGateway;
         this.responseFormatter = responseFormatter;
         this.sessionManager = sessionManager;
+        this.streamingHandler = streamingHandler;
     }
 
     public String executeWithAutoSession(Message message, String prompt) {
@@ -83,6 +86,8 @@ public class OpenCodeTaskExecutor {
         log.info("使用指定会话执行: sessionId={}", sessionId);
         String topicId = message.getTopicId();
         sessionManager.saveSession(topicId, sessionId);
+
+        streamingHandler.registerSession(sessionId, message);
 
         if (prompt == null || prompt.isEmpty()) {
             return buildInitializationSuccessResponse(topicId, sessionId);
