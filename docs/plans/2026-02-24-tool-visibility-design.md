@@ -1,8 +1,24 @@
 # 工具执行可见性设计
 
-> **状态**: 设计完成，待实现  
-> **日期**: 2026-02-24  
+> **状态**: SSE 基础设施已实现（HTTP API 限制）
+> **日期**: 2026-02-25
 > **作者**: AI Assistant
+
+---
+
+## ⚠️ 重要限制
+
+**SSE 事件订阅已实现，但当前 HTTP API 不支持流式响应**：
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| SSE 连接 | ✅ 正常 | 心跳事件正常接收 |
+| 流式响应 | ❌ 不可用 | HTTP API 不触发 `message.part.updated` 事件 |
+| 工具可见性 | ⏳ 待 ACP | 需要 ACP 协议支持 |
+
+**原因**：OpenCode HTTP API `/session/{id}/message` 是同步阻塞的，完成后返回完整响应，不会产生 SSE 事件。
+
+**解决方案**：实现 ACP 协议（Phase 2）
 
 ---
 
@@ -240,13 +256,34 @@ feishu-bot-domain/src/main/java/com/qdw/feishu/domain/opencode/
 
 ---
 
-## 7. Phase 2 预览：ACP 协议
+## 7. SSE 实现状态（2026-02-25）
 
-### 7.1 概述
+### 7.1 已实现组件
 
-ACP (Agent Client Protocol) 是 OpenCode 提供的 JSON-RPC 协议，通过子进程 stdio 通信。
+| 组件 | 文件 | 状态 |
+|------|------|------|
+| SSE 事件模型 | `OpenCodeEvent.java` | ✅ |
+| SSE 网关接口 | `OpenCodeEventGateway.java` | ✅ |
+| SSE 网关实现 | `OpenCodeEventGatewayImpl.java` | ✅ |
+| 流式处理器 | `OpenCodeStreamingHandler.java` | ✅ |
+| SSE 配置 | `OpenCodeSseConfig.java` | ✅ |
 
-### 7.2 架构
+### 7.2 当前限制
+
+```
+HTTP API /session/{id}/message → 同步阻塞响应
+                                ↓
+                          不产生 SSE 事件！
+```
+
+**SSE 事件只在以下场景产生**：
+- OpenCode CLI 客户端执行
+- 通过 WebSocket 直连的客户端
+- 内部任务调度
+
+### 7.3 下一步：ACP 协议
+
+要实现真正的流式响应，需要实现 ACP 协议：
 
 ```
 ┌─────────────────┐     stdio      ┌─────────────────┐
@@ -264,8 +301,7 @@ ACP (Agent Client Protocol) 是 OpenCode 提供的 JSON-RPC 协议，通过子�
 └─────────────────┘
 ```
 
-### 7.3 实现计划
-
+**ACP 实现计划**：
 1. 创建 `ACPClient` 类，启动子进程
 2. 实现 JSON-RPC 通信
 3. 处理事件流
