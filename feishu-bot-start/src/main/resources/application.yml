@@ -54,6 +54,13 @@ opencode:
   async-enabled: true
   # 是否启用健康检查（失败时快速响应）
   health-check-enabled: true
+  # SSE 配置
+  sse-enabled: true
+  sse-reconnect-interval: 5000
+  sse-heartbeat-timeout: 60000
+  # 流式回复配置
+  streaming-buffer-size: 100
+  streaming-flush-interval: 2000
 
 # 日志配置
 logging:
