@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -411,6 +412,88 @@ public class FeishuGatewayImpl implements FeishuGateway {
             log.warn("Exception adding reaction to message {}", messageId, e);
             return false;
         }
+    }
+
+    @Override
+    public SendResult sendInteractiveMessage(Message message, String cardJson, String topicId) {
+        log.info("Sending interactive message: chatId={}, topicId={}", 
+            message.getChatId(), topicId);
+        
+        return executeWithRetry("sendInteractiveMessage", () -> {
+            try {
+                Map<String, Object> content = new LinkedHashMap<>();
+                content.put("type", "template");
+                content.put("data", Map.of("template_card", 
+                    objectMapper.readValue(cardJson, Map.class)));
+                String jsonContent = objectMapper.writeValueAsString(content);
+                
+                if (topicId != null && !topicId.isEmpty()) {
+                    log.info("Replying interactive message to thread: topicId={}", topicId);
+                    String rootId = message.getRootId();
+                    if (rootId != null && !rootId.isEmpty()) {
+                        return sendReplyToMessage(rootId, jsonContent, "interactive");
+                    } else {
+                        return sendReplyToTopic(topicId, jsonContent, "interactive");
+                    }
+                } else {
+                    log.info("Creating new message with interactive card: messageId={}", message.getMessageId());
+                    return sendReplyToMessage(message.getMessageId(), jsonContent, "interactive");
+                }
+            } catch (Exception e) {
+                log.error("Failed to send interactive message", e);
+                throw new SysException("SEND_INTERACTIVE_ERROR", "Failed to send interactive message", e);
+            }
+        });
+    }
+
+    private SendResult sendReplyToMessage(String messageId, String content, String msgType) throws Exception {
+        log.info("Replying to message: {} with msgType: {}", messageId, msgType);
+        
+        return executeWithRetry("sendReplyToMessageWithType", () -> {
+            try {
+                ReplyMessageReq req = ReplyMessageReq.newBuilder()
+                    .messageId(messageId)
+                    .replyMessageReqBody(com.lark.oapi.service.im.v1.model.ReplyMessageReqBody.newBuilder()
+                        .content(content)
+                        .msgType(msgType)
+                        .replyInThread(true)
+                        .build())
+                    .build();
+
+                ReplyMessageResp resp = httpClient.im().message().reply(req);
+
+                if (resp.getCode() != 0) {
+                    log.error("Failed to reply to message: code={}, msg={}", resp.getCode(), resp.getMsg());
+                    throw new SysException("REPLY_FAILED", resp.getMsg());
+                }
+
+                String returnedMessageId = resp.getData().getMessageId();
+                String returnedThreadId = resp.getData().getThreadId();
+                log.info("Reply success: messageId={}, threadId={}", returnedMessageId, returnedThreadId);
+                return SendResult.success(returnedMessageId, returnedThreadId);
+            } catch (Exception e) {
+                log.error("Exception replying to message", e);
+                throw new SysException("SEND_ERROR", "send reply failed", e);
+            }
+        });
+    }
+
+    private SendResult sendReplyToTopic(String threadId, String content, String msgType) throws Exception {
+        log.info("Replying to thread: threadId={}, msgType={}", threadId, msgType);
+
+        ChatHistory history = listMessages(null, threadId, 1, null);
+
+        if (history.getMessages() == null || history.getMessages().isEmpty()) {
+            log.error("Failed to find thread messages for threadId: {}", threadId);
+            throw new SysException("SEND_FAILED", "Thread not found");
+        }
+
+        ChatHistory.HistoryMessage rootMessage = history.getMessages().get(0);
+        String rootMessageId = rootMessage.getMessageId();
+
+        log.info("Found thread root message: messageId={}", rootMessageId);
+
+        return sendReplyToMessage(rootMessageId, content, msgType);
     }
 
 }

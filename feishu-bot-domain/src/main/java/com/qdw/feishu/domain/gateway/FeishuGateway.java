@@ -32,4 +32,14 @@ public interface FeishuGateway {
      * @return true 表示成功，false 表示失败
      */
     boolean addReaction(String messageId, ReactionEmoji emoji);
+
+    /**
+     * 发送交互式卡片消息
+     *
+     * @param message 消息对象
+     * @param cardJson 卡片JSON内容
+     * @param topicId 话题ID（可选）
+     * @return 发送结果
+     */
+    SendResult sendInteractiveMessage(Message message, String cardJson, String topicId);
 }
