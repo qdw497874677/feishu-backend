@@ -143,6 +143,10 @@ public class OpenCodeTaskExecutor {
         String messageId = message.getMessageId();
         log.info("提交异步任务: sessionId={}, prompt='{}'", sessionId, prompt);
         
+        if (sessionId != null && !sessionId.isEmpty()) {
+            streamingHandler.registerSession(sessionId, message);
+        }
+        
         boolean reactionAdded = feishuGateway.addReaction(messageId, ReactionEmoji.HEART);
         if (!reactionAdded) {
             log.debug("表情添加失败，但不影响主流程");
@@ -156,7 +160,8 @@ public class OpenCodeTaskExecutor {
         String messageId = message.getMessageId();
         log.info("异步执行开始: messageId={}, sessionId={}", messageId, sessionId);
 
-            String actualSessionId = sessionId;
+        String actualSessionId = sessionId;
+        String cardId = null;
         
         try {
             String result = openCodeGateway.executeCommand(prompt, sessionId, EXECUTE_TIMEOUT);
