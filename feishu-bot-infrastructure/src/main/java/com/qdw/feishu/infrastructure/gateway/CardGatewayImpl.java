@@ -16,6 +16,7 @@ import com.qdw.feishu.domain.gateway.CardGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ public class CardGatewayImpl implements CardGateway {
     private final ObjectMapper objectMapper;
     private final Map<String, Integer> cardSequenceMap = new ConcurrentHashMap<>();
 
+    @Autowired
     public CardGatewayImpl(FeishuConfig config) {
         this.httpClient = Client.newBuilder(config.getAppId(), config.getAppSecret())
             .openBaseUrl(BaseUrlEnum.FeiShu)
@@ -42,7 +44,6 @@ public class CardGatewayImpl implements CardGateway {
     protected CardGatewayImpl(Client httpClient) {
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
-        log.info("CardGateway initialized with injected client");
     }
 
     @Override
