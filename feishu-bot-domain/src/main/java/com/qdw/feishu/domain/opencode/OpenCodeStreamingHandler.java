@@ -67,17 +67,13 @@ public class OpenCodeStreamingHandler {
             if (cardId != null) {
                 sessionToCardMap.put(sessionId, cardId);
                 log.info("注册会话流式处理（卡片模式）: sessionId={}, topicId={}, cardId={}", sessionId, topicId, cardId);
-            } else if (cardProperties.isFallbackOnError()) {
-                fallbackSessions.add(sessionId);
-                feishuGateway.sendMessage(message, cardProperties.getThinkingText(), topicId);
-                log.warn("注册会话流式处理（降级模式）: sessionId={}, topicId={}, 卡片创建失败", sessionId, topicId);
             } else {
-                log.error("卡片创建失败且降级已禁用: sessionId={}", sessionId);
+                fallbackSessions.add(sessionId);
+                log.warn("注册会话流式处理（降级模式）: sessionId={}, topicId={}, 卡片创建失败，等待最终结果", sessionId, topicId);
             }
         } else {
             fallbackSessions.add(sessionId);
-            feishuGateway.sendMessage(message, cardProperties.getThinkingText(), topicId);
-            log.info("卡片模式已禁用，使用普通消息: sessionId={}", sessionId);
+            log.info("卡片模式已禁用，使用降级模式: sessionId={}", sessionId);
         }
     }
 
