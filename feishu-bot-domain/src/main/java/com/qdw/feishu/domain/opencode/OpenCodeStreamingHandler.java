@@ -1,11 +1,13 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.card.StreamingCardManager;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -15,13 +17,15 @@ import java.util.concurrent.TimeUnit;
 /**
  * 流式响应处理器
  *
- * 处理 SSE 事件，累积文本增量，定期发送到飞书
+ * 使用卡片流式更新处理 SSE 事件，累积文本增量并定期更新卡片
+ * 支持降级：卡片创建失败时使用普通消息
  */
 @Slf4j
 @Component
 public class OpenCodeStreamingHandler {
 
     private final FeishuGateway feishuGateway;
+    private final StreamingCardManager cardManager;
     private final ScheduledExecutorService scheduler;
 
     private final Map<String, StringBuilder> textBuffers = new ConcurrentHashMap<>();
@@ -29,12 +33,15 @@ public class OpenCodeStreamingHandler {
     private final Map<String, Message> sessionToMessageMap = new ConcurrentHashMap<>();
     private final Map<String, ScheduledFuture<?>> flushTasks = new ConcurrentHashMap<>();
     private final Map<String, Long> lastFlushTime = new ConcurrentHashMap<>();
+    private final Map<String, String> sessionToCardMap = new ConcurrentHashMap<>();
+    private final Set<String> fallbackSessions = ConcurrentHashMap.newKeySet();
 
     private static final long FLUSH_INTERVAL_MS = 2000;
     private static final long MIN_FLUSH_INTERVAL_MS = 1000;
 
-    public OpenCodeStreamingHandler(FeishuGateway feishuGateway) {
+    public OpenCodeStreamingHandler(FeishuGateway feishuGateway, StreamingCardManager cardManager) {
         this.feishuGateway = feishuGateway;
+        this.cardManager = cardManager;
         this.scheduler = Executors.newScheduledThreadPool(2);
     }
 
@@ -44,7 +51,16 @@ public class OpenCodeStreamingHandler {
         sessionToMessageMap.put(sessionId, message);
         textBuffers.put(sessionId, new StringBuilder());
         lastFlushTime.put(sessionId, System.currentTimeMillis());
-        log.info("注册会话流式处理: sessionId={}, topicId={}", sessionId, topicId);
+        
+        String cardId = cardManager.createAndSend(message, "🤖 AI 助手", "⏳ 正在思考...", topicId);
+        if (cardId != null) {
+            sessionToCardMap.put(sessionId, cardId);
+            log.info("注册会话流式处理（卡片模式）: sessionId={}, topicId={}, cardId={}", sessionId, topicId, cardId);
+        } else {
+            fallbackSessions.add(sessionId);
+            feishuGateway.sendMessage(message, "⏳ 正在处理...", topicId);
+            log.warn("注册会话流式处理（降级模式）: sessionId={}, topicId={}, 卡片创建失败", sessionId, topicId);
+        }
     }
 
     public void unregisterSession(String sessionId) {
@@ -52,6 +68,8 @@ public class OpenCodeStreamingHandler {
         sessionToTopicMap.remove(sessionId);
         sessionToMessageMap.remove(sessionId);
         lastFlushTime.remove(sessionId);
+        sessionToCardMap.remove(sessionId);
+        fallbackSessions.remove(sessionId);
         
         ScheduledFuture<?> task = flushTasks.remove(sessionId);
         if (task != null) {
@@ -128,8 +146,21 @@ public class OpenCodeStreamingHandler {
         lastFlushTime.put(sessionId, now);
 
         String formattedText = formatStreamingText(text);
-        feishuGateway.sendMessage(message, formattedText, topicId);
-        log.info("发送流式更新: sessionId={}, length={}", sessionId, text.length());
+        
+        String cardId = sessionToCardMap.get(sessionId);
+        if (cardId != null && !fallbackSessions.contains(sessionId)) {
+            boolean success = cardManager.update(cardId, formattedText);
+            if (success) {
+                log.info("更新卡片: sessionId={}, cardId={}, length={}", sessionId, cardId, text.length());
+            } else {
+                log.error("更新卡片失败，降级为普通消息: sessionId={}, cardId={}", sessionId, cardId);
+                fallbackSessions.add(sessionId);
+                feishuGateway.sendMessage(message, formattedText, topicId);
+            }
+        } else {
+            feishuGateway.sendMessage(message, formattedText, topicId);
+            log.info("发送流式更新（降级模式）: sessionId={}, length={}", sessionId, text.length());
+        }
     }
 
     private void handleSessionComplete(String sessionId) {
@@ -140,10 +171,29 @@ public class OpenCodeStreamingHandler {
             String finalText = buffer.toString();
             Message message = sessionToMessageMap.get(sessionId);
             String topicId = sessionToTopicMap.get(sessionId);
+            String cardId = sessionToCardMap.get(sessionId);
             
             if (message != null && topicId != null) {
-                feishuGateway.sendMessage(message, 
-                    "✅ 完成\n\n" + finalText, topicId);
+                String completeText = "✅ 完成\n\n" + finalText;
+                
+                if (cardId != null && !fallbackSessions.contains(sessionId)) {
+                    boolean success = cardManager.update(cardId, completeText);
+                    if (success) {
+                        log.info("会话完成（卡片模式）: sessionId={}, cardId={}", sessionId, cardId);
+                    } else {
+                        log.error("更新完成状态失败，降级为普通消息: sessionId={}, cardId={}", sessionId, cardId);
+                        feishuGateway.sendMessage(message, completeText, topicId);
+                    }
+                    cardManager.cleanup(cardId);
+                } else {
+                    feishuGateway.sendMessage(message, completeText, topicId);
+                    log.info("会话完成（降级模式）: sessionId={}", sessionId);
+                }
+            }
+        } else {
+            String cardId = sessionToCardMap.get(sessionId);
+            if (cardId != null) {
+                cardManager.cleanup(cardId);
             }
         }
         
