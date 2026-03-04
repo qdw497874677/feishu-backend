@@ -1,14 +1,20 @@
 package com.qdw.feishu.domain.app;
 
+import com.alibaba.cola.exception.SysException;
 import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.core.ReplyMode;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -17,6 +23,10 @@ public class HelpApp implements FishuAppI {
     @Autowired
     @Lazy
     private AppRegistry appRegistry;
+    
+    @Autowired
+    @Lazy
+    private FeishuGateway feishuGateway;
 
     @Override
     public String getAppId() {
@@ -39,38 +49,14 @@ public class HelpApp implements FishuAppI {
     }
 
     @Override
-    public java.util.List<String> getAppAliases() {
-        return java.util.Arrays.asList("h", "?", "man");
+    public List<String> getAppAliases() {
+        return Arrays.asList("h", "?", "man");
     }
 
     @Override
     public BizResult execute(UnifiedCommand command) {
-        StringBuilder helpText = new StringBuilder();
-        helpText.append("飞书机器人命令帮助\n\n");
-
-        appRegistry.getAllApps().forEach(app -> {
-            helpText.append(String.format("📌 %s - %s\n",
-                    app.getTriggerCommand(),
-                    app.getAppName()));
-            helpText.append(String.format("   %s\n",
-                    app.getDescription()));
-
-            java.util.List<String> aliases = app.getAppAliases();
-            if (!aliases.isEmpty()) {
-                helpText.append(String.format("   别名: %s\n",
-                        String.join(", ", aliases.stream()
-                                .map(a -> "/" + a)
-                                .toList())));
-            }
-
-            helpText.append("\n");
-        });
-
-        helpText.append("💡 提示：\n");
-        helpText.append("   - 发送任意非命令消息也会显示此帮助信息\n");
-        helpText.append("   - 命令和别名不区分大小写（如 /Bash、/BASH、/bash 都可以）");
-
-        return BizResult.of(helpText.toString());
+        String helpText = generateTextHelp();
+        return BizResult.of(helpText);
     }
 
     @Override
@@ -79,36 +65,99 @@ public class HelpApp implements FishuAppI {
         log.info("应用 ID: {}", getAppId());
         log.info("输入消息: {}", message.getContent());
 
-        StringBuilder helpText = new StringBuilder();
-        helpText.append("飞书机器人命令帮助\n\n");
+        // 1. 尝试发送卡片帮助
+        if (trySendCardHelp(message)) {
+            log.info("卡片帮助发送成功: chatId={}", message.getChatId());
+            return null;  // 卡片发送成功，不需要返回文本
+        }
 
-        appRegistry.getAllApps().forEach(app -> {
-            helpText.append(String.format("📌 %s - %s\n",
-                    app.getTriggerCommand(),
-                    app.getAppName()));
-            helpText.append(String.format("   %s\n",
-                    app.getDescription()));
+        // 2. 降级：返回文本帮助
+        log.info("降级为文本帮助: chatId={}", message.getChatId());
+        return generateTextHelp();
+    }
 
-            java.util.List<String> aliases = app.getAppAliases();
-            if (!aliases.isEmpty()) {
-                helpText.append(String.format("   别名: %s\n",
-                        String.join(", ", aliases.stream()
-                                .map(a -> "/" + a)
-                                .toList())));
-            }
+    private boolean trySendCardHelp(Message message) {
+        try {
+            String cardJson = buildCardHelpJson();
+            feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
+            log.info("卡片帮助发送成功: chatId={}", message.getChatId());
+            return true;
+        } catch (Exception e) {
+            log.warn("卡片帮助发送失败: error={}", e.getMessage());
+            return false;
+        }
+    }
 
-            helpText.append("\n");
-        });
+    private String buildCardHelpJson() {
+        StringBuilder json = new StringBuilder();
+        json.append("{\n");
+        json.append("  \"schema\": \"2.0\",\n");
+        json.append("  \"config\": {\"wide_screen_mode\": true},\n");
+        json.append("  \"header\": {\n");
+        json.append("    \"title\": {\"content\": \"🤖 应用菜单\", \"tag\": \"plain_text\"},\n");
+        json.append("    \"template\": \"blue\"\n");
+        json.append("  },\n");
+        json.append("  \"elements\": [\n");
+        json.append("    {\"tag\": \"markdown\", \"content\": \"点击按钮选择应用，或直接输入命令\"},\n");
+        json.append("    {\"tag\": \"action\", \"actions\": [");
+        
+        List<FishuAppI> apps = appRegistry.getAllApps();
+        for (int i = 0; i < apps.size(); i++) {
+            FishuAppI app = apps.get(i);
+            if (i > 0) json.append(",");
+            
+            json.append(String.format(
+                "{\"tag\": \"button\", " +
+                "\"text\": {\"content\": \"%s %s\", \"tag\": \"plain_text\"}, " +
+                "\"type\": \"%s\", " +
+                "\"value\": {\"message\": \"%s\"}}",
+                getAppIcon(app.getAppId()),
+                app.getAppName(),
+                getButtonType(app.getAppId()),
+                app.getAppId()
+            ));
+        }
+        
+        json.append("]}\n");
+        json.append("  ]\n");
+        json.append("}");
+        
+        return json.toString();
+    }
 
-        helpText.append("💡 提示：\n");
-        helpText.append("   - 发送任意非命令消息也会显示此帮助信息\n");
-        helpText.append("   - 命令和别名不区分大小写（如 /Bash、/BASH、/bash 都可以）");
+    private String generateTextHelp() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("🤖 应用菜单\n\n");
+        
+        List<FishuAppI> apps = appRegistry.getAllApps();
+        for (int i = 0; i < apps.size(); i++) {
+            FishuAppI app = apps.get(i);
+            sb.append(String.format("%d. %s %s\n",
+                i + 1,
+                getAppIcon(app.getAppId()),
+                app.getAppName()));
+            sb.append(String.format("   %s\n", app.getDescription()));
+            sb.append(String.format("   示例: %s\n\n", app.getHelp()));
+        }
+        
+        sb.append("回复编号或应用名称选择");
+        return sb.toString();
+    }
 
-        String result = helpText.toString();
-        log.info("HelpApp.execute 完成，返回帮助信息");
-        log.info("=== HelpApp.execute 结束 ===");
+    public String getAppIcon(String appId) {
+        Map<String, String> icons = Map.of(
+            "opencode", "🤖",
+            "bash", "💻",
+            "help", "❓",
+            "history", "📊",
+            "time", "⏰"
+        );
+        return icons.getOrDefault(appId, "📦");
+    }
 
-        return result;
+    public String getButtonType(String appId) {
+        List<String> primaryApps = Arrays.asList("opencode", "bash", "help");
+        return primaryApps.contains(appId) ? "primary" : "default";
     }
 
     @Override
