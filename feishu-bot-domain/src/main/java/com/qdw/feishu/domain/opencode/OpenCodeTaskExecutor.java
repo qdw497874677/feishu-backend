@@ -156,6 +156,8 @@ public class OpenCodeTaskExecutor {
         String messageId = message.getMessageId();
         log.info("异步执行开始: messageId={}, sessionId={}", messageId, sessionId);
 
+            String actualSessionId = sessionId;
+        
         try {
             String result = openCodeGateway.executeCommand(prompt, sessionId, EXECUTE_TIMEOUT);
 
@@ -176,14 +178,22 @@ public class OpenCodeTaskExecutor {
             String extractedSessionId = responseFormatter.extractSessionId(result);
             if (extractedSessionId != null && message.getTopicId() != null) {
                 sessionManager.saveSession(message.getTopicId(), extractedSessionId);
+                actualSessionId = extractedSessionId;
             }
 
             String formatted = responseFormatter.format(result, extractedSessionId);
             feishuGateway.sendMessage(message, formatted, message.getTopicId());
 
+            if (actualSessionId != null) {
+                streamingHandler.unregisterSession(actualSessionId);
+            }
+
         } catch (Exception e) {
             log.error("异步执行失败", e);
             feishuGateway.sendMessage(message, "❌ 执行失败: " + e.getMessage(), message.getTopicId());
+            if (actualSessionId != null) {
+                streamingHandler.unregisterSession(actualSessionId);
+            }
         }
     }
 
