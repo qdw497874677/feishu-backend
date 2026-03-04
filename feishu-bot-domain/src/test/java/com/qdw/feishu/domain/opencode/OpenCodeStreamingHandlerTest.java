@@ -1,6 +1,7 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.card.StreamingCardManager;
+import com.qdw.feishu.domain.config.CardProperties;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
@@ -24,12 +25,20 @@ class OpenCodeStreamingHandlerTest {
     @Mock
     private StreamingCardManager cardManager;
 
+    private CardProperties cardProperties;
     private OpenCodeStreamingHandler handler;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        handler = new OpenCodeStreamingHandler(feishuGateway, cardManager);
+        cardProperties = new CardProperties();
+        cardProperties.setEnabled(true);
+        cardProperties.setFallbackOnError(true);
+        cardProperties.setTitle("🤖 AI 助手");
+        cardProperties.setThinkingText("⏳ 正在思考...");
+        cardProperties.setProcessingText("⏳ 处理中...");
+        cardProperties.setCompleteText("✅ 完成");
+        handler = new OpenCodeStreamingHandler(feishuGateway, cardManager, cardProperties);
     }
 
     @Test
@@ -40,12 +49,13 @@ class OpenCodeStreamingHandlerTest {
         String cardId = "card-789";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(eq(message), eq("🤖 AI 助手"), eq("⏳ 正在思考..."), eq(topicId)))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(eq(message), eq(cardProperties.getThinkingText()), eq(topicId)))
                 .thenReturn(cardId);
 
         handler.registerSession(sessionId, message);
 
-        verify(cardManager).createAndSend(eq(message), eq("🤖 AI 助手"), eq("⏳ 正在思考..."), eq(topicId));
+        verify(cardManager).createAndSend(eq(message), eq(cardProperties.getThinkingText()), eq(topicId));
         verify(feishuGateway, never()).sendMessage(any(), anyString(), any());
     }
 
@@ -56,13 +66,14 @@ class OpenCodeStreamingHandlerTest {
         String topicId = "topic-456";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(any(), anyString(), anyString(), anyString()))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(any(), anyString(), anyString()))
                 .thenReturn(null);
 
         handler.registerSession(sessionId, message);
 
-        verify(cardManager).createAndSend(any(), anyString(), anyString(), anyString());
-        verify(feishuGateway).sendMessage(eq(message), eq("⏳ 正在处理..."), eq(topicId));
+        verify(cardManager).createAndSend(any(), anyString(), anyString());
+        verify(feishuGateway).sendMessage(eq(message), eq(cardProperties.getThinkingText()), eq(topicId));
     }
 
     @Test
@@ -73,7 +84,8 @@ class OpenCodeStreamingHandlerTest {
         String cardId = "card-789";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(any(), anyString(), anyString(), anyString()))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(any(), anyString(), anyString()))
                 .thenReturn(cardId);
         when(cardManager.update(eq(cardId), anyString())).thenReturn(true);
 
@@ -98,7 +110,8 @@ class OpenCodeStreamingHandlerTest {
         String topicId = "topic-456";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(any(), anyString(), anyString(), anyString()))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(any(), anyString(), anyString()))
                 .thenReturn(null);
         when(feishuGateway.sendMessage(any(), anyString(), any()))
                 .thenReturn(SendResult.success("msg-id"));
@@ -125,7 +138,8 @@ class OpenCodeStreamingHandlerTest {
         String cardId = "card-789";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(any(), anyString(), anyString(), anyString()))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(any(), anyString(), anyString()))
                 .thenReturn(cardId);
         when(cardManager.update(eq(cardId), anyString())).thenReturn(true);
 
@@ -138,7 +152,7 @@ class OpenCodeStreamingHandlerTest {
         handler.handleEvent(completeEvent);
 
         verify(cardManager).cleanup(eq(cardId));
-        verify(cardManager, atLeastOnce()).update(eq(cardId), contains("✅ 完成"));
+        verify(cardManager, atLeastOnce()).update(eq(cardId), contains(cardProperties.getCompleteText()));
     }
 
     @Test
@@ -148,7 +162,8 @@ class OpenCodeStreamingHandlerTest {
         String topicId = "topic-456";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(any(), anyString(), anyString(), anyString()))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(any(), anyString(), anyString()))
                 .thenReturn(null);
         when(feishuGateway.sendMessage(any(), anyString(), any()))
                 .thenReturn(SendResult.success("msg-id"));
@@ -173,7 +188,8 @@ class OpenCodeStreamingHandlerTest {
         String cardId = "card-789";
         Message message = createTestMessage(topicId);
 
-        when(cardManager.createAndSend(any(), anyString(), anyString(), anyString()))
+        when(cardManager.isEnabled()).thenReturn(true);
+        when(cardManager.createAndSend(any(), anyString(), anyString()))
                 .thenReturn(cardId);
 
         handler.registerSession(sessionId, message);

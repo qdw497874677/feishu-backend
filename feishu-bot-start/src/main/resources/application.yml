@@ -61,6 +61,14 @@ opencode:
   # 流式回复配置
   streaming-buffer-size: 100
   streaming-flush-interval: 2000
+  # 卡片流式配置
+  card:
+    enabled: true  # 是否启用卡片流式输出
+    fallback-on-error: true  # 卡片失败时是否降级为普通消息
+    title: "🤖 AI 助手"  # 卡片标题
+    thinking-text: "⏳ 正在思考..."  # 思考中文本
+    processing-text: "⏳ 处理中..."  # 处理中文本
+    complete-text: "✅ 完成"  # 完成文本
 
 # 日志配置
 logging:

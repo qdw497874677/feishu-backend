@@ -1,6 +1,7 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.card.StreamingCardManager;
+import com.qdw.feishu.domain.config.CardProperties;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
@@ -17,8 +18,13 @@ import java.util.concurrent.TimeUnit;
 /**
  * 流式响应处理器
  *
- * 使用卡片流式更新处理 SSE 事件，累积文本增量并定期更新卡片
- * 支持降级：卡片创建失败时使用普通消息
+ * 支持两种模式：
+ * 1. 卡片流式更新：使用 CardKit API 实现单卡片动态更新
+ * 2. 降级模式：卡片失败时使用普通消息
+ *
+ * 配置项：
+ * - opencode.card.enabled: 是否启用卡片流式
+ * - opencode.card.fallback-on-error: 是否降级
  */
 @Slf4j
 @Component
@@ -26,6 +32,7 @@ public class OpenCodeStreamingHandler {
 
     private final FeishuGateway feishuGateway;
     private final StreamingCardManager cardManager;
+    private final CardProperties cardProperties;
     private final ScheduledExecutorService scheduler;
 
     private final Map<String, StringBuilder> textBuffers = new ConcurrentHashMap<>();
@@ -39,9 +46,12 @@ public class OpenCodeStreamingHandler {
     private static final long FLUSH_INTERVAL_MS = 2000;
     private static final long MIN_FLUSH_INTERVAL_MS = 1000;
 
-    public OpenCodeStreamingHandler(FeishuGateway feishuGateway, StreamingCardManager cardManager) {
+    public OpenCodeStreamingHandler(FeishuGateway feishuGateway, 
+                                    StreamingCardManager cardManager,
+                                    CardProperties cardProperties) {
         this.feishuGateway = feishuGateway;
         this.cardManager = cardManager;
+        this.cardProperties = cardProperties;
         this.scheduler = Executors.newScheduledThreadPool(2);
     }
 
@@ -52,14 +62,22 @@ public class OpenCodeStreamingHandler {
         textBuffers.put(sessionId, new StringBuilder());
         lastFlushTime.put(sessionId, System.currentTimeMillis());
         
-        String cardId = cardManager.createAndSend(message, "🤖 AI 助手", "⏳ 正在思考...", topicId);
-        if (cardId != null) {
-            sessionToCardMap.put(sessionId, cardId);
-            log.info("注册会话流式处理（卡片模式）: sessionId={}, topicId={}, cardId={}", sessionId, topicId, cardId);
+        if (cardManager.isEnabled()) {
+            String cardId = cardManager.createAndSend(message, cardProperties.getThinkingText(), topicId);
+            if (cardId != null) {
+                sessionToCardMap.put(sessionId, cardId);
+                log.info("注册会话流式处理（卡片模式）: sessionId={}, topicId={}, cardId={}", sessionId, topicId, cardId);
+            } else if (cardProperties.isFallbackOnError()) {
+                fallbackSessions.add(sessionId);
+                feishuGateway.sendMessage(message, cardProperties.getThinkingText(), topicId);
+                log.warn("注册会话流式处理（降级模式）: sessionId={}, topicId={}, 卡片创建失败", sessionId, topicId);
+            } else {
+                log.error("卡片创建失败且降级已禁用: sessionId={}", sessionId);
+            }
         } else {
             fallbackSessions.add(sessionId);
-            feishuGateway.sendMessage(message, "⏳ 正在处理...", topicId);
-            log.warn("注册会话流式处理（降级模式）: sessionId={}, topicId={}, 卡片创建失败", sessionId, topicId);
+            feishuGateway.sendMessage(message, cardProperties.getThinkingText(), topicId);
+            log.info("卡片模式已禁用，使用普通消息: sessionId={}", sessionId);
         }
     }
 
@@ -174,7 +192,7 @@ public class OpenCodeStreamingHandler {
             String cardId = sessionToCardMap.get(sessionId);
             
             if (message != null && topicId != null) {
-                String completeText = "✅ 完成\n\n" + finalText;
+                String completeText = cardProperties.getCompleteText() + "\n\n" + finalText;
                 
                 if (cardId != null && !fallbackSessions.contains(sessionId)) {
                     boolean success = cardManager.update(cardId, completeText);
@@ -202,6 +220,6 @@ public class OpenCodeStreamingHandler {
     }
 
     private String formatStreamingText(String text) {
-        return "⏳ 处理中...\n\n" + text;
+        return cardProperties.getProcessingText() + "\n\n" + text;
     }
 }

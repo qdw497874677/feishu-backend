@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.card;
 
+import com.qdw.feishu.domain.config.CardProperties;
 import com.qdw.feishu.domain.gateway.CardGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
@@ -15,11 +16,17 @@ class StreamingCardManagerTest {
 
     private StreamingCardManager manager;
     private CardGateway cardGateway;
+    private CardProperties properties;
 
     @BeforeEach
     void setUp() {
         cardGateway = mock(CardGateway.class);
-        manager = new StreamingCardManager(cardGateway);
+        properties = new CardProperties();
+        properties.setEnabled(true);
+        properties.setFallbackOnError(true);
+        properties.setTitle("🤖 AI 助手");
+        properties.setThinkingText("⏳ 正在思考...");
+        manager = new StreamingCardManager(cardGateway, properties);
     }
 
     @Test
@@ -27,15 +34,15 @@ class StreamingCardManagerTest {
         Message message = createTestMessage();
         String cardId = "card_123";
         
-        when(cardGateway.createCard("Test Title", "Initial Content"))
+        when(cardGateway.createCard(properties.getTitle(), properties.getThinkingText()))
             .thenReturn(cardId);
         when(cardGateway.sendCardMessage(message, cardId, "topic_1"))
             .thenReturn(SendResult.success("msg_123"));
 
-        String result = manager.createAndSend(message, "Test Title", "Initial Content", "topic_1");
+        String result = manager.createAndSend(message, properties.getThinkingText(), "topic_1");
 
         assertEquals(cardId, result);
-        verify(cardGateway).createCard("Test Title", "Initial Content");
+        verify(cardGateway).createCard(properties.getTitle(), properties.getThinkingText());
         verify(cardGateway).sendCardMessage(message, cardId, "topic_1");
         assertEquals(1, manager.getSequence(cardId));
     }
@@ -47,7 +54,7 @@ class StreamingCardManagerTest {
         when(cardGateway.createCard(anyString(), anyString()))
             .thenReturn(null);
 
-        String result = manager.createAndSend(message, "Title", "Content", null);
+        String result = manager.createAndSend(message, properties.getThinkingText(), null);
 
         assertNull(result);
         verify(cardGateway, never()).sendCardMessage(any(), any(), any());
@@ -58,12 +65,12 @@ class StreamingCardManagerTest {
         Message message = createTestMessage();
         String cardId = "card_123";
         
-        when(cardGateway.createCard("Title", "Content"))
+        when(cardGateway.createCard(anyString(), anyString()))
             .thenReturn(cardId);
         when(cardGateway.sendCardMessage(message, cardId, null))
             .thenReturn(SendResult.failure("Network error"));
 
-        String result = manager.createAndSend(message, "Title", "Content", null);
+        String result = manager.createAndSend(message, "Content", null);
 
         assertNull(result);
         assertFalse(manager.exists(cardId));
@@ -74,7 +81,7 @@ class StreamingCardManagerTest {
         Message message = createTestMessage();
         String cardId = "card_123";
         
-        when(cardGateway.createCard("Title", "Content"))
+        when(cardGateway.createCard(anyString(), anyString()))
             .thenReturn(cardId);
         when(cardGateway.sendCardMessage(message, cardId, null))
             .thenReturn(SendResult.success("msg_123"));
@@ -83,7 +90,7 @@ class StreamingCardManagerTest {
         when(cardGateway.updateCard(cardId, "Update 2", 3))
             .thenReturn(true);
         
-        manager.createAndSend(message, "Title", "Content", null);
+        manager.createAndSend(message, "Content", null);
 
         boolean result1 = manager.update(cardId, "Update 1");
         boolean result2 = manager.update(cardId, "Update 2");
@@ -100,14 +107,14 @@ class StreamingCardManagerTest {
         Message message = createTestMessage();
         String cardId = "card_123";
         
-        when(cardGateway.createCard("Title", "Content"))
+        when(cardGateway.createCard(anyString(), anyString()))
             .thenReturn(cardId);
         when(cardGateway.sendCardMessage(message, cardId, null))
             .thenReturn(SendResult.success("msg_123"));
         when(cardGateway.updateCard(cardId, "Failed Update", 2))
             .thenReturn(false);
 
-        manager.createAndSend(message, "Title", "Content", null);
+        manager.createAndSend(message, "Content", null);
         boolean result = manager.update(cardId, "Failed Update");
 
         assertFalse(result);
@@ -132,12 +139,12 @@ class StreamingCardManagerTest {
         Message message = createTestMessage();
         String cardId = "card_123";
         
-        when(cardGateway.createCard("Title", "Content"))
+        when(cardGateway.createCard(anyString(), anyString()))
             .thenReturn(cardId);
         when(cardGateway.sendCardMessage(message, cardId, null))
             .thenReturn(SendResult.success("msg_123"));
         
-        manager.createAndSend(message, "Title", "Content", null);
+        manager.createAndSend(message, "Content", null);
         
         assertTrue(manager.exists(cardId));
         
@@ -161,9 +168,9 @@ class StreamingCardManagerTest {
         String cardId1 = "card_1";
         String cardId2 = "card_2";
         
-        when(cardGateway.createCard("Title 1", "Content 1"))
+        when(cardGateway.createCard(anyString(), eq("Content 1")))
             .thenReturn(cardId1);
-        when(cardGateway.createCard("Title 2", "Content 2"))
+        when(cardGateway.createCard(anyString(), eq("Content 2")))
             .thenReturn(cardId2);
         when(cardGateway.sendCardMessage(any(), anyString(), any()))
             .thenReturn(SendResult.success("msg_123"));
@@ -172,8 +179,8 @@ class StreamingCardManagerTest {
         when(cardGateway.updateCard(eq(cardId2), anyString(), anyInt()))
             .thenReturn(true);
 
-        manager.createAndSend(message, "Title 1", "Content 1", null);
-        manager.createAndSend(message, "Title 2", "Content 2", null);
+        manager.createAndSend(message, "Content 1", null);
+        manager.createAndSend(message, "Content 2", null);
         
         manager.update(cardId1, "Update 1");
         manager.update(cardId1, "Update 2");
@@ -181,6 +188,18 @@ class StreamingCardManagerTest {
 
         assertEquals(3, manager.getSequence(cardId1));
         assertEquals(2, manager.getSequence(cardId2));
+    }
+
+    @Test
+    void should_returnNull_when_cardDisabled() {
+        properties.setEnabled(false);
+        
+        Message message = createTestMessage();
+        
+        String result = manager.createAndSend(message, "Content", null);
+        
+        assertNull(result);
+        verify(cardGateway, never()).createCard(anyString(), anyString());
     }
 
     private Message createTestMessage() {

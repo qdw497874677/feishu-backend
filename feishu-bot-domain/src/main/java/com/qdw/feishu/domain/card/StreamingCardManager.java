@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.card;
 
+import com.qdw.feishu.domain.config.CardProperties;
 import com.qdw.feishu.domain.gateway.CardGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
@@ -14,28 +15,47 @@ import java.util.concurrent.ConcurrentHashMap;
  * 
  * 封装卡片的创建、更新和资源清理逻辑
  * 自动管理卡片更新的 sequence 递增
+ * 
+ * 设计原则：
+ * - 可配置：通过 CardProperties 控制卡片行为
+ * - 可降级：卡片失败时可降级为普通消息
+ * - 抽象分层：依赖 CardGateway 接口，便于替换实现
  */
 @Slf4j
 @Component
 public class StreamingCardManager {
 
     private final CardGateway cardGateway;
+    private final CardProperties properties;
     private final Map<String, Integer> cardSequences = new ConcurrentHashMap<>();
 
-    public StreamingCardManager(CardGateway cardGateway) {
+    public StreamingCardManager(CardGateway cardGateway, CardProperties properties) {
         this.cardGateway = cardGateway;
+        this.properties = properties;
+    }
+
+    /**
+     * 是否启用卡片流式输出
+     */
+    public boolean isEnabled() {
+        return properties.isEnabled();
     }
 
     /**
      * 创建卡片并发送消息
      *
      * @param message 原始消息（用于获取回复上下文）
-     * @param title 卡片标题
      * @param content 初始内容（支持 Markdown）
      * @param topicId 话题 ID（可为 null）
      * @return cardId，失败返回 null
      */
-    public String createAndSend(Message message, String title, String content, String topicId) {
+    public String createAndSend(Message message, String content, String topicId) {
+        if (!properties.isEnabled()) {
+            log.debug("卡片流式输出已禁用");
+            return null;
+        }
+        
+        String title = properties.getTitle();
         log.info("创建流式卡片: title={}, topicId={}", title, topicId);
         
         String cardId = cardGateway.createCard(title, content);
@@ -116,5 +136,12 @@ public class StreamingCardManager {
      */
     public boolean exists(String cardId) {
         return cardSequences.containsKey(cardId);
+    }
+
+    /**
+     * 获取配置属性（供外部使用）
+     */
+    public CardProperties getProperties() {
+        return properties;
     }
 }
