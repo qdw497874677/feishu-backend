@@ -10,191 +10,333 @@
 
 ### 核心目标
 
-在默认对话中提供可视化的应用选择菜单，帮助用户快速发现和使用应用，提升用户体验。
+为现有的命令交互方式提供**可视化卡片按钮**作为补充，提升用户体验。
 
 ### 设计原则
 
-- ✅ **轻量级实现**：避开CardKit API问题，使用普通消息
-- ✅ **独立功能层**：应用菜单是独立模块，不属于任何应用
-- ✅ **话题绑定**：选择应用后创建话题并临时绑定（30分钟）
-- ✅ **降级友好**：文本菜单 + 可选卡片增强
-- ✅ **符合架构**：遵循 COLA 分层原则
+- ✅ **交互补充**：卡片按钮是命令输入的补充方式，不是替代
+- ✅ **流程不变**：后端处理流程完全相同，只是触发方式不同
+- ✅ **最小改动**：只需创建 MenuApp，无需修改现有架构
+- ✅ **降级友好**：卡片失败时降级为文本菜单
+- ✅ **简单易用**：用户点击按钮即可触发应用
+
+### 核心理念
+
+```
+命令交互（原有）:
+用户输入: /opencode chat 你好
+         ↓
+后端处理: 解析 → 路由 → 执行
+
+卡片交互（新增）:
+用户点击: [🤖 OpenCode 助手]
+         ↓
+飞书发送: "opencode"
+         ↓
+后端处理: 解析 → 路由 → 执行（与命令交互完全相同）
+```
+
+**关键点**：卡片按钮点击后，飞书会自动发送一条消息，后端将这条消息解析为命令来执行。
 
 ---
 
 ## 🏗️ 架构设计
 
-### 系统架构
+### 系统架构（无变化）
 
 ```
 ┌─────────────────────────────────┐
-│  默认对话（无话题）              │
-│                                 │
-│  用户发送消息                    │
-│  BotMessageService 检测         │
-│  AppMenuService 显示菜单        │
+│  用户交互层                      │
+│  - 命令输入（原有）              │
+│  - 卡片按钮（新增）              │  ← 唯一的变化
 └─────────────┬───────────────────┘
               │
               ▼
 ┌─────────────────────────────────┐
-│  应用菜单交互                    │
-│  - 用户选择应用（编号/名称）     │
-│  - 创建话题                      │
-│  - 绑定话题到应用（30分钟）      │
+│  消息处理层（完全不变）          │
+│  - BotMessageService            │
+│  - AppRouter                    │
+│  - AppRegistry                  │
 └─────────────┬───────────────────┘
               │
               ▼
 ┌─────────────────────────────────┐
-│  话题对话（已绑定应用）          │
-│  - 用户输入问题/命令             │
-│  - 自动路由到绑定应用            │
-│  - 应用在话题中执行              │
+│  应用执行层（完全不变）          │
+│  - OpenCodeApp                  │
+│  - BashApp                      │
+│  - HelpApp                      │
+│  - MenuApp (新增)               │  ← 唯一的新增
 └─────────────────────────────────┘
 ```
 
 ### 核心组件
 
-#### 1. AppMenuService（应用菜单服务）
+#### MenuApp（应用菜单）
 
-**位置**: `domain/service/AppMenuService.java`
-
-**职责**:
-- 生成应用菜单内容（详细版：名称 + 描述 + 示例）
-- 处理用户选择（编号或应用名称）
-- 创建话题并绑定应用
-
-**核心方法**:
-```java
-public String generateMenuContent()
-public void handleUserSelection(Message message, String userInput)
-private Optional<FishuAppI> parseUserInput(String input)
-private String createTopicAndBind(Message message, FishuAppI app)
-```
-
-#### 2. TopicBindingManager（话题绑定管理器）
-
-**位置**: `domain/service/TopicBindingManager.java`
+**位置**: `domain/app/MenuApp.java`
 
 **职责**:
-- 管理话题与应用的临时绑定
-- 设置绑定超时（30分钟）
-- 查询/清除绑定关系
+- 生成应用菜单（卡片格式优先，文本格式降级）
+- 显示所有可用应用及其描述
+- 提供按钮供用户点击
 
-**核心方法**:
+**触发方式**:
+- 命令: `/menu` 或 `/apps` 或 `/应用`
+- 别名: `menu`, `apps`, `应用`
+
+**核心逻辑**:
 ```java
-public void bindTopic(String topicId, String appId, long durationMs)
-public Optional<String> getBindingApp(String topicId)
-public void clearBinding(String topicId)
-```
-
-#### 3. TopicBindingGateway（话题绑定网关）
-
-**位置**: `domain/gateway/TopicBindingGateway.java`
-
-**职责**:
-- 持久化话题绑定数据
-- 提供绑定增删查接口
-
-**实现**: `infrastructure/gateway/TopicBindingGatewayImpl.java`
-- 内存实现（ConcurrentHashMap）
-- 可扩展为 SQLite
-
-#### 4. BotMessageService 扩展
-
-**位置**: `domain/service/BotMessageService.java`
-
-**扩展逻辑**:
-```java
-public void handleMessage(Message message) {
-    String topicId = message.getTopicId();
+@Component
+public class MenuApp implements FishuAppI {
     
-    // 情况1: 默认对话（无话题）
-    if (topicId == null || topicId.isEmpty()) {
-        handleDefaultConversation(message);
-        return;
+    @Autowired
+    private AppRegistry appRegistry;
+    
+    @Autowired
+    private FeishuGateway feishuGateway;
+    
+    @Autowired
+    private CardGateway cardGateway;  // 可选
+    
+    @Override
+    public String execute(Message message) {
+        // 1. 尝试发送交互式卡片
+        if (trySendInteractiveCard(message)) {
+            return null;  // 卡片发送成功，不需要返回文本
+        }
+        
+        // 2. 降级：返回文本菜单
+        return generateTextMenu();
     }
     
-    // 情况2: 话题已绑定应用
-    Optional<String> boundApp = bindingManager.getBindingApp(topicId);
-    if (boundApp.isPresent()) {
-        routeToApp(message, boundApp.get());
-        return;
+    private boolean trySendInteractiveCard(Message message) {
+        try {
+            // 构建卡片 JSON
+            String cardJson = buildInteractiveCardJson();
+            
+            // 发送卡片消息
+            feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
+            
+            log.info("应用菜单卡片发送成功: chatId={}", message.getChatId());
+            return true;
+            
+        } catch (Exception e) {
+            log.warn("应用菜单卡片发送失败，降级为文本: error={}", e.getMessage());
+            return false;
+        }
     }
     
-    // 情况3: 话题未绑定，检查是否有应用前缀
-    if (hasAppPrefix(message)) {
-        routeToAppByPrefix(message);
-    } else {
-        showAppMenuInTopic(message);  // 可选
+    private String buildInteractiveCardJson() {
+        // 构建飞书卡片 JSON
+        // 包含所有应用的按钮
+        // 每个按钮配置 value.message 字段
+        return CardBuilder.create()
+            .header("🤖 应用菜单")
+            .actionButtons(buildAppButtons())
+            .footer("点击按钮选择应用")
+            .build();
+    }
+    
+    private List<ActionButton> buildAppButtons() {
+        return appRegistry.getAllApps().stream()
+            .filter(app -> !app.getAppId().equals("menu"))  // 排除自己
+            .map(app -> ActionButton.builder()
+                .text(getAppIcon(app) + " " + app.getAppName())
+                .type(getButtonType(app))
+                .value(Map.of("message", app.getAppId()))  // 点击后发送的消息
+                .build())
+            .collect(Collectors.toList());
+    }
+    
+    private String generateTextMenu() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("🤖 应用菜单\n\n");
+        
+        List<FishuAppI> apps = appRegistry.getAllApps().stream()
+            .filter(app -> !app.getAppId().equals("menu"))
+            .collect(Collectors.toList());
+        
+        for (int i = 0; i < apps.size(); i++) {
+            FishuAppI app = apps.get(i);
+            sb.append(String.format("%d. %s %s\n", 
+                i + 1, 
+                getAppIcon(app), 
+                app.getAppName()));
+            sb.append(String.format("   %s\n", app.getDescription()));
+            sb.append(String.format("   示例: %s\n\n", app.getHelp()));
+        }
+        
+        sb.append("回复编号或应用名称选择");
+        return sb.toString();
     }
 }
 ```
 
 ---
 
-## 🔄 工作流程
+## 🔄 交互流程
 
 ### 完整交互流程
 
 ```
-1. 用户私聊机器人（默认对话）
-   消息: "你好"
-   topicId: null
-   ↓
-2. BotMessageService 检测
-   → topicId == null
-   → 默认对话
-   ↓
-3. AppMenuService 生成并发送菜单
-   ┌────────────────────┐
-   │ 🤖 应用菜单        │
-   ├────────────────────┤
-   │ 1. OpenCode 助手   │
-   │    AI编程助手      │
-   │    示例: /opencode chat 问题 │
-   │                    │
-   │ 2. Bash 命令       │
-   │    执行安全的bash命令 │
-   │    示例: /bash ls -la │
-   │ ...                │
-   │                    │
-   │ 回复编号或应用名称选择 │
-   └────────────────────┘
-   ↓
-4. 用户回复: "1" 或 "opencode"
-   ↓
-5. AppMenuService.handleUserSelection
-   → 解析用户输入
-   → 识别应用: OpenCode
-   ↓
-6. 创建话题并绑定
-   → 创建话题: omt_xxx
-   → 绑定到 OpenCode（30分钟）
-   ↓
-7. 发送确认消息（在新话题中）
-   ┌────────────────────┐
-   │ ✅ 已选择 OpenCode 助手 │
-   ├────────────────────┤
-   │ 话题已创建，30分钟内有效 │
-   │                    │
-   │ 你可以直接输入问题或命令 │
-   └────────────────────┘
-   ↓
-8. 用户在新话题中输入: "帮我写代码"
-   topicId: omt_xxx
-   ↓
-9. BotMessageService 路由
-   → 查询绑定: OpenCode
-   → 路由到 OpenCodeApp
-   ↓
-10. OpenCodeApp 处理并回复
+┌─────────────────────────────────┐
+│  用户输入: /menu                │
+└─────────────┬───────────────────┘
+              │
+              ▼
+┌─────────────────────────────────┐
+│  MenuApp.execute()              │
+│  - 尝试发送卡片                 │
+│  - 失败则返回文本               │
+└─────────────┬───────────────────┘
+              │
+              ▼
+┌─────────────────────────────────┐
+│  显示应用菜单卡片               │
+│  ┌────────────────────┐         │
+│  │ 🤖 应用菜单        │         │
+│  ├────────────────────┤         │
+│  │ [🤖 OpenCode 助手] │ ← 按钮  │
+│  │ [💻 Bash 命令]     │ ← 按钮  │
+│  │ [❓ 帮助信息]      │ ← 按钮  │
+│  │ [📊 历史查询]      │ ← 按钮  │
+│  │ [⏰ 时间查询]      │ ← 按钮  │
+│  └────────────────────┘         │
+└─────────────┬───────────────────┘
+              │
+              ▼
+┌─────────────────────────────────┐
+│  用户点击: [🤖 OpenCode 助手]   │
+└─────────────┬───────────────────┘
+              │
+              ▼
+┌─────────────────────────────────┐
+│  飞书自动发送消息: "opencode"   │  ← 飞书自动发送
+└─────────────┬───────────────────┘
+              │
+              ▼
+┌─────────────────────────────────┐
+│  后端处理（与命令输入完全相同） │
+│  - BotMessageService 接收消息   │
+│  - 解析为命令: /opencode        │
+│  - AppRouter 路由到 OpenCodeApp │
+│  - OpenCodeApp.execute()        │
+└─────────────────────────────────┘
 ```
+
+### 按钮点击 → 消息转换
+
+**关键机制**：飞书卡片按钮的 `value.message` 字段
+
+```json
+{
+  "tag": "button",
+  "text": {
+    "content": "🤖 OpenCode 助手",
+    "tag": "plain_text"
+  },
+  "type": "primary",
+  "value": {
+    "message": "opencode"  // ← 点击后，飞书自动发送这条消息
+  }
+}
+```
+
+**用户点击按钮后**：
+1. 飞书客户端自动发送消息: "opencode"
+2. 后端接收消息，内容为 "opencode"
+3. 后端解析为命令: `/opencode`
+4. 路由到 OpenCodeApp 执行
 
 ---
 
 ## 🎨 菜单设计
 
-### 文本格式（详细版）
+### 卡片格式（优先）
+
+```json
+{
+  "schema": "2.0",
+  "config": {
+    "wide_screen_mode": true
+  },
+  "header": {
+    "title": {
+      "content": "🤖 应用菜单",
+      "tag": "plain_text"
+    },
+    "template": "blue"
+  },
+  "elements": [
+    {
+      "tag": "markdown",
+      "content": "点击按钮选择应用，或直接输入命令"
+    },
+    {
+      "tag": "action",
+      "actions": [
+        {
+          "tag": "button",
+          "text": {
+            "content": "🤖 OpenCode 助手",
+            "tag": "plain_text"
+          },
+          "type": "primary",
+          "value": {
+            "message": "opencode"
+          }
+        },
+        {
+          "tag": "button",
+          "text": {
+            "content": "💻 Bash 命令",
+            "tag": "plain_text"
+          },
+          "type": "default",
+          "value": {
+            "message": "bash"
+          }
+        },
+        {
+          "tag": "button",
+          "text": {
+            "content": "❓ 帮助信息",
+            "tag": "plain_text"
+          },
+          "type": "default",
+          "value": {
+            "message": "help"
+          }
+        },
+        {
+          "tag": "button",
+          "text": {
+            "content": "📊 历史查询",
+            "tag": "plain_text"
+          },
+          "type": "default",
+          "value": {
+            "message": "history"
+          }
+        },
+        {
+          "tag": "button",
+          "text": {
+            "content": "⏰ 时间查询",
+            "tag": "plain_text"
+          },
+          "type": "default",
+          "value": {
+            "message": "time"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 文本格式（降级）
 
 ```
 🤖 应用菜单
@@ -222,23 +364,6 @@ public void handleMessage(Message message) {
 回复编号或应用名称选择
 ```
 
-### 卡片格式（未来增强）
-
-如果 CardKit API 可用，可以升级为交互式卡片：
-
-```
-┌────────────────────┐
-│ 🤖 应用菜单        │
-├────────────────────┤
-│ 1. 🤖 OpenCode     │
-│ 2. 💻 Bash         │
-│ 3. ❓ Help         │
-│                    │
-│ [选择1] [选择2]    │ ← 点击按钮
-│ [选择3] [更多...]  │
-└────────────────────┘
-```
-
 ---
 
 ## ⚙️ 配置管理
@@ -248,26 +373,24 @@ public void handleMessage(Message message) {
 ```yaml
 # application.yml
 feishu:
-  app-menu:
+  menu:
     enabled: true                    # 是否启用应用菜单
-    auto-show-in-default: true       # 在默认对话中自动显示
-    binding-duration: 1800000        # 绑定持续时间（30分钟）
-    show-expiry-warning: true        # 显示过期警告
-    expiry-warning-threshold: 300000 # 过期警告阈值（5分钟前）
+    prefer-card: true                # 优先使用卡片格式
+    show-icons: true                 # 显示应用图标
+    card-template: "blue"            # 卡片主题色
 ```
 
 ### 配置类
 
 ```java
 @Component
-@ConfigurationProperties(prefix = "feishu.app-menu")
+@ConfigurationProperties(prefix = "feishu.menu")
 @Data
-public class AppMenuProperties {
+public class MenuProperties {
     private boolean enabled = true;
-    private boolean autoShowInDefault = true;
-    private long bindingDuration = 30 * 60 * 1000L; // 30分钟
-    private boolean showExpiryWarning = true;
-    private long expiryWarningThreshold = 5 * 60 * 1000L; // 5分钟
+    private boolean preferCard = true;
+    private boolean showIcons = true;
+    private String cardTemplate = "blue";
 }
 ```
 
@@ -275,90 +398,44 @@ public class AppMenuProperties {
 
 ## 🛡️ 错误处理
 
-### 1. 无效输入处理
+### 1. 卡片发送失败
 
 ```java
-public void handleUserSelection(Message message, String userInput) {
-    Optional<FishuAppI> selectedApp = parseUserInput(userInput);
-    
-    if (selectedApp.isEmpty()) {
-        log.warn("无效的应用选择: userInput={}, chatId={}", 
-            userInput, message.getChatId());
-        
-        String errorContent = String.format(
-            "❌ 无效选择\n\n" +
-            "\"%s\" 不是有效的应用\n\n" +
-            "%s",
-            userInput,
-            generateMenuContent()
-        );
-        
-        feishuGateway.sendMessage(message, errorContent, null);
-        return;
-    }
-    
-    // 正常流程...
-}
-```
-
-### 2. 话题创建失败处理
-
-```java
-private String createTopicAndBind(Message message, FishuAppI app) {
+private boolean trySendInteractiveCard(Message message) {
     try {
-        SendResult result = feishuGateway.sendDirectReply(message, "");
-        
-        if (result.getThreadId() == null || result.getThreadId().isEmpty()) {
-            throw new MessageSysException("TOPIC_CREATE_FAILED", 
-                "Failed to create topic");
-        }
-        
-        String topicId = result.getThreadId();
-        bindingManager.bindTopic(topicId, app.getAppId(), properties.getBindingDuration());
-        
-        log.info("话题创建并绑定成功: topicId={}, appId={}", 
-            topicId, app.getAppId());
-        
-        return topicId;
-        
+        String cardJson = buildInteractiveCardJson();
+        feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
+        return true;
     } catch (Exception e) {
-        log.error("创建话题失败: appId={}, error={}", app.getAppId(), e.getMessage());
-        
-        // 降级：直接使用应用，不创建话题
-        String fallbackContent = String.format(
-            "⚠️ 话题创建失败，将直接使用应用\n\n" +
-            "✅ 已选择 %s\n\n" +
-            "你可以使用命令：%s",
-            app.getAppName(),
-            app.getHelp()
-        );
-        
-        feishuGateway.sendMessage(message, fallbackContent, null);
-        throw new MessageSysException("TOPIC_CREATE_FAILED", e);
+        log.warn("卡片发送失败，降级为文本: error={}", e.getMessage());
+        return false;  // 返回 false，触发文本菜单降级
     }
 }
 ```
 
-### 3. 绑定过期处理
+### 2. 应用图标获取
 
 ```java
-public Optional<String> getBindingApp(String topicId) {
-    Optional<TopicBinding> binding = bindingGateway.getBinding(topicId);
-    
-    if (binding.isEmpty()) {
-        return Optional.empty();
-    }
-    
-    // 检查是否过期
-    if (binding.get().getExpiryTime() < System.currentTimeMillis()) {
-        log.info("话题绑定已过期: topicId={}, appId={}",
-            topicId, binding.get().getAppId());
-        
-        bindingGateway.removeBinding(topicId);
-        return Optional.empty();
-    }
-    
-    return Optional.of(binding.get().getAppId());
+private String getAppIcon(FishuAppI app) {
+    // 根据应用ID返回图标
+    Map<String, String> iconMap = Map.of(
+        "opencode", "🤖",
+        "bash", "💻",
+        "help", "❓",
+        "history", "📊",
+        "time", "⏰"
+    );
+    return iconMap.getOrDefault(app.getAppId(), "📦");
+}
+```
+
+### 3. 按钮类型选择
+
+```java
+private String getButtonType(FishuAppI app) {
+    // 推荐应用使用 primary，其他使用 default
+    List<String> primaryApps = Arrays.asList("opencode", "bash", "help");
+    return primaryApps.contains(app.getAppId()) ? "primary" : "default";
 }
 ```
 
@@ -370,53 +447,66 @@ public Optional<String> getBindingApp(String topicId) {
 
 ```java
 @SpringBootTest
-class AppMenuServiceTest {
+class MenuAppTest {
+    
+    @Autowired
+    private MenuApp menuApp;
+    
+    @MockBean
+    private AppRegistry appRegistry;
+    
+    @MockBean
+    private FeishuGateway feishuGateway;
     
     @Test
-    void should_generate_menu_content_with_all_apps() {
-        // Given
-        List<FishuAppI> apps = Arrays.asList(
-            createMockApp("opencode", "OpenCode 助手"),
-            createMockApp("bash", "Bash 命令")
-        );
-        when(appRegistry.getAllApps()).thenReturn(apps);
-        
-        // When
-        String content = appMenuService.generateMenuContent();
-        
-        // Then
-        assertThat(content).contains("🤖 应用菜单");
-        assertThat(content).contains("1. OpenCode 助手");
-        assertThat(content).contains("2. Bash 命令");
-    }
-    
-    @Test
-    void should_parse_user_input_as_number() {
-        // Given
-        when(appRegistry.getAllApps()).thenReturn(apps);
-        
-        // When
-        Optional<FishuAppI> result = appMenuService.parseUserInput("1");
-        
-        // Then
-        assertThat(result).isPresent();
-        assertThat(result.get().getAppId()).isEqualTo("opencode");
-    }
-    
-    @Test
-    void should_handle_invalid_input() {
+    void should_generate_text_menu_when_card_failed() {
         // Given
         Message message = createTestMessage();
+        List<FishuAppI> apps = createMockApps();
+        when(appRegistry.getAllApps()).thenReturn(apps);
+        when(feishuGateway.sendInteractiveMessage(any(), any(), any()))
+            .thenThrow(new RuntimeException("Card failed"));
         
         // When
-        appMenuService.handleUserSelection(message, "invalid");
+        String result = menuApp.execute(message);
         
         // Then
-        verify(feishuGateway).sendMessage(
-            eq(message),
-            contains("❌ 无效选择"),
-            isNull()
+        assertThat(result).contains("🤖 应用菜单");
+        assertThat(result).contains("OpenCode 助手");
+        assertThat(result).contains("Bash 命令");
+    }
+    
+    @Test
+    void should_send_card_when_available() {
+        // Given
+        Message message = createTestMessage();
+        when(appRegistry.getAllApps()).thenReturn(createMockApps());
+        
+        // When
+        String result = menuApp.execute(message);
+        
+        // Then
+        assertThat(result).isNull();  // 卡片发送成功，返回 null
+        verify(feishuGateway).sendInteractiveMessage(any(), any(), any());
+    }
+    
+    @Test
+    void should_exclude_self_from_menu() {
+        // Given
+        List<FishuAppI> apps = Arrays.asList(
+            createMockApp("opencode"),
+            createMockApp("menu"),  // MenuApp 自己
+            createMockApp("bash")
         );
+        when(appRegistry.getAllApps()).thenReturn(apps);
+        
+        // When
+        String result = menuApp.execute(createTestMessage());
+        
+        // Then
+        assertThat(result).contains("opencode");
+        assertThat(result).contains("bash");
+        assertThat(result).doesNotContain("menu");  // 不包含自己
     }
 }
 ```
@@ -425,40 +515,23 @@ class AppMenuServiceTest {
 
 ```java
 @SpringBootTest
-class AppMenuIntegrationTest {
+class MenuAppIntegrationTest {
     
     @Test
-    void should_show_menu_in_default_conversation() {
+    void should_show_menu_with_command() {
         // Given
-        Message message = createTestMessage(null); // 无话题
+        Message message = createTestMessage();
+        message.setContent("/menu");
         
         // When
         botMessageService.handleMessage(message);
         
         // Then
         verify(feishuGateway).sendMessage(
-            eq(message),
+            any(Message.class),
             contains("🤖 应用菜单"),
-            isNull()
+            any()
         );
-    }
-    
-    @Test
-    void should_create_topic_when_user_selects_app() {
-        // Given
-        Message message = createTestMessage(null);
-        message.setContent("1");
-        
-        when(feishuGateway.sendDirectReply(any(), any()))
-            .thenReturn(SendResult.success("msg_123", "omt_456"));
-        
-        // When
-        botMessageService.handleMessage(message);
-        
-        // Then
-        Optional<TopicBinding> binding = bindingGateway.getBinding("omt_456");
-        assertThat(binding).isPresent();
-        assertThat(binding.get().getAppId()).isEqualTo("opencode");
     }
 }
 ```
@@ -470,55 +543,58 @@ class AppMenuIntegrationTest {
 ### 关键日志
 
 ```java
-// 应用选择日志
-log.info("用户选择应用: chatId={}, userInput={}", message.getChatId(), userInput);
-log.info("应用选择成功: appId={}, appName={}", app.getAppId(), app.getAppName());
+// 菜单显示日志
+log.info("应用菜单发送成功: chatId={}, format={}", 
+    message.getChatId(), "card");
 
-// 话题绑定日志
-log.info("绑定话题到应用: topicId={}, appId={}, duration={}分钟",
-    topicId, appId, durationMs / 60000);
+log.info("应用菜单降级为文本: chatId={}, reason={}", 
+    message.getChatId(), e.getMessage());
 
-// 错误日志
-log.warn("无效的应用选择: userInput={}, chatId={}", userInput, message.getChatId());
-log.error("创建话题失败: appId={}, error={}", app.getAppId(), e.getMessage());
-log.info("话题绑定已过期: topicId={}, appId={}", topicId, appId);
-```
-
-### 监控指标
-
-```java
-// 可选：集成 Micrometer
-Counter menuShownCounter;           // 菜单显示次数
-Counter appSelectedCounter;         // 应用选择成功次数
-Counter invalidSelectionCounter;    // 无效选择次数
+// 应用选择日志（由现有系统记录）
+log.info("路由到应用: appId={}, command={}", appId, command);
 ```
 
 ---
 
-## 🚀 发布计划
+## 🚀 实施计划
 
-### Phase 1: 核心功能（1-2天）
+### Phase 1: 核心功能（2-3小时）
 
-- ✅ AppMenuService 实现
-- ✅ TopicBindingManager 实现
-- ✅ TopicBindingGateway 实现（内存版）
-- ✅ BotMessageService 集成
-- ✅ 基础单元测试
-- ✅ 集成测试
+**任务清单**:
+- [ ] 创建 MenuApp.java
+- [ ] 实现 generateTextMenu()
+- [ ] 实现 buildInteractiveCardJson()
+- [ ] 添加配置类 MenuProperties
+- [ ] 编写单元测试
+- [ ] 编写集成测试
 
-### Phase 2: 增强功能（可选）
+**文件清单**:
+```
+feishu-bot-domain/
+├── app/MenuApp.java                    # 新增
+├── config/MenuProperties.java          # 新增
+└── util/CardBuilder.java               # 可选：卡片构建工具
 
-- ⏳ CardKit 卡片支持（解决 200610 错误后）
-- ⏳ 绑定持久化（SQLite）
-- ⏳ 监控指标集成
-- ⏳ 性能优化
+feishu-bot-infrastructure/
+└── gateway/FeishuGatewayImpl.java      # 扩展：sendInteractiveMessage()
 
-### Phase 3: 优化迭代（未来）
+feishu-bot-start/
+└── application.yml                      # 扩展：menu 配置
+```
 
-- ⏳ 用户使用统计
-- ⏳ 智能推荐（基于使用频率）
-- ⏳ 自定义菜单配置
-- ⏳ 应用分组
+### Phase 2: 测试验证（1小时）
+
+- [ ] 本地测试：文本菜单
+- [ ] 本地测试：卡片菜单（如果 CardKit 可用）
+- [ ] 验证按钮点击 → 消息发送 → 命令解析流程
+- [ ] 验证所有应用都能正确触发
+
+### Phase 3: 优化迭代（可选）
+
+- [ ] 优化卡片样式
+- [ ] 添加应用图标
+- [ ] 支持自定义按钮类型
+- [ ] 添加使用统计
 
 ---
 
@@ -526,23 +602,23 @@ Counter invalidSelectionCounter;    // 无效选择次数
 
 ### 功能检查
 
-- [ ] 所有应用正确注册到 AppRegistry
-- [ ] 菜单内容格式正确，包含描述和示例
-- [ ] 话题创建成功，topicId 正确返回
-- [ ] 绑定关系正确保存，过期时间准确
-- [ ] 过期后自动清除绑定
+- [ ] MenuApp 已注册到 AppRegistry
+- [ ] 菜单内容正确显示所有应用
+- [ ] 文本菜单降级正常工作
+- [ ] 按钮点击能触发对应应用
+- [ ] 每个应用都能正确执行
 
 ### 性能检查
 
-- [ ] TopicBindingGateway 使用 ConcurrentHashMap
-- [ ] 支持并发访问（多用户同时选择）
+- [ ] 菜单生成时间 < 100ms
+- [ ] 卡片发送成功率（如果可用）
 - [ ] 内存占用合理
 
-### 安全检查
+### 兼容性检查
 
-- [ ] 用户输入验证和清理
-- [ ] 防止注入攻击
-- [ ] 权限控制（仅合法用户）
+- [ ] 不影响现有命令交互方式
+- [ ] 所有现有功能正常工作
+- [ ] 降级模式稳定可靠
 
 ---
 
@@ -550,25 +626,23 @@ Counter invalidSelectionCounter;    // 无效选择次数
 
 ### 遵循 COLA 架构
 
-- **domain/service**: AppMenuService, TopicBindingManager
-- **domain/gateway**: TopicBindingGateway
-- **domain/topic**: TopicBinding
-- **infrastructure/gateway**: TopicBindingGatewayImpl
-- **domain/config**: AppMenuProperties
+- **domain/app**: MenuApp.java
+- **domain/config**: MenuProperties.java
+- **infrastructure/gateway**: 扩展 FeishuGateway
 
 ### 代码规范
 
 - ✅ 添加 `@Component` 注解
 - ✅ 使用 `@Autowired` 构造器注入
 - ✅ 关键操作记录日志
-- ✅ 异常向上抛出，不吞掉
-- ✅ 返回 `Optional` 而非 `null`
+- ✅ 异常处理并降级
+- ✅ 返回 `null` 表示卡片发送成功
 
 ### 扩展性
 
-- ✅ 配置化（绑定时长、菜单格式）
-- ✅ Gateway 接口便于切换实现（内存 → SQLite）
-- ✅ 预留卡片增强接口
+- ✅ 配置化（优先卡片/文本、图标显示）
+- ✅ 卡片模板可配置
+- ✅ 按钮类型可自定义
 
 ---
 
@@ -576,17 +650,17 @@ Counter invalidSelectionCounter;    // 无效选择次数
 
 ### 用户体验
 
-- ✅ 新用户能在 10 秒内发现并选择应用
-- ✅ 无需记忆斜杠命令即可使用应用
-- ✅ 错误提示清晰友好
-- ✅ 菜单永久可用，不会丢失
+- ✅ 用户能通过 `/menu` 看到所有应用
+- ✅ 点击按钮能正确触发应用
+- ✅ 文本菜单降级体验良好
+- ✅ 不影响现有命令交互
 
 ### 技术指标
 
+- ✅ MenuApp 代码 < 200 行
 - ✅ 菜单生成时间 < 100ms
-- ✅ 话题创建成功率 > 99%
-- ✅ 绑定过期自动清理
 - ✅ 单元测试覆盖率 > 80%
+- ✅ 零破坏性修改
 
 ---
 
@@ -594,11 +668,17 @@ Counter invalidSelectionCounter;    // 无效选择次数
 
 - [COLA 架构规范](../AGENTS.md)
 - [应用开发指南](../docs/APP_GUIDE.md)
-- [飞书 IM SDK 文档](https://open.feishu.cn/document/serverSdk/im sdk)
 - [飞书卡片概述](https://open.feishu.cn/document/feishu-cards/feishu-card-overview)
+- [飞书交互式卡片](https://open.feishu.cn/document/ukTMukTMukTM/ucTM5UjL3ETO24yNxkjN)
+
+---
+
+## 🔗 相关设计
+
+- [CardKit 流式响应设计](./2026-02-25-cardkit-streaming-design.md) - 卡片技术探索
 
 ---
 
 **最后更新**: 2026-03-04  
-**预计实施时间**: 1-2 天  
-**预计上线时间**: 2026-03-06
+**预计实施时间**: 2-3 小时  
+**预计上线时间**: 2026-03-04
