@@ -421,23 +421,17 @@ public class FeishuGatewayImpl implements FeishuGateway {
         
         return executeWithRetry("sendInteractiveMessage", () -> {
             try {
-                Map<String, Object> content = new LinkedHashMap<>();
-                content.put("type", "template");
-                content.put("data", Map.of("template_card", 
-                    objectMapper.readValue(cardJson, Map.class)));
-                String jsonContent = objectMapper.writeValueAsString(content);
-                
                 if (topicId != null && !topicId.isEmpty()) {
                     log.info("Replying interactive message to thread: topicId={}", topicId);
                     String rootId = message.getRootId();
                     if (rootId != null && !rootId.isEmpty()) {
-                        return sendReplyToMessage(rootId, jsonContent, "interactive");
+                        return sendReplyToMessage(rootId, cardJson, "interactive");
                     } else {
-                        return sendReplyToTopic(topicId, jsonContent, "interactive");
+                        return sendReplyToTopic(topicId, cardJson, "interactive");
                     }
                 } else {
                     log.info("Creating new message with interactive card: messageId={}", message.getMessageId());
-                    return sendReplyToMessage(message.getMessageId(), jsonContent, "interactive");
+                    return sendReplyToMessage(message.getMessageId(), cardJson, "interactive");
                 }
             } catch (Exception e) {
                 log.error("Failed to send interactive message", e);
