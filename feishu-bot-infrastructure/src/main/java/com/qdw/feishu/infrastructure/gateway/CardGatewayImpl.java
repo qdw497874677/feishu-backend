@@ -50,13 +50,14 @@ public class CardGatewayImpl implements CardGateway {
     public String createCard(String title, String content) {
         try {
             String cardJson = buildCardJson(title, content);
+            log.debug("创建卡片 JSON: {}", cardJson);
             
-            CreateCardReqBody reqBody = new CreateCardReqBody();
-            reqBody.setType("card_json");
-            reqBody.setData(cardJson);
-            
-            CreateCardReq req = new CreateCardReq();
-            req.setCreateCardReqBody(reqBody);
+            CreateCardReq req = CreateCardReq.newBuilder()
+                .createCardReqBody(CreateCardReqBody.newBuilder()
+                    .type("card_json")
+                    .data(cardJson)
+                    .build())
+                .build();
             
             CreateCardResp resp = httpClient.cardkit().v1().card().create(req);
             
@@ -80,18 +81,18 @@ public class CardGatewayImpl implements CardGateway {
     public boolean updateCard(String cardId, String content, int sequence) {
         try {
             String cardJson = buildCardJson(null, content);
+            log.debug("更新卡片 JSON: cardId={}, seq={}, json={}", cardId, sequence, cardJson);
             
-            Card card = new Card();
-            card.setType("card_json");
-            card.setData(cardJson);
-            
-            UpdateCardReqBody reqBody = new UpdateCardReqBody();
-            reqBody.setCard(card);
-            reqBody.setSequence(sequence);
-            
-            UpdateCardReq req = new UpdateCardReq();
-            req.setCardId(cardId);
-            req.setUpdateCardReqBody(reqBody);
+            UpdateCardReq req = UpdateCardReq.newBuilder()
+                .cardId(cardId)
+                .updateCardReqBody(UpdateCardReqBody.newBuilder()
+                    .card(Card.newBuilder()
+                        .type("card_json")
+                        .data(cardJson)
+                        .build())
+                    .sequence(sequence)
+                    .build())
+                .build();
             
             UpdateCardResp resp = httpClient.cardkit().v1().card().update(req);
             
