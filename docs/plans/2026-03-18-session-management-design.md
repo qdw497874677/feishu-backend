@@ -1,7 +1,7 @@
 # 会话管理抽象设计文档
 
 **日期**: 2026-03-18  
-**状态**: 已确认  
+**状态**: 已确认（经 @oracle 审查，已解决泛型问题）  
 **影响范围**: domain, infrastructure
 
 ---
@@ -22,6 +22,57 @@
 3. **复用现有存储**：基于 TopicMapping.metadata，最小改动
 4. **完整状态机**：支持 CREATED → ACTIVE → IDLE → EXPIRED → TERMINATED
 5. **混合数据结构**：基础字段强类型 + 扩展数据 JSON
+6. **类型安全**：使用 TypeToken 模式解决泛型类型擦除问题（见 4.3 节）
+
+### 1.3 泛型问题解决方案
+
+**问题**：`AppSessionGateway<T>` 类型擦除导致 Spring Bean 注册冲突
+
+**解决方案**：使用 **非泛型接口 + TypeToken** 模式
+
+```java
+// 非泛型接口，避免 Spring Bean 冲突
+public interface AppSessionGateway {
+    
+    // 使用 TypeToken 保留类型信息
+    <T> String createSession(String appId, String topicId, T data, TypeToken<T> typeToken);
+    <T> Optional<AppSession<T>> getSession(String appId, String topicId, String sessionId, TypeToken<T> typeToken);
+}
+
+// TypeToken 实现（参考 Gson TypeToken）
+public abstract class TypeToken<T> {
+    private final Type type;
+    
+    protected TypeToken() {
+        this.type = ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0];
+    }
+    
+    public Type getType() { return type; }
+}
+
+// 应用使用方式
+public class GameApp {
+    // 定义 TypeToken
+    private static final TypeToken<GameData> GAME_DATA_TYPE = new TypeToken<GameData>() {};
+    
+    public void example(String topicId) {
+        GameData data = new GameData();
+        String sessionId = sessionGateway.createSession(
+            "game", topicId, data, GAME_DATA_TYPE
+        );
+        
+        Optional<AppSession<GameData>> session = sessionGateway.getSession(
+            "game", topicId, sessionId, GAME_DATA_TYPE
+        );
+    }
+}
+```
+
+**优势**：
+- 保留类型安全
+- 避免 Spring Bean 冲突
+- 运行时可获取泛型类型信息
+- 与 Gson/Jackson 等库兼容
 
 ---
 
@@ -114,6 +165,7 @@
         "createdAt": 1704067200000,
         "lastActiveAt": 1704070800000,
         "expiresAt": null,
+        "version": 3,
         "data": {
           "externalSessionId": "oc_abc123",
           "projectPath": "/root/workspace/feishu-backend",
@@ -126,6 +178,7 @@
         "createdAt": 1704080000000,
         "lastActiveAt": 1704085000000,
         "expiresAt": null,
+        "version": 1,
         "data": {
           "externalSessionId": "oc_def456",
           "projectPath": "/root/workspace/other-project",
@@ -143,6 +196,7 @@
         "createdAt": 1704060000000,
         "lastActiveAt": 1704063000000,
         "expiresAt": null,
+        "version": 5,
         "data": {
           "score": 85,
           "level": 5,
@@ -155,6 +209,7 @@
         "createdAt": 1704070000000,
         "lastActiveAt": 1704071000000,
         "expiresAt": 1704074000000,
+        "version": 2,
         "data": {
           "score": 30,
           "level": 2,
@@ -173,20 +228,26 @@
 2. **activeSessionId**：指向当前活跃的会话，快速访问
 3. **data 字段**：应用自定义的强类型数据
 4. **命名空间隔离**：每个应用在自己的 appId 命名空间下
+5. **version 字段**：乐观锁版本号，每次更新递增，解决并发冲突
 
 ---
 
 ## 4. Gateway 接口设计
 
-### 4.1 AppSessionGateway<T>（核心接口）
+### 4.1 AppSessionGateway（核心接口）
+
+> **设计说明**：使用 `TypeToken<T>` 解决泛型类型擦除问题，避免 Spring Bean 冲突。
 
 ```java
 /**
  * 通用会话管理 Gateway 接口
  * 
- * @param <T> 应用特定的会话数据类型
+ * 使用 TypeToken<T> 解决泛型类型擦除问题：
+ * - 避免不同 T 类型的 Bean 注册冲突
+ * - 运行时保留泛型类型信息
+ * - 支持类型安全的序列化/反序列化
  */
-public interface AppSessionGateway<T> {
+public interface AppSessionGateway {
 
     // ========== 会话创建 ==========
     
@@ -194,29 +255,29 @@ public interface AppSessionGateway<T> {
      * 创建新会话（自动生成 sessionId）
      * @return 新会话的 sessionId
      */
-    String createSession(String appId, String topicId, T data);
+    <T> String createSession(String appId, String topicId, T data, TypeToken<T> typeToken);
     
     /**
      * 使用自定义 sessionId 创建会话
      */
-    String createSession(String appId, String topicId, String sessionId, T data);
+    <T> String createSession(String appId, String topicId, String sessionId, T data, TypeToken<T> typeToken);
 
     // ========== 会话查询 ==========
     
     /**
      * 获取当前活跃会话
      */
-    Optional<AppSession<T>> getActiveSession(String appId, String topicId);
+    <T> Optional<AppSession<T>> getActiveSession(String appId, String topicId, TypeToken<T> typeToken);
     
     /**
      * 获取指定会话
      */
-    Optional<AppSession<T>> getSession(String appId, String topicId, String sessionId);
+    <T> Optional<AppSession<T>> getSession(String appId, String topicId, String sessionId, TypeToken<T> typeToken);
     
     /**
-     * 获取应用在某话题下的所有会话
+     * 获取应用在某话题下的所有会话（仅返回基础信息，不反序列化 data）
      */
-    List<AppSession<T>> listSessions(String appId, String topicId);
+    List<AppSessionInfo> listSessions(String appId, String topicId);
     
     /**
      * 获取应用在某话题下的活跃会话数量
@@ -226,14 +287,15 @@ public interface AppSessionGateway<T> {
     // ========== 会话更新 ==========
     
     /**
-     * 更新会话数据
+     * 更新会话数据（带乐观锁）
+     * @throws OptimisticLockException 当版本冲突时抛出
      */
-    void updateSession(String appId, String topicId, String sessionId, T data);
+    <T> void updateSession(String appId, String topicId, String sessionId, T data, TypeToken<T> typeToken, long version);
     
     /**
-     * 更新会话状态
+     * 更新会话状态（带乐观锁）
      */
-    void updateState(String appId, String topicId, String sessionId, SessionState state);
+    void updateState(String appId, String topicId, String sessionId, SessionState state, long version);
     
     /**
      * 设置活跃会话（切换当前会话）
@@ -268,23 +330,70 @@ public interface AppSessionGateway<T> {
      */
     int cleanupSessions(String appId, String topicId);
 
-    // ========== 生命周期钩子 ==========
+    // ========== 生命周期钩子（由具体实现类覆盖）==========
     
     /**
-     * 会话即将过期的回调（应用可覆盖）
+     * 会话即将过期的回调
      */
-    default void onSessionExpiring(AppSession<T> session) {}
+    default void onSessionExpiring(AppSessionInfo session) {}
     
     /**
      * 会话已终止的回调
      */
-    default void onSessionTerminated(AppSession<T> session) {}
+    default void onSessionTerminated(AppSessionInfo session) {}
     
     /**
      * 会话状态变更的回调
      */
-    default void onStateChanged(AppSession<T> session, SessionState oldState, SessionState newState) {}
+    default void onStateChanged(AppSessionInfo session, SessionState oldState, SessionState newState) {}
 }
+```
+
+### 4.2 辅助类
+
+```java
+/**
+ * 会话基础信息（不含泛型 data，用于列表查询）
+ */
+@Data
+public class AppSessionInfo {
+    private String sessionId;
+    private String appId;
+    private String topicId;
+    private SessionState state;
+    private long createdAt;
+    private long lastActiveAt;
+    private Long expiresAt;
+    private long version;           // 乐观锁版本号
+}
+
+/**
+ * 完整会话实体（含泛型 data）
+ */
+@Data
+public class AppSession<T> extends AppSessionInfo {
+    private T data;                 // 应用特定数据
+}
+
+/**
+ * 类型令牌（解决泛型类型擦除）
+ */
+public abstract class TypeToken<T> {
+    private final Type type;
+    
+    protected TypeToken() {
+        this.type = ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0];
+    }
+    
+    public Type getType() {
+        return type;
+    }
+    
+    // 使用示例
+    public static final TypeToken<GameData> GAME_DATA = new TypeToken<GameData>() {};
+    public static final TypeToken<OpenCodeData> OPENCODE_DATA = new TypeToken<OpenCodeData>() {};
+}
+```
 ```
 
 ### 4.2 SessionContextGateway（原 TopicMappingGateway）
@@ -438,7 +547,7 @@ feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/
 @Component
 public class GameApp implements FishuAppI {
 
-    private final AppSessionGateway<GameData> sessionGateway;
+    private final AppSessionGateway sessionGateway;
     
     // 1. 定义会话数据类型
     @Data
@@ -448,7 +557,10 @@ public class GameApp implements FishuAppI {
         private String answer;
     }
     
-    // 2. 配置会话参数
+    // 2. 定义类型令牌
+    private static final TypeToken<GameData> GAME_DATA_TYPE = new TypeToken<GameData>() {};
+    
+    // 3. 配置会话参数
     @Override
     public SessionConfig getSessionConfig() {
         return SessionConfig.builder()
@@ -458,21 +570,23 @@ public class GameApp implements FishuAppI {
             .build();
     }
     
-    // 3. 开始新游戏
+    // 4. 开始新游戏
     private String startNewGame(String topicId) {
         GameData data = new GameData();
         data.setScore(0);
         data.setLevel(1);
         data.setAnswer(generateAnswer());
         
-        String sessionId = sessionGateway.createSession(getAppId(), topicId, data);
+        String sessionId = sessionGateway.createSession(
+            getAppId(), topicId, data, GAME_DATA_TYPE
+        );
         return "游戏开始！会话ID: " + sessionId;
     }
     
-    // 4. 继续游戏
+    // 5. 继续游戏（带乐观锁）
     private String makeGuess(String topicId, String guess) {
         Optional<AppSession<GameData>> optSession = 
-            sessionGateway.getActiveSession(getAppId(), topicId);
+            sessionGateway.getActiveSession(getAppId(), topicId, GAME_DATA_TYPE);
             
         if (optSession.isEmpty()) {
             return "游戏已结束，请发送 /game start 开始新游戏";
@@ -488,20 +602,29 @@ public class GameApp implements FishuAppI {
             return "恭喜！答案正确！得分: " + data.getScore();
         }
         
-        // 更新会话
-        sessionGateway.updateSession(getAppId(), topicId, session.getSessionId(), data);
+        // 更新会话（带版本号，乐观锁）
+        try {
+            sessionGateway.updateSession(
+                getAppId(), topicId, session.getSessionId(), 
+                data, GAME_DATA_TYPE, session.getVersion()
+            );
+        } catch (OptimisticLockException e) {
+            return "游戏状态已更新，请重试";
+        }
+        
         return "继续努力！当前得分: " + data.getScore();
     }
     
-    // 5. 查看历史游戏
+    // 6. 查看历史游戏
     private String showHistory(String topicId) {
-        List<AppSession<GameData>> sessions = 
+        List<AppSessionInfo> sessions = 
             sessionGateway.listSessions(getAppId(), topicId);
         
         StringBuilder sb = new StringBuilder("历史游戏记录:\n");
-        for (AppSession<GameData> s : sessions) {
-            sb.append(String.format("- %s: 得分 %d, 状态 %s\n",
-                s.getSessionId(), s.getData().getScore(), s.getState()));
+        for (AppSessionInfo s : sessions) {
+            sb.append(String.format("- %s: 状态 %s, 创建于 %s\n",
+                s.getSessionId(), s.getState(), 
+                new Date(s.getCreatedAt())));
         }
         return sb.toString();
     }
@@ -514,7 +637,11 @@ public class GameApp implements FishuAppI {
 @Component
 public class OpenCodeApp implements FishuAppI {
 
-    private final AppSessionGateway<OpenCodeData> sessionGateway;
+    private final AppSessionGateway sessionGateway;
+    
+    // 类型令牌常量
+    private static final TypeToken<OpenCodeData> OPENCODE_DATA = 
+        new TypeToken<OpenCodeData>() {};
     
     @Data
     public static class OpenCodeData {
@@ -538,7 +665,12 @@ public class OpenCodeApp implements FishuAppI {
         data.setProjectPath(projectPath);
         data.setMessageCount(0);
         
-        sessionGateway.createSession(getAppId(), topicId, data);
+        sessionGateway.createSession(getAppId(), topicId, data, OPENCODE_DATA);
+    }
+    
+    // 获取当前会话
+    private Optional<AppSession<OpenCodeData>> getCurrentSession(String topicId) {
+        return sessionGateway.getActiveSession(getAppId(), topicId, OPENCODE_DATA);
     }
 }
 ```
@@ -556,14 +688,15 @@ public class OpenCodeApp implements FishuAppI {
 | 重命名 | `TopicMetadata.java` | `SessionMetadata.java` |
 | 重命名 | `TopicMappingSqliteGateway.java` | `SessionContextSqliteGateway.java` |
 | 重命名 | `TopicMappingGatewayImpl.java` | `SessionContextGatewayImpl.java` |
-| 重构 | `OpenCodeSessionGateway.java` | `AppSessionGateway.java`（泛型接口） |
+| 重构 | `OpenCodeSessionGateway.java` | `AppSessionGateway.java`（使用 TypeToken） |
 | 重构 | `OpenCodeSessionGatewayImpl.java` | `AppSessionGatewayImpl.java`（通用实现） |
 | 删除 | `OpenCodeMetadata.java` | 数据合并到各应用内部 |
 | 新增 | - | `AppSession.java` |
+| 新增 | - | `AppSessionInfo.java` |
 | 新增 | - | `SessionState.java` |
 | 新增 | - | `SessionConfig.java` |
-| 新增 | - | `SessionIdGenerator.java` |
-| 新增 | - | `DefaultSessionIdGenerator.java` |
+| 新增 | - | `TypeToken.java` |
+| 新增 | - | `OptimisticLockException.java` |
 
 ### 8.2 调用方修改
 
@@ -606,8 +739,54 @@ CREATE TABLE topic_mapping (
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
 | 数据迁移 | 现有 OpenCode 会话数据格式变化 | 兼容旧格式，渐进迁移 |
-| 接口变化 | 调用方需要修改 | 保持旧接口一段时间，标记 @Deprecated |
+| 接口变化 | 调用方需要修改 | 直接修改，一次性完成 |
 | 状态机复杂度 | 状态转换可能出错 | 完善单元测试，覆盖所有转换路径 |
+| 并发冲突 | 读-改-写竞态条件 | 乐观锁（version 字段），冲突时抛出 OptimisticLockException |
+| JSON 膨胀 | metadata 字段过大 | maxSessions 限制历史会话数量，定期 cleanup |
+
+### 9.1 并发安全设计
+
+```java
+// 更新操作必须携带版本号
+public <T> void updateSession(String appId, String topicId, String sessionId, 
+                               T data, TypeToken<T> typeToken, long version) {
+    // 1. 读取当前会话
+    AppSession<T> current = findSession(appId, topicId, sessionId);
+    
+    // 2. 版本检查（乐观锁）
+    if (current.getVersion() != version) {
+        throw new OptimisticLockException(
+            "Session version conflict: expected=" + version + 
+            ", actual=" + current.getVersion()
+        );
+    }
+    
+    // 3. 更新数据，版本号 +1
+    current.setData(data);
+    current.setVersion(version + 1);
+    current.setLastActiveAt(System.currentTimeMillis());
+    
+    // 4. 持久化
+    save(appId, topicId, current);
+}
+```
+
+### 9.2 错误处理
+
+```java
+// 应用层处理并发冲突
+try {
+    sessionGateway.updateSession(appId, topicId, sessionId, data, typeToken, session.getVersion());
+} catch (OptimisticLockException e) {
+    // 方案 1: 提示用户重试
+    return "会话已被修改，请重试";
+    
+    // 方案 2: 自动合并（如果业务允许）
+    // AppSession<GameData> latest = sessionGateway.getSession(...);
+    // mergedData = merge(latest.getData(), data);
+    // sessionGateway.updateSession(..., mergedData, latest.getVersion());
+}
+```
 
 ---
 
