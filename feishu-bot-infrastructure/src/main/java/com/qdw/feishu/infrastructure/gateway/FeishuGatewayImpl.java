@@ -12,6 +12,7 @@ import com.lark.oapi.service.im.v1.model.CreateMessageResp;
 import com.lark.oapi.service.im.v1.model.ListMessageReq;
 import com.lark.oapi.service.im.v1.model.ListMessageResp;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
+import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
 import com.lark.oapi.service.im.v1.model.ReplyMessageResp;
 import com.qdw.feishu.domain.config.FeishuConfig;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
@@ -442,15 +443,18 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
     private SendResult sendReplyToMessage(String messageId, String content, String msgType) throws Exception {
         log.info("Replying to message: {} with msgType: {}", messageId, msgType);
+        if ("interactive".equals(msgType)) {
+            log.info("Interactive card JSON: {}", content);
+        }
         
         return executeWithRetry("sendReplyToMessageWithType", () -> {
             try {
                 ReplyMessageReq req = ReplyMessageReq.newBuilder()
                     .messageId(messageId)
-                    .replyMessageReqBody(com.lark.oapi.service.im.v1.model.ReplyMessageReqBody.newBuilder()
+                    .replyMessageReqBody(ReplyMessageReqBody.newBuilder()
                         .content(content)
                         .msgType(msgType)
-                        .replyInThread(true)
+                        .replyInThread(false)
                         .build())
                     .build();
 

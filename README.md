@@ -10,104 +10,298 @@
 |------|------|----------|
 | [AGENTS.md](./AGENTS.md) | 项目核心规范、COLA 架构、启动命令 | **所有开发者** |
 | [APP_GUIDE.md](./APP_GUIDE.md) | 应用开发快速开始、创建应用 | **应用开发者** |
+| [APP_USAGE_GUIDE.md](./APP_USAGE_GUIDE.md) | 所有应用的使用指南和命令格式 | **用户** |
 
 ---
 
-## 🎯 快速开始
+## 🏗️ 架构概览
 
-### 启动项目
+### COLA 分层架构
 
-```bash
-cd feishu-bot-start
-
-LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 \
-FEISHU_MODE=listener \
-FEISHU_LISTENER_ENABLED=true \
-mvn spring-boot:run
+```
+┌─────────────────────────────────────┐
+│         feishu-bot-start          │  ← 启动入口
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│        feishu-bot-adapter         │  ← 适配层（事件监听）
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│         feishu-bot-app            │  ← 应用层（用例编排）
+└──────────────┬──────────────────────┘
+               │
+        ┌──────┴───────┐
+        │              │
+┌──────▼──────┐ ┌─────▼─────┐
+│  feishu-bot- │ │feishu-bot-│
+│   domain     │ │  client   │  ← 领域层 + DTO 层
+└──────┬───────┘ └───────────┘
+       │
+┌──────▼──────────────────────────┐
+│  feishu-bot-infrastructure     │  ← 基础设施层
+└─────────────────────────────────┘
 ```
 
-### 创建新应用
+### 模块职责
 
-查看 [APP_GUIDE.md](./APP_GUIDE.md)，3 步完成应用开发：
+| 模块 | 职责 | 关键类 |
+|------|------|--------|
+| **domain** | 领域模型、业务逻辑、网关接口、应用实现 | `FishuAppI`, `Message`, `BotMessageService` |
+| **app** | 应用服务、用例编排 | `Cmd`, `Qry`, `CmdExe` |
+| **infrastructure** | 基础设施、外部集成、Gateway实现 | `FeishuGatewayImpl`, `TopicMappingSqliteGateway` |
+| **adapter** | 适配层、事件监听 | `FeishuEventListener` |
+| **client** | DTO 对象 | `@DTO`, `@Request`, `@Response` |
+| **start** | 启动配置 | `Application.java`, `application.yml` |
 
-1. 创建类 → 添加 `@Component` → 实现 `FishuAppI`
-2. 构建项目
-3. 重启应用（自动注册）
+---
+
+## 🎯 核心组件
+
+### 1. 应用系统（App System）
+
+所有应用实现 `FishuAppI` 接口：
+
+```java
+public interface FishuAppI {
+    String getAppId();                      // 应用ID
+    String getAppName();                    // 应用名称
+    String getDescription();                // 描述
+    String execute(Message message);        // 执行逻辑
+    ReplyMode getReplyMode();               // 回复模式
+    List<String> getAppAliases();           // 命令别名
+}
+```
+
+### 2. 策略模式（Reply Strategy）
+
+处理不同回复场景：
+
+| 策略 | 场景 | 实现 |
+|------|------|------|
+| `DirectReplyStrategy` | 直接回复（无话题） | `infrastructure/reply/` |
+| `TopicReplyStrategy` | 话题回复 | `infrastructure/reply/` |
+| `DefaultReplyStrategy` | 默认策略 | `infrastructure/reply/` |
+
+### 3. 网关接口（Gateway Pattern）
+
+领域层定义接口，基础设施层实现：
+
+| 网关接口 | 实现 | 职责 |
+|----------|------|------|
+| `FeishuGateway` | `FeishuGatewayImpl` | 飞书 API 调用 |
+| `MessageListenerGateway` | `MessageListenerGatewayImpl` | WebSocket 长连接 |
+| `TopicMappingGateway` | `TopicMappingSqliteGateway` | 话题映射持久化 |
+| `OpenCodeGateway` | `OpenCodeGatewayImpl` | OpenCode 集成 |
+| `CardGateway` | `CardGatewayImpl` | 卡片消息 |
+
+### 4. 防腐层（Anti-Corruption Layer）
+
+隔离飞书 SDK 变化：
+- `MessageEventParser` - 解析飞书事件为领域模型
+- 领域层不依赖飞书 SDK 具体类
+
+---
+
+## 🔄 消息处理流程
+
+```
+用户消息 (飞书)
+    │
+    ▼
+MessageListenerGateway (WebSocket 接收)
+    │
+    ▼
+MessageEventParser (防腐层解析)
+    │
+    ▼
+BotMessageService.handleMessage() (编排)
+    │
+    ├─→ 解析命令 / 查找应用
+    │       └─→ AppRouter / AppRegistry
+    │
+    ├─→ 预处理内容（话题模式）
+    │
+    ├─→ 添加表情反馈
+    │
+    ├─→ 执行应用逻辑
+    │       └─→ FishuAppI.execute()
+    │
+    ├─→ 发送回复
+    │       └─→ ReplyStrategyFactory → ReplyStrategy
+    │
+    └─→ 保存话题映射
+            └─→ TopicMappingGateway
+```
+
+---
+
+## 📱 已实现应用
+
+| 应用ID | 名称 | 触发命令 | 别名 | 功能 |
+|--------|------|---------|------|------|
+| `help` | 帮助 | `/help` | `h`, `?`, `man` | 显示所有命令 |
+| `time` | 时间 | `/time` | `t`, `now`, `date` | 查询系统时间 |
+| `bash` | 命令 | `/bash <cmd>` | `cmd`, `shell`, `exec` | 执行安全命令 |
+| `history` | 历史 | `/history` | - | 查询对话历史 |
+| `opencode` | AI助手 | `/opencode <sub>` | `oc`, `code` | OpenCode 集成 |
+
+**详细使用指南**: [APP_USAGE_GUIDE.md](./APP_USAGE_GUIDE.md)
+
+---
+
+## 🚀 快速开始
+
+### 1. 环境准备
+
+```bash
+# JDK 17+
+java -version
+
+# 克隆项目
+git clone <repo-url>
+cd feishu-backend
+```
+
+### 2. 配置凭证
+
+```bash
+# 创建本地启动脚本
+cp start-feishu.sh run-local.sh
+
+# 编辑并添加飞书凭证
+vim run-local.sh
+# 添加：
+# export FEISHU_APPID='your-app-id'
+# export FEISHU_APPSECRET='your-app-secret'
+```
+
+### 3. 启动服务
+
+```bash
+./run-local.sh
+
+# 查看日志
+tail -f /tmp/feishu-run.log
+```
+
+### 4. 验证启动
+
+```bash
+# 检查 WebSocket 连接
+grep "connected to wss://" /tmp/feishu-run.log
+
+# 检查应用注册
+grep "已注册" /tmp/feishu-run.log
+```
+
+---
+
+## 🔧 创建新应用
+
+3 步完成：
+
+### 1. 创建应用类
+
+```java
+@Component
+public class MyApp implements FishuAppI {
+    
+    @Override
+    public String getAppId() {
+        return "myapp";
+    }
+
+    @Override
+    public String execute(Message message) {
+        return "Hello from MyApp!";
+    }
+
+    @Override
+    public List<String> getAppAliases() {
+        return Arrays.asList("ma", "my");
+    }
+}
+```
+
+### 2. 放置到正确目录
+
+```
+feishu-bot-domain/src/main/java/com/qdw/feishu/domain/app/MyApp.java
+```
+
+### 3. 构建并重启
+
+```bash
+mvn clean package
+./run-local.sh
+```
+
+**详细指南**: [APP_GUIDE.md](./APP_GUIDE.md)
 
 ---
 
 ## 📁 项目结构
 
 ```
-feishu-bot/                         # 父 POM
+feishu-backend/
 ├── feishu-bot-client/              # DTO 层
-├── feishu-bot-domain/             # 领域层（应用在这里）
-├── feishu-bot-app/                # 应用层
+├── feishu-bot-domain/              # 领域层 ⭐
+│   └── src/main/java/.../domain/
+│       ├── app/                    # 应用实现
+│       ├── core/                   # 核心接口
+│       ├── gateway/                # 网关接口
+│       ├── message/                # 消息模型
+│       ├── reply/                  # 回复策略
+│       ├── router/                 # 应用路由
+│       └── service/                # 领域服务
+├── feishu-bot-app/                 # 应用层
 ├── feishu-bot-infrastructure/      # 基础设施层
-├── feishu-bot-adapter/           # 适配层
-└── feishu-bot-start/              # 启动模块
+│   └── src/main/java/.../infrastructure/
+│       ├── gateway/                # 网关实现
+│       ├── reply/                  # 策略实现
+│       └── config/                 # 配置
+├── feishu-bot-adapter/             # 适配层
+└── feishu-bot-start/               # 启动模块
 ```
 
 ---
 
 ## ⚠️ 核心规范
 
-### 严禁使用 WebHook
+### 通信模式（铁律）
 
-本项目**只允许使用长连接模式**，严格禁止使用 WebHook 模式。
+| 模式 | 状态 | 说明 |
+|------|------|------|
+| 长连接 | ✅ **唯一允许** | WebSocket 实时推送 |
+| WebHook | ❌ **严禁使用** | 需要公网 IP，部署复杂 |
 
-- ❌ WebHook：需要公网 IP 和域名，部署复杂，不稳定
-- ✅ 长连接：WebSocket 实时推送，无需回调端点，稳定可靠
+### COLA 依赖规则
 
-**重要说明**：
-- ✅ 所有新代码必须基于长连接模式
-- ❌ 禁止添加任何 WebHook 相关的新代码
-- ✅ 消息接收和发送统一使用 `MessageListenerGateway` 和 `FeishuGateway`
+1. **上层依赖下层**: `start → adapter → app → domain → infrastructure`
+2. **下层定义接口**: `domain` 定义，`infrastructure` 实现
+3. **横向隔离**: 同层模块不能直接依赖
 
-### COLA 架构
+### 代码规范
 
-遵循 [COLA (Clean Object-oriented and Layered Architecture)](https://github.com/alibaba/COLA) 架构。
-
-**依赖关系**：
-```
-start → adapter → app → domain + client → infrastructure
-```
-
-**分层职责**：
-- `feishu-bot-domain`：领域模型、业务逻辑、领域服务、网关接口、应用实现
-- `feishu-bot-app`：应用服务、用例编排、命令/查询
-- `feishu-bot-infrastructure`：基础设施实现、外部系统集成
-- `feishu-bot-adapter`：适配层、外部接口、事件监听
-- `feishu-bot-client`：DTO 对象、对外接口定义
-- `feishu-bot-start`：启动模块、配置
+- 类名：PascalCase (`BotMessageService`)
+- 方法名：camelCase (`handleMessage`)
+- 常量：UPPER_SNAKE_CASE (`MAX_RETRIES`)
+- 禁止单字母变量（循环除外）
+- 禁止吞掉异常
 
 ---
 
-## 🎨 已实现功能
+## 🛠️ 技术栈
 
-### 应用系统
-
-| 应用ID | 应用名称 | 触发命令 | 状态 |
-|---------|---------|-----------|------|
-| `time` | 时间查询 | `/time` | ✅ 已实现 |
-
-### 核心功能
-
-- ✅ WebSocket 长连接接收消息
-- ✅ 自动应用注册和路由
-- ✅ 消息发送和回复
-- ✅ UTF-8 中文编码支持
-- ✅ 异常处理和日志记录
-
----
-
-## 🚀 技术栈
-
-- **JDK**: 17+
-- **Spring Boot**: 3.2.1
-- **飞书 SDK**: 2.5.2
-- **架构**: COLA
-- **构建工具**: Maven
+| 类别 | 技术 | 版本 |
+|------|------|------|
+| JDK | OpenJDK | 17+ |
+| Framework | Spring Boot | 3.2.1 |
+| Architecture | COLA | - |
+| Feishu SDK | larksuite-oapi | 2.5.2 |
+| Database | SQLite | - |
+| Build | Maven | 3.x |
 
 ---
 
@@ -115,119 +309,70 @@ start → adapter → app → domain + client → infrastructure
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 核心规范 | ✅ 已定义 | AGENTS.md |
-| 应用系统 | ✅ 已实现 | AppRegistry, AppRouter, TimeApp |
-| 长连接 | ✅ 正常运行 | WebSocket 监听器 |
-| 废弃代码 | ✅ 已清理 | 删除 CommandRouter, WebHook, 扩展点 |
-| 编码支持 | ✅ 已修复 | UTF-8 中英文显示正常 |
+| 核心规范 | ✅ | AGENTS.md |
+| 应用系统 | ✅ | 5 个应用 |
+| 长连接 | ✅ | WebSocket 正常 |
+| 话题管理 | ✅ | SQLite 持久化 |
+| OpenCode 集成 | ✅ | 多轮对话 |
+| 测试覆盖 | ✅ | 单元测试 |
 
 ---
 
 ## 🔍 常见问题
 
-### Q: 如何创建新应用？
-
-**A:** 查看 [APP_GUIDE.md](./APP_GUIDE.md)，3 步完成：
-1. 创建类（添加 `@Component` 和实现 `FishuAppI`）
-2. 构建项目
-3. 重启应用（自动注册）
-
 ### Q: 应用没有生效？
 
-**A:** 检查：
+检查：
 1. 类添加了 `@Component` 注解
 2. 实现了 `FishuAppI` 接口
-3. `appId` 是唯一的（如 `time`, `weather`）
+3. `appId` 是唯一的
 4. 启动日志显示应用已注册
 
 ### Q: 如何查看日志？
 
-**A:**
 ```bash
-tail -f /tmp/feishu-start.log
+tail -f /tmp/feishu-run.log
 ```
 
-### Q: 如何停止应用？
+### Q: 如何停止服务？
 
-**A:**
 ```bash
-ps aux | grep "spring-boot:run" | grep -v grep | awk '{print $2}' | xargs kill -9
+pkill -f "feishu-bot-start"
 ```
 
----
+### Q: 消息处理失败？
 
-## 🔄 消息处理流程
-
-### 表情反馈 vs 卡片降级
-
-**两者是独立的**：
-
-| 机制 | 作用 | 触发时机 |
-|------|------|---------|
-| **表情** | 对用户消息的即时反馈 | 始终执行 |
-| **降级** | 卡片失败时的内容展示策略 | 仅卡片创建失败时 |
-
-### 完整流程
-
-```
-用户消息: "帮我写代码"
-    │
-    ├─→ 添加 ❤️ 表情（始终执行，告诉用户"收到"）
-    │
-    ├─→ 尝试创建卡片
-    │   ├─ 成功 → 卡片流式更新
-    │   └─ 失败 → 降级模式（不发中间消息，静默等待）
-    │
-    ├─→ 执行命令（异步）
-    │
-    ├─→ 添加 👏 表情（始终执行，告诉用户"完成"）
-    │
-    └─→ 发送最终结果
-```
-
-### 表情的意义
-
-| 表情 | 时机 | 含义 |
-|------|------|------|
-| ❤️ HEART | 任务开始 | "收到，正在处理" |
-| 👏 CLAP | 任务完成 | "处理完成" |
-
-### 卡片配置
-
-```yaml
-opencode:
-  card:
-    enabled: true              # 是否启用卡片流式输出
-    fallback-on-error: true    # 卡片失败时是否降级
-    title: "🤖 AI 助手"
-    thinking-text: "⏳ 正在思考..."
-    processing-text: "⏳ 处理中..."
-    complete-text: "✅ 完成"
+检查日志中的异常信息：
+```bash
+grep -i "error\|exception" /tmp/feishu-run.log
 ```
 
 ---
 
 ## 📚 参考资料
 
-- [应用开发规范](./APP_GUIDE.md) - 详细的应用开发指南
-- [项目规范](./AGENTS.md) - 核心规范、架构、启动命令
-- [飞书 IM SDK 文档](https://open.feishu.cn/document/serverSdk/im sdk)
-- [飞书 WebSocket 文档](https://open.feishu.cn/document/serverSdk/event-sdk)
+- [应用开发指南](./APP_GUIDE.md)
+- [应用使用指南](./APP_USAGE_GUIDE.md)
+- [项目规范](./AGENTS.md)
 - [COLA 架构](https://github.com/alibaba/COLA)
+- [飞书开放平台](https://open.feishu.cn/)
 - [飞书 SDK GitHub](https://github.com/larksuite/oapi-sdk-java)
 
 ---
 
 ## 📝 开发日志
 
-### 2026-01-25
+### 2026-03-18
+- ✅ 架构重构完成
+- ✅ 5 个应用全部迁移
+- ✅ 文档更新
 
-- ✅ 重构应用系统：引入 `FishuAppI`、`AppRegistry`、`AppRouter`
-- ✅ 创建 `TimeApp` 作为示例应用
-- ✅ 删除废弃代码：`CommandRouter`、`WebHook`、扩展点
-- ✅ 优化项目文档：精简并明确规范
-- ✅ 长连接正常工作，消息接收和回复正常
+### 2026-01-25
+- ✅ 引入 `FishuAppI`、`AppRegistry`、`AppRouter`
+- ✅ 创建 `TimeApp` 示例应用
+- ✅ 删除废弃代码
+- ✅ 长连接正常工作
 
 ---
 
-**最后更新**: 2026-01-25
+**最后更新**: 2026-03-18

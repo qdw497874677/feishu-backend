@@ -126,7 +126,11 @@ public class BotMessageService {
 
         } catch (MessageBizException e) {
             log.error("业务异常: {}", e.getMessage());
-            throw e;
+            // 发送错误回复
+            String errorReply = e.getMessage();
+            SendResult result = feishuGateway.sendMessage(message, errorReply, message.getTopicId());
+            message.markProcessed();
+            return result;
         } catch (Exception e) {
             log.error("系统异常: 消息处理失败", e);
             throw new MessageSysException("MESSAGE_HANDLE_FAILED", "消息处理失败", e);
@@ -232,6 +236,23 @@ public class BotMessageService {
         String content = message.getContent().trim();
         String appId = app.getAppId();
         String expectedPrefix = "/" + appId;
+        
+        // 检查是否以 / 开头但不是当前应用的前缀
+        if (content.startsWith("/") && !content.startsWith(expectedPrefix + " ") && !content.equals(expectedPrefix)) {
+            // 提取命令
+            String otherCommand = content.split("\\s+", 2)[0].substring(1);
+            log.warn("话题中禁止使用其他应用命令: command={}, expectedApp={}", otherCommand, appId);
+            
+            // 抛出业务异常，阻止继续处理
+            String errorReply = String.format(
+                "❌ 当前在 **%s** 话题模式中\n\n" +
+                "💡 只能使用本应用的命令，不能使用其他应用命令（/%s）\n\n" +
+                "📋 可用命令：直接输入子命令（如 `projects`, `sessions`, `chatnow`）\n" +
+                "🔄 退出话题：发送新消息到群聊（不回复话题）",
+                app.getAppName(), otherCommand
+            );
+            throw new MessageBizException("TOPIC_COMMAND_NOT_ALLOWED", errorReply);
+        }
         
         if (content.startsWith(expectedPrefix + " ") || content.equals(expectedPrefix)) {
             log.info("话题中的消息包含命令前缀，去除前缀: {}", content);

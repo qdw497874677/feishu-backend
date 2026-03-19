@@ -175,9 +175,27 @@ public class OpenCodeApp implements FishuAppI {
 
         log.info("OpenCodeApp.execute: content='{}'", content);
 
-        // 空命令，返回帮助
+        // 空命令（只有 /opencode），进入话题模式，显示欢迎消息
         if (parts.length < 2) {
-            return getHelp();
+            String topicId = message.getTopicId();
+            if (topicId == null || topicId.isEmpty()) {
+                // 话题外，返回简短引导
+                return """
+                    🤖 **OpenCode 助手**
+                    
+                    已进入话题模式！
+                    
+                    📋 **常用命令**：
+                    • `projects` - 查看项目列表
+                    • `sessions <项目名>` - 查看会话
+                    • `chatnow <内容>` - 立即开始对话
+                    • `help` - 查看完整帮助
+                    
+                    💡 直接输入命令即可（无需 /opencode 前缀）
+                    """;
+            }
+            // 话题内，显示状态和引导
+            return sessionManager.getCurrentSessionStatus(message);
         }
 
         String subCommand = parts[1].toLowerCase();

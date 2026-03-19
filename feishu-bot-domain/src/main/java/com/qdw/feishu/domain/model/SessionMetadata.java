@@ -4,39 +4,38 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
-import java.util.Optional;
 
 import java.util.Optional;
 
 /**
- * TopicMapping Metadata 操作工具类
+ * SessionContext Metadata 操作工具类
  *
  * 提供类型安全的 metadata 访问接口
  */
 @Slf4j
-public class TopicMetadata {
+public class SessionMetadata {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final TopicMapping mapping;
+    private final SessionContext context;
     private JsonNode metadataNode;
 
     /**
-     * 从 TopicMapping 创建 TopicMetadata
+     * 从 SessionContext 创建 SessionMetadata
      *
-     * @param mapping 话题映射实体
-     * @return TopicMetadata 工具实例
+     * @param context 会话上下文实体
+     * @return SessionMetadata 工具实例
      */
-    public static TopicMetadata of(TopicMapping mapping) {
-        return new TopicMetadata(mapping);
+    public static SessionMetadata of(SessionContext context) {
+        return new SessionMetadata(context);
     }
 
     /**
      * 私有构造函数
      */
-    private TopicMetadata(TopicMapping mapping) {
-        this.mapping = mapping;
-        this.metadataNode = parseMetadata(mapping.getMetadata());
+    private SessionMetadata(SessionContext context) {
+        this.context = context;
+        this.metadataNode = parseMetadata(context.getMetadata());
     }
 
     /**
@@ -59,7 +58,7 @@ public class TopicMetadata {
      * 获取当前应用的命名空间节点
      */
     private ObjectNode getAppNode() {
-        String appId = mapping.getAppId();
+        String appId = context.getAppId();
 
         if (metadataNode.isObject()) {
             ObjectNode root = (ObjectNode) metadataNode;
@@ -81,7 +80,7 @@ public class TopicMetadata {
      * @param value 值
      * @return this（支持链式调用）
      */
-    public TopicMetadata set(String key, String value) {
+    public SessionMetadata set(String key, String value) {
         getAppNode().put(key, value);
         return this;
     }
@@ -93,7 +92,7 @@ public class TopicMetadata {
      * @param value 值
      * @return this
      */
-    public TopicMetadata set(String key, int value) {
+    public SessionMetadata set(String key, int value) {
         getAppNode().put(key, value);
         return this;
     }
@@ -105,7 +104,7 @@ public class TopicMetadata {
      * @param value 值
      * @return this
      */
-    public TopicMetadata set(String key, long value) {
+    public SessionMetadata set(String key, long value) {
         getAppNode().put(key, value);
         return this;
     }
@@ -117,7 +116,7 @@ public class TopicMetadata {
      * @param value 值
      * @return this
      */
-    public TopicMetadata set(String key, boolean value) {
+    public SessionMetadata set(String key, boolean value) {
         getAppNode().put(key, value);
         return this;
     }
@@ -129,7 +128,7 @@ public class TopicMetadata {
      * @param value 值
      * @return this
      */
-    public TopicMetadata set(String key, Object value) {
+    public SessionMetadata set(String key, Object value) {
         try {
             String json = objectMapper.writeValueAsString(value);
             getAppNode().set(key, objectMapper.readTree(json));
@@ -223,7 +222,7 @@ public class TopicMetadata {
      * @param key 键
      * @return this
      */
-    public TopicMetadata remove(String key) {
+    public SessionMetadata remove(String key) {
         getAppNode().remove(key);
         return this;
     }
@@ -243,26 +242,26 @@ public class TopicMetadata {
      *
      * @return this
      */
-    public TopicMetadata clear() {
+    public SessionMetadata clear() {
         getAppNode().removeAll();
         return this;
     }
 
     /**
-     * 将修改保存回 TopicMapping
+     * 将修改保存回 SessionContext
      *
      * 重要：修改后必须调用此方法，否则不会持久化
      *
-     * @return 更新后的 TopicMapping
+     * @return 更新后的 SessionContext
      */
-    public TopicMapping save() {
+    public SessionContext save() {
         try {
             String json = objectMapper.writeValueAsString(metadataNode);
-            mapping.setMetadata(json);
-            return mapping;
+            context.setMetadata(json);
+            return context;
         } catch (Exception e) {
             log.error("Failed to serialize metadata", e);
-            return mapping;
+            return context;
         }
     }
 
@@ -272,7 +271,7 @@ public class TopicMetadata {
      * @return JSON 字符串
      */
     public String toJson() {
-        return mapping.getMetadata();
+        return context.getMetadata();
     }
 
     /**

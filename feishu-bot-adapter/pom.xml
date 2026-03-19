@@ -40,6 +40,14 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Infrastructure Module (包含飞书 SDK) -->
+        <dependency>
+            <groupId>com.qdw.feishu</groupId>
+            <artifactId>feishu-bot-infrastructure</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Gson -->
         <dependency>
             <groupId>com.google.code.gson</groupId>

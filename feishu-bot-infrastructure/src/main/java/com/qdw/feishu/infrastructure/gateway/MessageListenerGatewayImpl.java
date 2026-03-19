@@ -9,9 +9,11 @@ import com.qdw.feishu.domain.gateway.MessageListenerGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.processor.EventProcessor;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
+import com.qdw.feishu.infrastructure.handler.CardActionTriggerHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -31,8 +33,9 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     private Consumer<Message> messageHandler;
 
     public MessageListenerGatewayImpl(FeishuProperties properties, 
-                                     MessageEventParser messageEventParser,
-                                     EventProcessor eventProcessor) {
+                                      MessageEventParser messageEventParser,
+                                      EventProcessor eventProcessor,
+                                      CardActionTriggerHandler cardActionTriggerHandler) {
         this.properties = properties;
         this.messageEventParser = messageEventParser;
         this.eventProcessor = eventProcessor;
@@ -42,17 +45,17 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         this.eventDispatcher = EventDispatcher.newBuilder(
             properties.getVerificationToken(),
             properties.getEncryptKey()
-        ).onP2MessageReceiveV1(new ImService.P2MessageReceiveV1Handler() {
+        )
+        .onP2MessageReceiveV1(new ImService.P2MessageReceiveV1Handler() {
             @Override
             public void handle(P2MessageReceiveV1 event) throws Exception {
-                log.info("Received message event");
-
-                if (messageHandler != null) {
-                    Message message = messageEventParser.parse(event);
-                    messageHandler.accept(message);
-                }
+                handleEvent(event);
             }
-        }).build();
+        })
+        .onP2CardActionTrigger(cardActionTriggerHandler)
+        .build();
+        
+        log.info("Card action trigger handler registered");
     }
 
     @Override
@@ -102,7 +105,6 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         running.set(false);
         connectionStatus.set(ConnectionStatus.DISCONNECTED);
         messageHandler = null;
-
         wsClient = null;
         log.info("Feishu WebSocket listener stopped");
     }
@@ -110,5 +112,20 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     @Override
     public ConnectionStatus getConnectionStatus() {
         return connectionStatus.get();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void handleEvent(P2MessageReceiveV1 event) {
+        try {
+            log.debug("Received message event: {}", event.getRequestId());
+            Message message = messageEventParser.parse(event);
+            
+            if (messageHandler != null) {
+                messageHandler.accept(message);
+            }
+            
+        } catch (Exception e) {
+            log.error("Failed to handle message event", e);
+        }
     }
 }
