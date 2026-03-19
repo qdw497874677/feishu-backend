@@ -1,20 +1,26 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.gateway.AppSessionGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
-import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
+import com.qdw.feishu.domain.session.AppSession;
+import com.qdw.feishu.domain.session.TypeToken;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -24,17 +30,17 @@ import static org.mockito.Mockito.*;
 @DisplayName("OpenCodeSessionManager 单元测试")
 class OpenCodeSessionManagerTest {
 
-    @Mock
     private OpenCodeGateway openCodeGateway;
-
-    @Mock
-    private OpenCodeSessionGateway sessionGateway;
-
+    private AppSessionGateway appSessionGateway;
     private OpenCodeSessionManager sessionManager;
+    
+    private static final TypeToken<OpenCodeSessionData> TYPE_TOKEN = new TypeToken<OpenCodeSessionData>() {};
 
     @BeforeEach
     void setUp() {
-        sessionManager = new OpenCodeSessionManager(openCodeGateway, sessionGateway);
+        openCodeGateway = mock(OpenCodeGateway.class);
+        appSessionGateway = mock(AppSessionGateway.class);
+        sessionManager = new OpenCodeSessionManager(openCodeGateway, appSessionGateway);
     }
 
     // ========== 辅助方法 ==========
@@ -48,37 +54,57 @@ class OpenCodeSessionManagerTest {
         message.setSender(new Sender("test-openid", "Test User"));
         return message;
     }
+    
+    @SuppressWarnings("unchecked")
+    private AppSession<OpenCodeSessionData> createMockSession(String sessionId, String openCodeSessionId) {
+        OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+        AppSession<OpenCodeSessionData> session = mock(AppSession.class);
+        when(session.getSessionId()).thenReturn(sessionId);
+        when(session.getData()).thenReturn(data);
+        when(session.getVersion()).thenReturn(1L);
+        return session;
+    }
+    
+    @SuppressWarnings("unchecked")
+    private AppSession<OpenCodeSessionData> createMockSession(String sessionId, String openCodeSessionId, boolean explicitlyInitialized) {
+        OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+        data.setExplicitlyInitialized(explicitlyInitialized);
+        AppSession<OpenCodeSessionData> session = mock(AppSession.class);
+        when(session.getSessionId()).thenReturn(sessionId);
+        when(session.getData()).thenReturn(data);
+        when(session.getVersion()).thenReturn(1L);
+        return session;
+    }
 
     // ========== isTopicInitialized 测试 ==========
 
     @Test
     @DisplayName("话题已绑定会话时，应返回 true")
+    @SuppressWarnings("unchecked")
     void isTopicInitialized_withSession_returnsTrue() {
         String topicId = "test-topic-123";
         Message message = createTestMessage("test content", topicId);
 
-        when(sessionGateway.getSessionId(topicId))
-            .thenReturn(Optional.of("ses_abc123"));
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_123", "opencode_ses_abc123");
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         boolean result = sessionManager.isTopicInitialized(message);
 
         assertTrue(result);
-        verify(sessionGateway).getSessionId(topicId);
     }
 
     @Test
     @DisplayName("话题未绑定会话时，应返回 false")
+    @SuppressWarnings("unchecked")
     void isTopicInitialized_withoutSession_returnsFalse() {
         String topicId = "test-topic-456";
         Message message = createTestMessage("test content", topicId);
 
-        when(sessionGateway.getSessionId(topicId))
-            .thenReturn(Optional.empty());
+        doReturn(Optional.empty()).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         boolean result = sessionManager.isTopicInitialized(message);
 
         assertFalse(result);
-        verify(sessionGateway).getSessionId(topicId);
     }
 
     @Test
@@ -89,7 +115,7 @@ class OpenCodeSessionManagerTest {
         boolean result = sessionManager.isTopicInitialized(message);
 
         assertFalse(result);
-        verify(sessionGateway, never()).getSessionId(anyString());
+        verify(appSessionGateway, never()).getActiveSession(anyString(), anyString(), any());
     }
 
     @Test
@@ -100,37 +126,38 @@ class OpenCodeSessionManagerTest {
         boolean result = sessionManager.isTopicInitialized(message);
 
         assertFalse(result);
-        verify(sessionGateway, never()).getSessionId(anyString());
+        verify(appSessionGateway, never()).getActiveSession(anyString(), anyString(), any());
     }
 
     // ========== getCurrentSessionStatus 测试 ==========
 
     @Test
     @DisplayName("获取会话状态 - 有活跃会话")
+    @SuppressWarnings("unchecked")
     void getCurrentSessionStatus_withActiveSession_returnsStatus() {
         String topicId = "test-topic-789";
-        String sessionId = "ses_active_123";
+        String openCodeSessionId = "opencode_ses_active_123";
         Message message = createTestMessage("test", topicId);
 
-        when(sessionGateway.getSessionId(topicId))
-            .thenReturn(Optional.of(sessionId));
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_789", openCodeSessionId);
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         String result = sessionManager.getCurrentSessionStatus(message);
 
         assertTrue(result.contains("当前会话信息"));
-        assertTrue(result.contains(sessionId));
+        assertTrue(result.contains(openCodeSessionId));
         assertTrue(result.contains(topicId));
         assertTrue(result.contains("活跃"));
     }
 
     @Test
     @DisplayName("获取会话状态 - 话题无会话")
+    @SuppressWarnings("unchecked")
     void getCurrentSessionStatus_withoutSession_returnsHelpMessage() {
         String topicId = "test-topic-no-session";
         Message message = createTestMessage("test", topicId);
 
-        when(sessionGateway.getSessionId(topicId))
-            .thenReturn(Optional.empty());
+        doReturn(Optional.empty()).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         String result = sessionManager.getCurrentSessionStatus(message);
 
@@ -246,13 +273,15 @@ class OpenCodeSessionManagerTest {
 
     @Test
     @DisplayName("保存会话映射 - 成功保存")
+    @SuppressWarnings("unchecked")
     void saveSession_validTopicId_savesToGateway() {
         String topicId = "topic-save-123";
         String sessionId = "ses_save_456";
 
         sessionManager.saveSession(topicId, sessionId);
 
-        verify(sessionGateway).saveSession(topicId, sessionId);
+        verify(appSessionGateway).createSession(eq("opencode"), eq(topicId), 
+            any(OpenCodeSessionData.class), any(TypeToken.class));
     }
 
     @Test
@@ -262,7 +291,7 @@ class OpenCodeSessionManagerTest {
 
         sessionManager.saveSession(null, sessionId);
 
-        verify(sessionGateway, never()).saveSession(anyString(), anyString());
+        verify(appSessionGateway, never()).createSession(anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -272,19 +301,23 @@ class OpenCodeSessionManagerTest {
 
         sessionManager.saveSession("", sessionId);
 
-        verify(sessionGateway, never()).saveSession(anyString(), anyString());
+        verify(appSessionGateway, never()).createSession(anyString(), anyString(), any(), any());
     }
 
     // ========== clearSession 测试 ==========
 
     @Test
     @DisplayName("清除会话映射 - 成功清除")
+    @SuppressWarnings("unchecked")
     void clearSession_validTopicId_clearsFromGateway() {
         String topicId = "topic-clear-123";
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_clear", "opencode_ses");
+
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         sessionManager.clearSession(topicId);
 
-        verify(sessionGateway).clearSession(topicId);
+        verify(appSessionGateway).deleteSession("opencode", topicId, "ses_clear");
     }
 
     @Test
@@ -292,57 +325,111 @@ class OpenCodeSessionManagerTest {
     void clearSession_nullTopicId_doesNotClear() {
         sessionManager.clearSession(null);
 
-        verify(sessionGateway, never()).clearSession(anyString());
+        verify(appSessionGateway, never()).deleteSession(anyString(), anyString(), anyString());
     }
 
     // ========== getSessionId 测试 ==========
 
     @Test
-    @DisplayName("获取会话 ID - 委托给 gateway")
-    void getSessionId_delegatesToGateway() {
+    @DisplayName("获取会话 ID - 返回 OpenCode 会话 ID")
+    @SuppressWarnings("unchecked")
+    void getSessionId_returnsOpenCodeSessionId() {
         String topicId = "topic-get-123";
-        String expectedSessionId = "ses_get_456";
-
-        when(sessionGateway.getSessionId(topicId))
-            .thenReturn(Optional.of(expectedSessionId));
+        String expectedSessionId = "opencode_ses_get_456";
+        
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_123", expectedSessionId);
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         Optional<String> result = sessionManager.getSessionId(topicId);
 
         assertTrue(result.isPresent());
         assertEquals(expectedSessionId, result.get());
-        verify(sessionGateway).getSessionId(topicId);
+    }
+
+    @Test
+    @DisplayName("获取会话 ID - 无会话时返回空")
+    @SuppressWarnings("unchecked")
+    void getSessionId_noSession_returnsEmpty() {
+        String topicId = "topic-no-session";
+        
+        doReturn(Optional.empty()).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
+
+        Optional<String> result = sessionManager.getSessionId(topicId);
+
+        assertFalse(result.isPresent());
     }
 
     // ========== 显式初始化标记测试 ==========
 
     @Test
-    @DisplayName("检查显式初始化 - 委托给 gateway")
-    void isExplicitlyInitialized_delegatesToGateway() {
+    @DisplayName("检查显式初始化 - 返回 true")
+    @SuppressWarnings("unchecked")
+    void isExplicitlyInitialized_returnsTrue() {
         String topicId = "topic-init-123";
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_123", "opencode_ses", true);
+        
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
-        sessionManager.isExplicitlyInitialized(topicId);
+        boolean result = sessionManager.isExplicitlyInitialized(topicId);
 
-        verify(sessionGateway).isExplicitlyInitialized(topicId);
+        assertTrue(result);
     }
 
     @Test
-    @DisplayName("设置显式初始化标记 - 委托给 gateway")
-    void setExplicitlyInitialized_delegatesToGateway() {
+    @DisplayName("检查显式初始化 - 返回 false")
+    @SuppressWarnings("unchecked")
+    void isExplicitlyInitialized_returnsFalse() {
+        String topicId = "topic-init-456";
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_456", "opencode_ses", false);
+        
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
+
+        boolean result = sessionManager.isExplicitlyInitialized(topicId);
+
+        assertFalse(result);
+    }
+
+    @Test
+    @DisplayName("检查显式初始化 - 无会话时返回 false")
+    @SuppressWarnings("unchecked")
+    void isExplicitlyInitialized_noSession_returnsFalse() {
+        String topicId = "topic-no-session";
+        
+        doReturn(Optional.empty()).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
+
+        boolean result = sessionManager.isExplicitlyInitialized(topicId);
+
+        assertFalse(result);
+    }
+
+    @Test
+    @DisplayName("设置显式初始化标记 - 成功设置")
+    @SuppressWarnings("unchecked")
+    void setExplicitlyInitialized_updatesSession() {
         String topicId = "topic-set-123";
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_123", "opencode_ses", false);
+        
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         sessionManager.setExplicitlyInitialized(topicId);
 
-        verify(sessionGateway).setExplicitlyInitialized(topicId);
+        verify(appSessionGateway).updateSession(eq("opencode"), eq(topicId), eq("ses_123"), 
+            any(OpenCodeSessionData.class), any(TypeToken.class), eq(1L));
     }
 
     @Test
-    @DisplayName("清除显式初始化标记 - 委托给 gateway")
-    void clearExplicitlyInitialized_delegatesToGateway() {
+    @DisplayName("清除显式初始化标记 - 成功清除")
+    @SuppressWarnings("unchecked")
+    void clearExplicitlyInitialized_updatesSession() {
         String topicId = "topic-clear-123";
+        AppSession<OpenCodeSessionData> session = createMockSession("ses_123", "opencode_ses", true);
+        
+        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
 
         sessionManager.clearExplicitlyInitialized(topicId);
 
-        verify(sessionGateway).clearExplicitlyInitialized(topicId);
+        verify(appSessionGateway).updateSession(eq("opencode"), eq(topicId), eq("ses_123"), 
+            any(OpenCodeSessionData.class), any(TypeToken.class), eq(1L));
     }
 
     // ========== handleListSessions 测试 ==========

@@ -1,8 +1,11 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.gateway.AppSessionGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
-import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
+import com.qdw.feishu.domain.session.AppSession;
+import com.qdw.feishu.domain.session.TypeToken;
 import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -14,12 +17,15 @@ import java.util.Optional;
 public class OpenCodeSessionManager {
 
     private final OpenCodeGateway openCodeGateway;
-    private final OpenCodeSessionGateway sessionGateway;
+    private final AppSessionGateway appSessionGateway;
+    
+    private static final String APP_ID = "opencode";
+    private static final TypeToken<OpenCodeSessionData> TYPE_TOKEN = new TypeToken<OpenCodeSessionData>() {};
 
     public OpenCodeSessionManager(OpenCodeGateway openCodeGateway,
-                                   OpenCodeSessionGateway sessionGateway) {
+                                   AppSessionGateway appSessionGateway) {
         this.openCodeGateway = openCodeGateway;
-        this.sessionGateway = sessionGateway;
+        this.appSessionGateway = appSessionGateway;
     }
 
     /**
@@ -42,7 +48,7 @@ public class OpenCodeSessionManager {
         if (topicId == null || topicId.isEmpty()) {
             return false;
         }
-        Optional<String> sessionIdOpt = sessionGateway.getSessionId(topicId);
+        Optional<String> sessionIdOpt = getSessionId(topicId);
         return sessionIdOpt.isPresent();
     }
 
@@ -71,7 +77,7 @@ public class OpenCodeSessionManager {
             return "❌ 当前不在话题中，无法查看会话状态";
         }
 
-        Optional<String> sessionIdOpt = sessionGateway.getSessionId(topicId);
+        Optional<String> sessionIdOpt = getSessionId(topicId);
 
         if (sessionIdOpt.isEmpty()) {
             return "📭 当前话题还没有 OpenCode 会话\n\n" +
@@ -143,7 +149,8 @@ public class OpenCodeSessionManager {
      */
     public void saveSession(String topicId, String sessionId) {
         if (topicId != null && !topicId.isEmpty()) {
-            sessionGateway.saveSession(topicId, sessionId);
+            OpenCodeSessionData data = OpenCodeSessionData.create(sessionId);
+            appSessionGateway.createSession(APP_ID, topicId, data, TYPE_TOKEN);
             log.info("已更新会话映射: topicId={}, sessionId={}", topicId, sessionId);
         }
     }
@@ -153,8 +160,11 @@ public class OpenCodeSessionManager {
      */
     public void clearSession(String topicId) {
         if (topicId != null && !topicId.isEmpty()) {
-            sessionGateway.clearSession(topicId);
-            log.info("已清除旧会话: topicId={}", topicId);
+            appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
+                .ifPresent(session -> {
+                    appSessionGateway.deleteSession(APP_ID, topicId, session.getSessionId());
+                    log.info("已清除旧会话: topicId={}, sessionId={}", topicId, session.getSessionId());
+                });
         }
     }
 
@@ -162,21 +172,38 @@ public class OpenCodeSessionManager {
      * 获取话题绑定的会话 ID
      */
     public Optional<String> getSessionId(String topicId) {
-        return sessionGateway.getSessionId(topicId);
+        return appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
+            .map(session -> session.getData().getOpenCodeSessionId());
     }
 
     /**
      * 检查话题是否已显式初始化
      */
     public boolean isExplicitlyInitialized(String topicId) {
-        return sessionGateway.isExplicitlyInitialized(topicId);
+        return appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
+            .map(session -> session.getData().isExplicitlyInitialized())
+            .orElse(false);
     }
 
     public void setExplicitlyInitialized(String topicId) {
-        sessionGateway.setExplicitlyInitialized(topicId);
+        appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
+            .ifPresent(session -> {
+                OpenCodeSessionData data = session.getData();
+                data.setExplicitlyInitialized(true);
+                appSessionGateway.updateSession(APP_ID, topicId, session.getSessionId(), 
+                    data, TYPE_TOKEN, session.getVersion());
+                log.info("已设置显式初始化标记: topicId={}", topicId);
+            });
     }
 
     public void clearExplicitlyInitialized(String topicId) {
-        sessionGateway.clearExplicitlyInitialized(topicId);
+        appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
+            .ifPresent(session -> {
+                OpenCodeSessionData data = session.getData();
+                data.setExplicitlyInitialized(false);
+                appSessionGateway.updateSession(APP_ID, topicId, session.getSessionId(), 
+                    data, TYPE_TOKEN, session.getVersion());
+                log.info("已清除显式初始化标记: topicId={}", topicId);
+            });
     }
 }
