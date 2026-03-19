@@ -7,11 +7,11 @@ import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.exception.MessageSysException;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.ReactionEmoji;
 import com.qdw.feishu.domain.message.SendResult;
-import com.qdw.feishu.domain.model.TopicMapping;
+import com.qdw.feishu.domain.model.SessionContext;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.router.AppRouter;
@@ -27,20 +27,20 @@ public class BotMessageService {
     private final FeishuGateway feishuGateway;
     private final AppRouter appRouter;
     private final AppRegistry appRegistry;
-    private final TopicMappingGateway topicMappingGateway;
+    private final SessionContextGateway sessionContextGateway;
     private final ReplyStrategyFactory replyStrategyFactory;
     private final OpenCodeSessionGateway sessionGateway;
 
     public BotMessageService(FeishuGateway feishuGateway,
                             AppRouter appRouter,
                             AppRegistry appRegistry,
-                            TopicMappingGateway topicMappingGateway,
+                            SessionContextGateway sessionContextGateway,
                             ReplyStrategyFactory replyStrategyFactory,
                             OpenCodeSessionGateway sessionGateway) {
         this.feishuGateway = feishuGateway;
         this.appRouter = appRouter;
         this.appRegistry = appRegistry;
-        this.topicMappingGateway = topicMappingGateway;
+        this.sessionContextGateway = sessionContextGateway;
         this.replyStrategyFactory = replyStrategyFactory;
         this.sessionGateway = sessionGateway;
     }
@@ -149,7 +149,7 @@ public class BotMessageService {
     }
 
     private FishuAppI resolveAppFromTopic(Message message, String topicId) {
-        var mapping = topicMappingGateway.findByTopicId(topicId);
+        var mapping = sessionContextGateway.findByTopicId(topicId);
         if (!mapping.isPresent()) {
             log.warn("话题映射不存在: topicId={}，降级为默认处理", topicId);
             handleUnknownTopic(message);
@@ -157,8 +157,8 @@ public class BotMessageService {
             return null;
         }
         
-        TopicMapping topicMapping = mapping.get();
-        String appId = topicMapping.getAppId();
+        SessionContext sessionContext = mapping.get();
+        String appId = sessionContext.getAppId();
         log.info("找到话题映射: topicId={}, appId={}", topicId, appId);
         
         FishuAppI app = appRegistry.getApp(appId).orElse(null);
@@ -169,8 +169,8 @@ public class BotMessageService {
             return null;
         }
         
-        topicMapping.activate();
-        topicMappingGateway.save(topicMapping);
+        sessionContext.activate();
+        sessionContextGateway.save(sessionContext);
         return app;
     }
 
@@ -228,10 +228,12 @@ public class BotMessageService {
             return;
         }
         
-        var mapping = topicMappingGateway.findByTopicId(topicId);
+        var mapping = sessionContextGateway.findByTopicId(topicId);
         if (!mapping.isPresent()) {
             return;
         }
+        
+        SessionContext context = mapping.get();
         
         String content = message.getContent().trim();
         String appId = app.getAppId();
@@ -311,20 +313,20 @@ public class BotMessageService {
         
         log.info("获取到飞书返回的 threadId: {}", actualThreadId);
         
-        Optional<TopicMapping> existingMapping = topicMappingGateway.findByTopicId(actualThreadId);
+        Optional<SessionContext> existingMapping = sessionContextGateway.findByTopicId(actualThreadId);
         
-        TopicMapping mapping;
+        SessionContext mapping;
         if (existingMapping.isPresent()) {
-            TopicMapping old = existingMapping.get();
-            mapping = new TopicMapping(old.getTopicId(), old.getAppId(), old.getMetadata());
+            SessionContext old = existingMapping.get();
+            mapping = new SessionContext(old.getTopicId(), old.getAppId(), old.getMetadata());
             mapping.setLastActiveAt(System.currentTimeMillis());
             log.debug("话题映射已存在，保留 metadata: topicId={}", actualThreadId);
         } else {
-            mapping = new TopicMapping(actualThreadId, app.getAppId());
+            mapping = new SessionContext(actualThreadId, app.getAppId());
             log.debug("创建新话题映射: topicId={}", actualThreadId);
         }
 
-        topicMappingGateway.save(mapping);
+        sessionContextGateway.save(mapping);
         log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
 
         if (app.getAppId().equals("opencode") && replyContent.contains("Session ID: `")) {

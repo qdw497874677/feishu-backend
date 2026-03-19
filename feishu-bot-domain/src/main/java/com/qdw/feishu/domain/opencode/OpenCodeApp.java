@@ -6,7 +6,7 @@ import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;

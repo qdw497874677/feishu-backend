@@ -3,7 +3,7 @@ package com.qdw.feishu.infrastructure.config;
 import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.router.AppRouter;
@@ -25,9 +25,9 @@ public class DomainServiceConfig {
     public BotMessageService botMessageService(FeishuGateway feishuGateway,
                                               AppRouter appRouter,
                                               AppRegistry appRegistry,
-                                              TopicMappingGateway topicMappingGateway,
+                                              SessionContextGateway sessionContextGateway,
                                               ReplyStrategyFactory replyStrategyFactory,
                                               OpenCodeSessionGateway sessionGateway) {
-        return new BotMessageService(feishuGateway, appRouter, appRegistry, topicMappingGateway, replyStrategyFactory, sessionGateway);
+        return new BotMessageService(feishuGateway, appRouter, appRegistry, sessionContextGateway, replyStrategyFactory, sessionGateway);
     }
 }

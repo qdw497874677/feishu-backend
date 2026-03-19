@@ -9,7 +9,7 @@ import com.qdw.feishu.domain.gateway.MessageListenerGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.processor.EventProcessor;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
-import com.qdw.feishu.infrastructure.handler.CardActionTriggerHandler;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -32,10 +32,9 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     private final AtomicBoolean running;
     private Consumer<Message> messageHandler;
 
-    public MessageListenerGatewayImpl(FeishuProperties properties, 
+    public MessageListenerGatewayImpl(FeishuProperties properties,
                                       MessageEventParser messageEventParser,
-                                      EventProcessor eventProcessor,
-                                      CardActionTriggerHandler cardActionTriggerHandler) {
+                                      EventProcessor eventProcessor) {
         this.properties = properties;
         this.messageEventParser = messageEventParser;
         this.eventProcessor = eventProcessor;
@@ -52,10 +51,7 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
                 handleEvent(event);
             }
         })
-        .onP2CardActionTrigger(cardActionTriggerHandler)
         .build();
-        
-        log.info("Card action trigger handler registered");
     }
 
     @Override

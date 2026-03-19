@@ -1,7 +1,7 @@
 package com.qdw.feishu.infrastructure.gateway;
 
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
-import com.qdw.feishu.domain.model.TopicMapping;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
+import com.qdw.feishu.domain.model.SessionContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,12 +30,12 @@ import java.util.Optional;
     havingValue = "sqlite",
     matchIfMissing = true
 )
-public class TopicMappingSqliteGateway implements TopicMappingGateway {
+public class SessionContextSqliteGateway implements SessionContextGateway {
 
     private final JdbcTemplate jdbcTemplate;
     private final String dbFilePath;
 
-    public TopicMappingSqliteGateway(
+    public SessionContextSqliteGateway(
             @Value("${feishu.topic-mapping.sqlite.path:feishu-topic-mappings.db}") String dbFilePath) {
         this.dbFilePath = dbFilePath;
         this.jdbcTemplate = new JdbcTemplate(createDataSource());
@@ -117,7 +117,7 @@ public class TopicMappingSqliteGateway implements TopicMappingGateway {
     }
 
     @Override
-    public void save(TopicMapping mapping) {
+    public void save(SessionContext mapping) {
         String sql = """
             INSERT OR REPLACE INTO topic_mapping (topic_id, app_id, metadata, created_at, last_active_at)
             VALUES (?, ?, ?, ?, ?)
@@ -138,12 +138,12 @@ public class TopicMappingSqliteGateway implements TopicMappingGateway {
     }
 
     @Override
-    public Optional<TopicMapping> findByTopicId(String topicId) {
+    public Optional<SessionContext> findByTopicId(String topicId) {
         String sql = "SELECT topic_id, app_id, metadata, created_at, last_active_at FROM topic_mapping WHERE topic_id = ?";
 
         try {
-            TopicMapping mapping = jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
-                TopicMapping m = new TopicMapping(
+            SessionContext mapping = jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+                SessionContext m = new SessionContext(
                         rs.getString("topic_id"),
                         rs.getString("app_id"),
                         rs.getString("metadata")

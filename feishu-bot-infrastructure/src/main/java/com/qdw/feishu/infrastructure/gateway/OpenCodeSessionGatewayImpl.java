@@ -1,9 +1,9 @@
 package com.qdw.feishu.infrastructure.gateway;
 
 import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
-import com.qdw.feishu.domain.model.TopicMapping;
-import com.qdw.feishu.domain.model.TopicMetadata;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
+import com.qdw.feishu.domain.model.SessionContext;
+import com.qdw.feishu.domain.model.SessionMetadata;
 import com.qdw.feishu.domain.model.opencode.OpenCodeMetadata;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.List;
 
 /**
- * OpenCode 会话管理实现（基于 TopicMapping.metadata）
+ * OpenCode 会话管理实现（基于 SessionContext.metadata）
  */
 @Slf4j
 @Component
@@ -24,7 +24,7 @@ import java.util.List;
 )
 public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
 
-    private final TopicMappingGateway topicMappingGateway;
+    private final SessionContextGateway sessionContextGateway;
 
     private static final String KEY_SESSION_ID = "sessionId";
     private static final String KEY_LAST_COMMAND = "lastCommand";
@@ -33,42 +33,42 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
     private static final String KEY_LAST_ACTIVE = "lastActiveAt";
     private static final String KEY_EXPLICITLY_INITIALIZED = "explicitlyInitialized";
 
-    public OpenCodeSessionGatewayImpl(TopicMappingGateway topicMappingGateway) {
-        this.topicMappingGateway = topicMappingGateway;
+    public OpenCodeSessionGatewayImpl(SessionContextGateway sessionContextGateway) {
+        this.sessionContextGateway = sessionContextGateway;
     }
 
     @Override
     public void saveSession(String topicId, String sessionId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             log.warn("话题映射不存在，无法保存会话: topicId={}", topicId);
             return;
         }
 
-        TopicMapping mapping = mappingOpt.get();
+        SessionContext mapping = mappingOpt.get();
 
-        // 使用 TopicMetadata 工具类修改 metadata
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        // 使用 SessionMetadata 工具类修改 metadata
+        SessionMetadata metadata = SessionMetadata.of(mapping);
         metadata.set(KEY_SESSION_ID, sessionId);
         metadata.set(KEY_LAST_ACTIVE, System.currentTimeMillis());
 
         // 保存修改
-        topicMappingGateway.save(metadata.save());
+        sessionContextGateway.save(metadata.save());
 
         log.info("保存会话: topicId={}, sessionId={}", topicId, sessionId);
     }
 
     @Override
     public Optional<String> getSessionId(String topicId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             return Optional.empty();
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata metadata = SessionMetadata.of(mapping);
 
         return metadata.getString(KEY_SESSION_ID);
     }
@@ -80,17 +80,17 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
 
     @Override
     public void deleteSession(String topicId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             return;
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata metadata = SessionMetadata.of(mapping);
         metadata.remove(KEY_SESSION_ID);
 
-        topicMappingGateway.save(metadata.save());
+        sessionContextGateway.save(metadata.save());
 
         log.info("删除会话: topicId={}", topicId);
     }
@@ -102,14 +102,14 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
 
     @Override
     public Optional<OpenCodeMetadata> getMetadata(String topicId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             return Optional.empty();
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata metadata = SessionMetadata.of(mapping);
 
         // 从 metadata 中提取所有字段
         OpenCodeMetadata result = new OpenCodeMetadata();
@@ -134,15 +134,15 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
 
     @Override
     public void saveMetadata(String topicId, OpenCodeMetadata metadata) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             log.warn("话题映射不存在，无法保存元数据: topicId={}", topicId);
             return;
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata topicMetadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata topicMetadata = SessionMetadata.of(mapping);
 
         // 保存所有字段
         topicMetadata.set(KEY_SESSION_ID, metadata.getSessionId());
@@ -151,56 +151,56 @@ public class OpenCodeSessionGatewayImpl implements OpenCodeSessionGateway {
         topicMetadata.set(KEY_SESSION_CREATED, metadata.getSessionCreatedAt());
         topicMetadata.set(KEY_LAST_ACTIVE, metadata.getLastActiveAt());
 
-        topicMappingGateway.save(topicMetadata.save());
+        sessionContextGateway.save(topicMetadata.save());
 
         log.info("保存元数据: topicId={}, metadata={}", topicId, metadata);
     }
 
     @Override
     public boolean isExplicitlyInitialized(String topicId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             return false;
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata metadata = SessionMetadata.of(mapping);
 
         return metadata.getBoolean(KEY_EXPLICITLY_INITIALIZED).orElse(false);
     }
 
     @Override
     public void setExplicitlyInitialized(String topicId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             log.warn("话题映射不存在，无法设置显式初始化: topicId={}", topicId);
             return;
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata metadata = SessionMetadata.of(mapping);
         metadata.set(KEY_EXPLICITLY_INITIALIZED, "true");
 
-        topicMappingGateway.save(metadata.save());
+        sessionContextGateway.save(metadata.save());
 
         log.info("设置话题为已显式初始化: topicId={}", topicId);
     }
 
     @Override
     public void clearExplicitlyInitialized(String topicId) {
-        Optional<TopicMapping> mappingOpt = topicMappingGateway.findByTopicId(topicId);
+        Optional<SessionContext> mappingOpt = sessionContextGateway.findByTopicId(topicId);
 
         if (mappingOpt.isEmpty()) {
             return;
         }
 
-        TopicMapping mapping = mappingOpt.get();
-        TopicMetadata metadata = TopicMetadata.of(mapping);
+        SessionContext mapping = mappingOpt.get();
+        SessionMetadata metadata = SessionMetadata.of(mapping);
         metadata.remove(KEY_EXPLICITLY_INITIALIZED);
 
-        topicMappingGateway.save(metadata.save());
+        sessionContextGateway.save(metadata.save());
 
         log.info("清除话题的显式初始化状态: topicId={}", topicId);
     }

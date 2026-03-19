@@ -2,8 +2,8 @@ package com.qdw.feishu.infrastructure.gateway;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
-import com.qdw.feishu.domain.model.TopicMapping;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
+import com.qdw.feishu.domain.model.SessionContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -25,9 +25,9 @@ import java.util.concurrent.ConcurrentHashMap;
     havingValue = "file",
     matchIfMissing = false
 )
-public class TopicMappingGatewayImpl implements TopicMappingGateway {
+public class SessionContextGatewayImpl implements SessionContextGateway {
 
-    private final Map<String, TopicMapping> mappings = new ConcurrentHashMap<>();
+    private final Map<String, SessionContext> mappings = new ConcurrentHashMap<>();
     private static final String STORAGE_FILE = "/tmp/feishu-topic-mappings.json";
     private final Gson gson = new Gson();
 
@@ -37,8 +37,8 @@ public class TopicMappingGatewayImpl implements TopicMappingGateway {
             File file = new File(STORAGE_FILE);
             if (file.exists()) {
                 String json = Files.readString(file.toPath());
-                Type type = new TypeToken<Map<String, TopicMapping>>(){}.getType();
-                Map<String, TopicMapping> loaded = gson.fromJson(json, type);
+                Type type = new TypeToken<Map<String, SessionContext>>(){}.getType();
+                Map<String, SessionContext> loaded = gson.fromJson(json, type);
                 if (loaded != null) {
                     mappings.putAll(loaded);
                     log.info("从文件加载话题映射: {} 个", mappings.size());
@@ -72,7 +72,7 @@ public class TopicMappingGatewayImpl implements TopicMappingGateway {
     }
 
     @Override
-    public void save(TopicMapping mapping) {
+    public void save(SessionContext mapping) {
         mappings.put(mapping.getTopicId(), mapping);
         log.info("保存话题映射: topicId={}, appId={}", mapping.getTopicId(), mapping.getAppId());
 
@@ -81,7 +81,7 @@ public class TopicMappingGatewayImpl implements TopicMappingGateway {
     }
 
     @Override
-    public Optional<TopicMapping> findByTopicId(String topicId) {
+    public Optional<SessionContext> findByTopicId(String topicId) {
         log.debug("查找话题映射: topicId={}", topicId);
         return Optional.ofNullable(mappings.get(topicId));
     }

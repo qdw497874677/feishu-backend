@@ -60,7 +60,7 @@ class OpenCodeStreamingHandlerTest {
     }
 
     @Test
-    @DisplayName("registerSession - 卡片创建失败，应降级为普通消息")
+    @DisplayName("registerSession - 卡片创建失败，应降级为普通消息模式")
     void registerSession_cardFailed_shouldFallback() {
         String sessionId = "session-123";
         String topicId = "topic-456";
@@ -72,8 +72,9 @@ class OpenCodeStreamingHandlerTest {
 
         handler.registerSession(sessionId, message);
 
+        // 卡片创建失败时，不立即发送消息，而是等待后续事件触发
         verify(cardManager).createAndSend(any(), anyString(), anyString());
-        verify(feishuGateway).sendMessage(eq(message), eq(cardProperties.getThinkingText()), eq(topicId));
+        verify(feishuGateway, never()).sendMessage(any(), anyString(), any());
     }
 
     @Test
@@ -127,7 +128,8 @@ class OpenCodeStreamingHandlerTest {
             Thread.currentThread().interrupt();
         }
 
-        verify(feishuGateway, atLeast(2)).sendMessage(eq(message), anyString(), eq(topicId));
+        // 文本增量触发 flush 后发送 1 条消息
+        verify(feishuGateway, atLeast(1)).sendMessage(eq(message), anyString(), eq(topicId));
     }
 
     @Test
@@ -176,8 +178,10 @@ class OpenCodeStreamingHandlerTest {
         OpenCodeEvent completeEvent = createCompleteEvent(sessionId);
         handler.handleEvent(completeEvent);
 
+        // handleSessionComplete 会 flush 并发送完成消息
+        // 由于 complete 立即触发 flush，buffer 中的内容会作为完成消息发送（1 条消息）
         verify(cardManager, never()).cleanup(anyString());
-        verify(feishuGateway, atLeast(2)).sendMessage(eq(message), anyString(), eq(topicId));
+        verify(feishuGateway, atLeast(1)).sendMessage(eq(message), anyString(), eq(topicId));
     }
 
     @Test

@@ -5,8 +5,8 @@ import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1Data;
 import com.qdw.feishu.domain.adapter.CommandAdapter;
 import com.qdw.feishu.domain.command.EventSource;
 import com.qdw.feishu.domain.command.UnifiedCommand;
-import com.qdw.feishu.domain.gateway.TopicMappingGateway;
-import com.qdw.feishu.domain.model.TopicMapping;
+import com.qdw.feishu.domain.gateway.SessionContextGateway;
+import com.qdw.feishu.domain.model.SessionContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -16,10 +16,10 @@ import java.util.Optional;
 @Component
 public class MessageCommandAdapter implements CommandAdapter {
     
-    private final TopicMappingGateway topicMappingGateway;
+    private final SessionContextGateway sessionContextGateway;
     
-    public MessageCommandAdapter(TopicMappingGateway topicMappingGateway) {
-        this.topicMappingGateway = topicMappingGateway;
+    public MessageCommandAdapter(SessionContextGateway sessionContextGateway) {
+        this.sessionContextGateway = sessionContextGateway;
     }
     
     @Override
@@ -43,7 +43,7 @@ public class MessageCommandAdapter implements CommandAdapter {
             args = parts.length > 2 ? extractArgs(parts) : new String[0];
         } else if (topicId != null && !topicId.isEmpty()) {
             // 话题中的消息，检查话题映射
-            Optional<TopicMapping> mapping = topicMappingGateway.findByTopicId(topicId);
+            Optional<SessionContext> mapping = sessionContextGateway.findByTopicId(topicId);
             if (mapping.isPresent()) {
                 appId = mapping.get().getAppId();
                 subCommand = parts.length > 0 ? parts[0] : null;

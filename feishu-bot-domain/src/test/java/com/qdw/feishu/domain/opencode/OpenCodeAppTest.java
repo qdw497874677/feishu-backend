@@ -43,10 +43,14 @@ class OpenCodeAppTest {
     @BeforeEach
     void setUp() {
         app = new OpenCodeApp(openCodeGateway, commandHandler, sessionManager);
-        
+
         // 默认 mock 设置 - detectTopicState 返回 INITIALIZED 状态
         when(sessionManager.detectTopicState(any(Message.class)))
             .thenReturn(TopicState.INITIALIZED);
+
+        // 默认 mock 设置 - getCurrentSessionStatus 返回会话状态
+        when(sessionManager.getCurrentSessionStatus(any(Message.class)))
+            .thenReturn("📋 当前会话状态：已初始化");
     }
 
     // ========== 辅助方法 ==========
@@ -164,13 +168,15 @@ class OpenCodeAppTest {
     // ========== execute 测试 ==========
 
     @Test
-    @DisplayName("execute - 空命令应返回帮助")
-    void execute_emptyCommand_returnsHelp() {
+    @DisplayName("execute - 空命令应返回状态信息")
+    void execute_emptyCommand_returnsStatus() {
         Message message = createTestMessage("/opencode", "test-topic");
 
         String result = app.execute(message);
 
-        assertTrue(result.contains("OpenCode 助手"));
+        // 空命令（有 topicId）返回会话状态，由 sessionManager.getCurrentSessionStatus 处理
+        assertNotNull(result);
+        verify(sessionManager).getCurrentSessionStatus(message);
         verify(commandHandler, never()).handle(any(), anyString(), any(), any());
     }
 
