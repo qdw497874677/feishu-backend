@@ -6,7 +6,7 @@ import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.exception.MessageSysException;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
-import com.qdw.feishu.domain.gateway.OpenCodeSessionGateway;
+import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
 import com.qdw.feishu.domain.gateway.SessionContextGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.ReactionEmoji;
@@ -29,20 +29,20 @@ public class BotMessageService {
     private final AppRegistry appRegistry;
     private final SessionContextGateway sessionContextGateway;
     private final ReplyStrategyFactory replyStrategyFactory;
-    private final OpenCodeSessionGateway sessionGateway;
+    private final OpenCodeSessionManager openCodeSessionManager;
 
     public BotMessageService(FeishuGateway feishuGateway,
                             AppRouter appRouter,
                             AppRegistry appRegistry,
                             SessionContextGateway sessionContextGateway,
                             ReplyStrategyFactory replyStrategyFactory,
-                            OpenCodeSessionGateway sessionGateway) {
+                            OpenCodeSessionManager openCodeSessionManager) {
         this.feishuGateway = feishuGateway;
         this.appRouter = appRouter;
         this.appRegistry = appRegistry;
         this.sessionContextGateway = sessionContextGateway;
         this.replyStrategyFactory = replyStrategyFactory;
-        this.sessionGateway = sessionGateway;
+        this.openCodeSessionManager = openCodeSessionManager;
     }
 
     private String extractAppId(String content) {
@@ -354,7 +354,7 @@ public class BotMessageService {
             String sessionId = replyContent.substring(startIndex, endIndex);
             log.info("从回复中提取到 sessionID: {}, topicId: {}", sessionId, topicId);
 
-            sessionGateway.saveSession(topicId, sessionId);
+            openCodeSessionManager.saveSession(topicId, sessionId);
             log.info("OpenCode 会话已自动绑定到话题: topicId={}, sessionId={}", topicId, sessionId);
         } catch (Exception e) {
             log.error("提取或保存 sessionID 失败", e);
