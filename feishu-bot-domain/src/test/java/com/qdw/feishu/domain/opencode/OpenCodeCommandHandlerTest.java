@@ -5,6 +5,7 @@ import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,10 +22,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for OpenCodeCommandHandler
+ * Unit tests for OpenCodeCommandHandler (Phase 2 - with ImContextBinding)
  */
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("OpenCodeCommandHandler 单元测试")
+@DisplayName("OpenCodeCommandHandler 单元测试 (Phase 2)")
 class OpenCodeCommandHandlerTest {
 
     @Mock
@@ -62,17 +63,17 @@ class OpenCodeCommandHandlerTest {
                 if (topicId == null || topicId.isEmpty()) {
                     return TopicState.NON_TOPIC;
                 }
-                return sessionManager.getSessionId(topicId).isPresent() 
+                return sessionManager.getSessionId(msg).isPresent() 
                     ? TopicState.INITIALIZED 
                     : TopicState.UNINITIALIZED;
             });
 
         // 默认 mock 设置 - 话题未初始化（无sessionId）
-        when(sessionManager.getSessionId(anyString()))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.empty());
 
         // 默认 mock 设置 - 话题未显式初始化
-        when(sessionManager.isExplicitlyInitialized(anyString()))
+        when(sessionManager.isExplicitlyInitialized(any(Message.class)))
             .thenReturn(false);
     }
 
@@ -212,7 +213,7 @@ class OpenCodeCommandHandlerTest {
     void handleNew_missingPrompt() {
         // 模拟已初始化的话题，这样命令验证可以通过
         String topicId = "init-topic";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of("ses_123"));
 
         String result = commandHandler.handle(
@@ -235,7 +236,7 @@ class OpenCodeCommandHandlerTest {
 
         // 模拟已初始化的话题
         String topicId = "init-topic";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of("ses_123"));
         when(sessionManager.isTopicInitialized(any(Message.class))).thenReturn(true);
 
@@ -282,7 +283,7 @@ class OpenCodeCommandHandlerTest {
             .thenReturn(false);
         when(taskExecutor.createSessionOnly(any(Message.class)))
             .thenReturn("✅ 会话已创建");
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of("ses_new_123"));
         
         when(commandValidator.validateCommand(eq("cn"), any(), any()))
@@ -298,14 +299,15 @@ class OpenCodeCommandHandlerTest {
         assertNotNull(result);
         verify(taskExecutor).createSessionOnly(any(Message.class));
     }
+    
     @Test
     @DisplayName("chat 命令 - 已初始化话题，无内容时显示状态")
     void handleChat_initializedNoContent() throws Exception {
         String topicId = "init-topic";
         String sessionId = "ses_init_123";
-        when(sessionManager.isExplicitlyInitialized(topicId))
+        when(sessionManager.isExplicitlyInitialized(any(Message.class)))
             .thenReturn(true);
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
 
         String result = commandHandler.handle(
@@ -347,7 +349,7 @@ class OpenCodeCommandHandlerTest {
     void handleSessionStatus_withActiveSession() {
         String topicId = "status-topic";
         String sessionId = "ses_status_123";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
         when(sessionManager.getCurrentSessionStatus(any()))
             .thenReturn("📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`\n  💬 话题 ID: `" + topicId + "`\n  ✅ 状态: 活跃\n\n💡 继续对话会自动使用此会话");
@@ -367,7 +369,7 @@ class OpenCodeCommandHandlerTest {
     @DisplayName("session status 命令 - 无会话")
     void handleSessionStatus_noSession() {
         String topicId = "no-session-topic";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.empty());
         when(sessionManager.getCurrentSessionStatus(any()))
             .thenReturn("📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话");
@@ -448,7 +450,7 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertTrue(result.contains("只能在话题中使用"));
-        verify(sessionManager, never()).clearSession(anyString());
+        verify(sessionManager, never()).clearSession(any(Message.class));
     }
 
     @Test
@@ -456,7 +458,7 @@ class OpenCodeCommandHandlerTest {
     void handleReset_success() {
         String topicId = "reset-topic";
         String sessionId = "ses_reset_123";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
 
         String result = commandHandler.handle(
@@ -468,8 +470,8 @@ class OpenCodeCommandHandlerTest {
 
         assertTrue(result.contains("话题已重置"));
         assertTrue(result.contains(sessionId));
-        verify(sessionManager).clearSession(topicId);
-        verify(sessionManager).clearExplicitlyInitialized(topicId);
+        verify(sessionManager).clearSession(any(Message.class));
+        verify(sessionManager).clearExplicitlyInitialized(any(Message.class));
     }
 
     // ========== 未知命令测试 ==========
@@ -490,6 +492,7 @@ class OpenCodeCommandHandlerTest {
 
     // ========== 状态检测测试 ==========
 
+    @Test
     @DisplayName("非话题环境且非允许命令 - 应显示连接引导")
     void handle_nonTopicWithNotAllowedCommand() {
         // NON_TOPIC 模式下，"chat" 命令不在白名单中，应返回受限消息
@@ -510,7 +513,7 @@ class OpenCodeCommandHandlerTest {
     @DisplayName("话题未初始化时 chat 命令自动创建会话")
     void handle_uninitializedTopicWithNonInitCommand() {
         String topicId = "uninit-topic";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.empty());
         when(taskExecutor.executeWithNewSession(any(Message.class), eq("help")))
             .thenReturn("✅ 会话已创建");
@@ -538,9 +541,9 @@ class OpenCodeCommandHandlerTest {
 
         // 模拟已初始化的话题
         String topicId = "init-topic";
-        when(sessionManager.getSessionId(topicId))
+        when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of("ses_123"));
-        when(sessionManager.isExplicitlyInitialized(topicId))
+        when(sessionManager.isExplicitlyInitialized(any(Message.class)))
             .thenReturn(true);  // 标记为已显式初始化
 
         when(commandValidator.validateCommand(anyString(), any(), any()))

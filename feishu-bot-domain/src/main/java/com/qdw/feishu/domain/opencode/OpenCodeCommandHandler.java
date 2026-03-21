@@ -262,7 +262,7 @@ public class OpenCodeCommandHandler {
 
          if (parts.length < 3) {
              if (inTopic) {
-                 return sessionManager.getSessionId(topicId)
+                 return sessionManager.getSessionId(message)
                      .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
                      .orElse(buildChatQuickStart());
              }
@@ -272,8 +272,8 @@ public class OpenCodeCommandHandler {
          String prompt = extractChatContent(parts, message);
 
          if (inTopic && !sessionManager.isTopicInitialized(message)) {
-             log.info("话题未初始化，自动创建新会话: topicId={}", topicId);
-             return taskExecutor.executeWithNewSession(message, prompt, null);
+                log.info("话题未初始化，自动创建新会话");
+                return taskExecutor.executeWithNewSession(message, prompt, null);
          }
 
          return taskExecutor.executeWithAutoSession(message, prompt);
@@ -284,18 +284,18 @@ public class OpenCodeCommandHandler {
          boolean inTopic = topicId != null && !topicId.isEmpty();
 
          if (inTopic && sessionManager.isTopicInitialized(message)) {
-             Optional<String> currentSessionId = sessionManager.getSessionId(topicId);
+             Optional<String> currentSessionId = sessionManager.getSessionId(message);
              if (currentSessionId.isPresent()) {
                  return buildSessionInitializedInfo(topicId, currentSessionId.get());
              }
          }
 
          log.info("cn 命令：创建新会话并绑定到话题");
-         sessionManager.clearSession(topicId);
+         sessionManager.clearSession(message);
 
          try {
              String result = taskExecutor.createSessionOnly(message);
-             Optional<String> newSessionId = sessionManager.getSessionId(message.getTopicId());
+             Optional<String> newSessionId = sessionManager.getSessionId(message);
              if (newSessionId.isPresent()) {
                  return buildSessionInitializedInfo(message.getTopicId(), newSessionId.get());
              }
@@ -446,10 +446,10 @@ public class OpenCodeCommandHandler {
                    "  • 想要重新开始初始化流程";
         }
 
-        Optional<String> currentSession = sessionManager.getSessionId(topicId);
+            Optional<String> currentSession = sessionManager.getSessionId(message);
 
-        sessionManager.clearSession(topicId);
-        sessionManager.clearExplicitlyInitialized(topicId);
+        sessionManager.clearSession(message);
+        sessionManager.clearExplicitlyInitialized(message);
 
         log.info("已重置话题初始化状态: topicId={}", topicId);
 

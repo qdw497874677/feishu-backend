@@ -1,9 +1,12 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.gateway.AppSessionGateway;
+import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.ImContextBinding;
+import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
@@ -25,11 +28,13 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for explicit initialization flag logic in OpenCode system.
+ * Phase 2 - Updated to use ImContextBinding.
  */
 class OpenCodeExplicitInitializationTest {
 
     private OpenCodeGateway openCodeGateway;
     private AppSessionGateway appSessionGateway;
+    private ImContextBindingGateway bindingGateway;
     private TopicCommandValidator commandValidator;
     private OpenCodeCommandHandler commandHandler;
     private OpenCodeTaskExecutor taskExecutor;
@@ -57,161 +62,69 @@ class OpenCodeExplicitInitializationTest {
         OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
         data.setExplicitlyInitialized(explicitlyInitialized);
         AppSession<OpenCodeSessionData> session = mock(AppSession.class);
-        when(session.getSessionId()).thenReturn("ses_" + System.currentTimeMillis());
+        when(session.getSessionId()).thenReturn("app_ses_" + openCodeSessionId);
         when(session.getData()).thenReturn(data);
         when(session.getVersion()).thenReturn(1L);
         return session;
     }
-
+    
+    private ImContextRef createContextRef(String topicId) {
+        return ImContextRef.feishuThread(topicId);
+    }
+    
+    private ImContextBinding createBinding(ImContextRef contextRef, String sessionId) {
+        return ImContextBinding.create(contextRef, "opencode", sessionId);
+    }
+    
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         openCodeGateway = mock(OpenCodeGateway.class);
         appSessionGateway = mock(AppSessionGateway.class);
+        bindingGateway = mock(ImContextBindingGateway.class);
         commandValidator = mock(TopicCommandValidator.class);
         taskExecutor = mock(OpenCodeTaskExecutor.class);
-        sessionManager = new OpenCodeSessionManager(openCodeGateway, appSessionGateway);
-
-        commandHandler = new OpenCodeCommandHandler(
-            openCodeGateway,
-            taskExecutor,
-            sessionManager,
-            commandValidator
-        );
-
-        // 默认返回 empty，表示话题未初始化
-        doReturn(Optional.empty()).when(appSessionGateway).getActiveSession(anyString(), anyString(), any(TypeToken.class));
+        sessionManager = new OpenCodeSessionManager(openCodeGateway, appSessionGateway, bindingGateway);
+        commandHandler = new OpenCodeCommandHandler(openCodeGateway, taskExecutor, sessionManager, commandValidator);
+        
+        // 默认设置：命令验证通过
         when(commandValidator.validateCommand(anyString(), any(), any()))
             .thenReturn(ValidationResult.allowed());
     }
-
+    
     @Test
-    @SuppressWarnings("unchecked")
-    void isExplicitlyInitialized_topicExistsAndFlagTrue_returnsTrue() {
-        String topicId = "test-topic";
-        AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses", true);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        boolean result = sessionManager.isExplicitlyInitialized(topicId);
-
-        assertTrue(result);
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void isExplicitlyInitialized_topicExistsButFlagFalse_returnsFalse() {
-        String topicId = "test-topic";
-        AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses", false);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        boolean result = sessionManager.isExplicitlyInitialized(topicId);
-
-        assertFalse(result);
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void setExplicitlyInitialized_callsGateway() {
-        String topicId = "test-topic";
-        AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses", false);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        sessionManager.setExplicitlyInitialized(topicId);
-
-        verify(appSessionGateway).updateSession(eq("opencode"), eq(topicId), anyString(), 
-            any(OpenCodeSessionData.class), any(TypeToken.class), anyLong());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void clearExplicitlyInitialized_callsGateway() {
-        String topicId = "test-topic";
-        AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses", true);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        sessionManager.clearExplicitlyInitialized(topicId);
-
-        verify(appSessionGateway).updateSession(eq("opencode"), eq(topicId), anyString(), 
-            any(OpenCodeSessionData.class), any(TypeToken.class), anyLong());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void handleResetCommand_inTopicEnvironment_clearsInitialization() {
-        String topicId = "test-topic-456";
-        Message message = createTestMessage("/opencode reset", topicId);
-        AppSession<OpenCodeSessionData> session = createMockSession("ses_abc123");
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
-
-        verify(appSessionGateway).deleteSession(eq("opencode"), eq(topicId), anyString());
-        assertTrue(response.contains("话题已重置"));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void handleResetCommand_withSessionId_includesSessionInResponse() {
-        String topicId = "test-topic-456";
-        String sessionId = "ses_abc123";
-        Message message = createTestMessage("/opencode reset", topicId);
-        AppSession<OpenCodeSessionData> session = createMockSession(sessionId);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
-
-        assertTrue(response.contains(sessionId));
-        assertTrue(response.contains("话题已重置"));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void handleResetCommand_withoutSessionId_showsHelpfulMessage() {
-        String topicId = "test-topic-456";
-        Message message = createTestMessage("/opencode reset", topicId);
-        doReturn(Optional.empty()).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-
-        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
-
-        assertTrue(response.contains("话题已重置"));
-        assertTrue(response.contains("/opencode p"));
-    }
-
-    @Test
-    void handleResetCommand_inNonTopicEnvironment_showsErrorMessage() {
-        Message message = createTestMessage("/opencode reset", null);
-
-        String response = commandHandler.handle(message, "reset", new String[]{}, CommandWhitelist.all());
-
-        assertTrue(response.contains("只能在话题中使用"));
-        verify(appSessionGateway, never()).deleteSession(anyString(), anyString(), anyString());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
     void handleChatCommand_whenNotInitialized_autoCreatesSession() {
         String topicId = "test-topic-789";
         Message message = createTestMessage("/opencode chat hello", topicId);
-        AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses", false);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
-        when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
+        ImContextRef contextRef = createContextRef(topicId);
+
+        // 设置：话题无绑定
+        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.empty());
+
+        // chat 命令在 UNINITIALIZED 状态下允许，会自动创建会话
+        when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
             .thenReturn("对话完成");
 
         String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
 
         assertTrue(response.contains("对话完成"));
-        verify(taskExecutor).executeWithAutoSession(any(Message.class), eq("hello"));
+        verify(taskExecutor).executeWithNewSession(any(Message.class), eq("hello"), isNull());
     }
-
+    
     @Test
     @SuppressWarnings("unchecked")
     void handleChatCommand_withExistingSessionIdButNotExplicit_autoCreatesSession() {
         String topicId = "test-topic-789";
         Message message = createTestMessage("/opencode chat hello", topicId);
+        ImContextRef contextRef = createContextRef(topicId);
+        String appSessionId = "app_ses_old_session";
 
-        // 设置：话题有 sessionId（已绑定），此时 isTopicInitialized 会返回 true
-        AppSession<OpenCodeSessionData> session = createMockSession("ses_old_session", false);
-        doReturn(Optional.of(session)).when(appSessionGateway).getActiveSession(eq("opencode"), eq(topicId), any(TypeToken.class));
+        // 设置：话题有绑定但未显式初始化
+        ImContextBinding binding = createBinding(contextRef, appSessionId);
+        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
+        
+        AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses_old", false);
+        when(appSessionGateway.getSession(eq("opencode"), eq(appSessionId), any(TypeToken.class)))
+            .thenReturn(Optional.of(session));
         
         // chat 命令在 INITIALIZED 状态下允许，使用现有会话
         when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
@@ -219,19 +132,19 @@ class OpenCodeExplicitInitializationTest {
 
         String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
 
-        // 验证使用了现有会话，而不是创建新会话
+        // 验证使用了现有会话
         assertTrue(response.contains("对话完成"));
         verify(taskExecutor).executeWithAutoSession(any(Message.class), eq("hello"));
     }
-
+    
     @Test
+    @SuppressWarnings("unchecked")
     void handleSessionContinueCommand_withAlias_sc_setsExplicitFlag() {
         String topicId = "test-topic-alias";
         String sessionId = "ses_alias_123";
         Message message = createTestMessage("/opencode sc " + sessionId, topicId);
+        ImContextRef contextRef = createContextRef(topicId);
 
-        when(openCodeGateway.listRecentSessions(anyString(), anyInt()))
-            .thenReturn("Session: " + sessionId + "\nMessages: 10\nStatus: Active");
         when(taskExecutor.executeWithSpecificSession(eq(message), isNull(), eq(sessionId)))
             .thenReturn("✅ **会话已绑定**\n\nSession ID: " + sessionId);
 

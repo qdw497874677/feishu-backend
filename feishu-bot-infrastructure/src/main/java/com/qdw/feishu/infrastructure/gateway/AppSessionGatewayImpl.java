@@ -1,452 +1,417 @@
 package com.qdw.feishu.infrastructure.gateway;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qdw.feishu.domain.exception.OptimisticLockException;
 import com.qdw.feishu.domain.gateway.AppSessionGateway;
-import com.qdw.feishu.domain.gateway.SessionContextGateway;
-import com.qdw.feishu.domain.model.SessionContext;
-import com.qdw.feishu.domain.model.SessionMetadata;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.AppSessionInfo;
 import com.qdw.feishu.domain.session.SessionIdGenerator;
 import com.qdw.feishu.domain.session.SessionState;
 import com.qdw.feishu.domain.session.TypeToken;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import javax.sql.DataSource;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * 通用会话管理实现（基于 SessionContext.metadata）
+ * 通用会话管理实现（基于独立 SQLite 存储）
  * 
- * 支持多会话、乐观锁、状态机
+ * Phase 2 重构：移除对 SessionContextGateway 的依赖，使用独立的 app_session 表。
+ * 会话与 IM 上下文的绑定由 ImContextBindingGateway 管理。
+ * 
+ * 支持多会话、乐观锁、状态机。
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(
+    name = "feishu.topic-mapping.storage-type",
+    havingValue = "sqlite",
+    matchIfMissing = true
+)
 public class AppSessionGatewayImpl implements AppSessionGateway {
 
-    private final SessionContextGateway sessionContextGateway;
+    private final JdbcTemplate jdbcTemplate;
     private final SessionIdGenerator sessionIdGenerator;
     private final ObjectMapper objectMapper;
+    private final String dbFilePath;
 
-    // metadata 中的 key
-    private static final String KEY_SESSIONS = "sessions";
-    private static final String KEY_ACTIVE_SESSION_ID = "activeSessionId";
-    
-    // session 对象中的 key
-    private static final String KEY_SESSION_ID = "sessionId";
-    private static final String KEY_STATE = "state";
-    private static final String KEY_CREATED_AT = "createdAt";
-    private static final String KEY_LAST_ACTIVE_AT = "lastActiveAt";
-    private static final String KEY_EXPIRES_AT = "expiresAt";
-    private static final String KEY_VERSION = "version";
-    private static final String KEY_DATA = "data";
-
-    public AppSessionGatewayImpl(SessionContextGateway sessionContextGateway,
-                                  SessionIdGenerator sessionIdGenerator) {
-        this.sessionContextGateway = sessionContextGateway;
+    public AppSessionGatewayImpl(
+            SessionIdGenerator sessionIdGenerator,
+            @Value("${feishu.topic-mapping.sqlite.path:feishu-topic-mappings.db}") String dbFilePath) {
         this.sessionIdGenerator = sessionIdGenerator;
+        this.dbFilePath = dbFilePath;
+        this.jdbcTemplate = new JdbcTemplate(createDataSource());
         this.objectMapper = new ObjectMapper();
+    }
+
+    @PostConstruct
+    public void init() {
+        try {
+            ensureDbDirectoryExists();
+            createTableIfNotExists();
+            log.info("SQLite App Session table initialized: {}", dbFilePath);
+            log.info("Current session count: {}", count());
+        } catch (Exception e) {
+            log.error("SQLite session table initialization failed", e);
+            throw new RuntimeException("Failed to initialize SQLite session table", e);
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        log.info("SQLite App Session connection closed");
+    }
+
+    private DataSource createDataSource() {
+        String connectionString = "jdbc:sqlite:" + dbFilePath;
+        log.info("SQLite connection string: {}", connectionString);
+
+        return DataSourceBuilder.create()
+                .url(connectionString)
+                .driverClassName("org.sqlite.JDBC")
+                .build();
+    }
+
+    private void ensureDbDirectoryExists() {
+        try {
+            Path dbPath = Paths.get(dbFilePath);
+            if (dbPath.getParent() != null) {
+                Files.createDirectories(dbPath.getParent());
+            }
+        } catch (Exception e) {
+            log.warn("Could not create db directory: {}", e.getMessage());
+        }
+    }
+
+    private void createTableIfNotExists() {
+        String sql = """
+            CREATE TABLE IF NOT EXISTS app_session (
+                app_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                data TEXT,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                last_active_at INTEGER NOT NULL,
+                expires_at INTEGER,
+                PRIMARY KEY (app_id, session_id)
+            )
+        """;
+
+        jdbcTemplate.execute(sql);
+        log.info("App Session table ready");
+
+        createIndexesIfNotExist();
+    }
+
+    private void createIndexesIfNotExist() {
+        String[] indexSqls = {
+            "CREATE INDEX IF NOT EXISTS idx_session_app_id ON app_session(app_id)",
+            "CREATE INDEX IF NOT EXISTS idx_session_state ON app_session(state)",
+            "CREATE INDEX IF NOT EXISTS idx_session_created ON app_session(created_at)"
+        };
+
+        for (String sql : indexSqls) {
+            jdbcTemplate.execute(sql);
+        }
+        log.info("App Session indexes ready");
+    }
+
+    private int count() {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM app_session", Integer.class);
+        return count != null ? count : 0;
     }
 
     // ========== 会话创建 ==========
 
     @Override
-    public <T> String createSession(String appId, String topicId, T data, TypeToken<T> typeToken) {
+    public <T> String createSession(String appId, T data, TypeToken<T> typeToken) {
         String sessionId = sessionIdGenerator.generate(appId);
-        return createSession(appId, topicId, sessionId, data, typeToken);
+        return createSession(appId, sessionId, data, typeToken);
     }
 
     @Override
-    public <T> String createSession(String appId, String topicId, String sessionId, T data, TypeToken<T> typeToken) {
-        SessionContext context = getOrCreateContext(topicId, appId);
-        SessionMetadata metadata = SessionMetadata.of(context);
-        
-        // 获取应用的会话列表
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        // 创建新会话
+    public <T> String createSession(String appId, String sessionId, T data, TypeToken<T> typeToken) {
         long now = System.currentTimeMillis();
-        AppSessionInfo newSession = new AppSessionInfo();
-        newSession.setSessionId(sessionId);
-        newSession.setAppId(appId);
-        newSession.setTopicId(topicId);
-        newSession.setState(SessionState.CREATED);
-        newSession.setCreatedAt(now);
-        newSession.setLastActiveAt(now);
-        newSession.setVersion(1L);
         
-        // 序列化 data
+        String dataJson;
         try {
-            JsonNode sessionNode = objectMapper.valueToTree(newSession);
-            ((com.fasterxml.jackson.databind.node.ObjectNode) sessionNode)
-                .set(KEY_DATA, objectMapper.valueToTree(data));
-            sessions.add(sessionNode);
+            dataJson = objectMapper.writeValueAsString(data);
         } catch (Exception e) {
             log.error("Failed to serialize session data", e);
             throw new RuntimeException("Failed to create session", e);
         }
-        
-        // 更新 sessions 和 activeSessionId
-        metadata.set(KEY_SESSIONS, sessions);
-        metadata.set(KEY_ACTIVE_SESSION_ID, sessionId);
-        
-        // 保存
-        sessionContextGateway.save(metadata.save());
-        
-        log.info("创建会话: appId={}, topicId={}, sessionId={}", appId, topicId, sessionId);
-        return sessionId;
+
+        String sql = """
+            INSERT INTO app_session (app_id, session_id, state, data, version, created_at, last_active_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+        """;
+
+        try {
+            jdbcTemplate.update(sql, appId, sessionId, SessionState.CREATED.name(), dataJson, now, now);
+            log.info("创建会话: appId={}, sessionId={}", appId, sessionId);
+            return sessionId;
+        } catch (Exception e) {
+            log.error("Failed to create session: appId={}, sessionId={}", appId, sessionId, e);
+            throw new RuntimeException("Failed to create session", e);
+        }
     }
 
     // ========== 会话查询 ==========
 
     @Override
-    public <T> Optional<AppSession<T>> getActiveSession(String appId, String topicId, TypeToken<T> typeToken) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
+    public <T> Optional<AppSession<T>> getSession(String appId, String sessionId, TypeToken<T> typeToken) {
+        String sql = """
+            SELECT app_id, session_id, state, data, version, created_at, last_active_at, expires_at
+            FROM app_session
+            WHERE app_id = ? AND session_id = ?
+        """;
+
+        try {
+            AppSession<T> session = jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+                AppSessionInfo info = new AppSessionInfo();
+                info.setAppId(rs.getString("app_id"));
+                info.setSessionId(rs.getString("session_id"));
+                info.setState(SessionState.valueOf(rs.getString("state")));
+                info.setVersion(rs.getLong("version"));
+                info.setCreatedAt(rs.getLong("created_at"));
+                info.setLastActiveAt(rs.getLong("last_active_at"));
+                
+                long expiresAt = rs.getLong("expires_at");
+                if (!rs.wasNull()) {
+                    info.setExpiresAt(expiresAt);
+                }
+
+                // Deserialize data
+                T data = null;
+                String dataJson = rs.getString("data");
+                if (dataJson != null && !dataJson.isEmpty()) {
+                    try {
+                        data = objectMapper.readValue(dataJson, 
+                            objectMapper.constructType(typeToken.getType()));
+                    } catch (Exception e) {
+                        log.error("Failed to deserialize session data: appId={}, sessionId={}", 
+                            appId, sessionId, e);
+                    }
+                }
+
+                return AppSession.fromInfo(info, data);
+            }, appId, sessionId);
+
+            return Optional.ofNullable(session);
+        } catch (Exception e) {
+            log.debug("Session not found: appId={}, sessionId={}", appId, sessionId);
             return Optional.empty();
         }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        String activeSessionId = metadata.getString(KEY_ACTIVE_SESSION_ID).orElse(null);
-        
-        if (activeSessionId == null) {
-            return Optional.empty();
-        }
-        
-        return getSession(appId, topicId, activeSessionId, typeToken);
     }
 
     @Override
-    public <T> Optional<AppSession<T>> getSession(String appId, String topicId, String sessionId, TypeToken<T> typeToken) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return Optional.empty();
-        }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        for (JsonNode sessionNode : sessions) {
-            if (sessionId.equals(sessionNode.path(KEY_SESSION_ID).asText())) {
-                return Optional.of(deserializeSession(sessionNode, typeToken));
+    public List<AppSessionInfo> listSessions(String appId) {
+        String sql = """
+            SELECT app_id, session_id, state, version, created_at, last_active_at, expires_at
+            FROM app_session
+            WHERE app_id = ?
+            ORDER BY last_active_at DESC
+        """;
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            AppSessionInfo info = new AppSessionInfo();
+            info.setAppId(rs.getString("app_id"));
+            info.setSessionId(rs.getString("session_id"));
+            info.setState(SessionState.valueOf(rs.getString("state")));
+            info.setVersion(rs.getLong("version"));
+            info.setCreatedAt(rs.getLong("created_at"));
+            info.setLastActiveAt(rs.getLong("last_active_at"));
+            
+            long expiresAt = rs.getLong("expires_at");
+            if (!rs.wasNull()) {
+                info.setExpiresAt(expiresAt);
             }
-        }
-        
-        return Optional.empty();
+            
+            return info;
+        }, appId);
     }
 
     @Override
-    public List<AppSessionInfo> listSessions(String appId, String topicId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return List.of();
-        }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        return sessions.stream()
-            .map(this::deserializeSessionInfo)
-            .collect(Collectors.toList());
-    }
+    public int countActiveSessions(String appId) {
+        String sql = """
+            SELECT COUNT(*) FROM app_session
+            WHERE app_id = ? AND state IN (?, ?)
+        """;
 
-    @Override
-    public int countActiveSessions(String appId, String topicId) {
-        return (int) listSessions(appId, topicId).stream()
-            .filter(s -> s.getState() == SessionState.ACTIVE || s.getState() == SessionState.IDLE)
-            .count();
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, 
+            appId, SessionState.ACTIVE.name(), SessionState.IDLE.name());
+        return count != null ? count : 0;
     }
 
     // ========== 会话更新 ==========
 
     @Override
-    public <T> void updateSession(String appId, String topicId, String sessionId, T data, TypeToken<T> typeToken, long version) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            log.warn("会话上下文不存在: topicId={}", topicId);
+    public <T> void updateSession(String appId, String sessionId, T data, TypeToken<T> typeToken, long version) {
+        // First check version
+        Long currentVersion = getVersion(appId, sessionId);
+        if (currentVersion == null) {
+            log.warn("会话不存在: appId={}, sessionId={}", appId, sessionId);
             return;
         }
         
-        SessionContext context = contextOpt.get();
-        SessionMetadata metadata = SessionMetadata.of(context);
-        List<JsonNode> sessions = getSessionsList(metadata);
+        if (currentVersion != version) {
+            throw new OptimisticLockException(version, currentVersion);
+        }
+
+        String dataJson;
+        try {
+            dataJson = objectMapper.writeValueAsString(data);
+        } catch (Exception e) {
+            log.error("Failed to serialize session data", e);
+            throw new RuntimeException("Failed to update session", e);
+        }
+
+        long now = System.currentTimeMillis();
+        String sql = """
+            UPDATE app_session
+            SET data = ?, version = version + 1, last_active_at = ?
+            WHERE app_id = ? AND session_id = ? AND version = ?
+        """;
+
+        int updated = jdbcTemplate.update(sql, dataJson, now, appId, sessionId, version);
         
-        for (int i = 0; i < sessions.size(); i++) {
-            JsonNode sessionNode = sessions.get(i);
-            if (sessionId.equals(sessionNode.path(KEY_SESSION_ID).asText())) {
-                // 乐观锁检查
-                long actualVersion = sessionNode.path(KEY_VERSION).asLong();
-                if (actualVersion != version) {
-                    throw new OptimisticLockException(version, actualVersion);
-                }
-                
-                // 更新会话
-                try {
-                    AppSessionInfo info = deserializeSessionInfo(sessionNode);
-                    info.setVersion(version + 1);
-                    info.setLastActiveAt(System.currentTimeMillis());
-                    
-                    JsonNode updatedNode = objectMapper.valueToTree(info);
-                    ((com.fasterxml.jackson.databind.node.ObjectNode) updatedNode)
-                        .set(KEY_DATA, objectMapper.valueToTree(data));
-                    sessions.set(i, updatedNode);
-                    
-                    metadata.set(KEY_SESSIONS, sessions);
-                    sessionContextGateway.save(metadata.save());
-                    
-                    log.info("更新会话: sessionId={}, version={}", sessionId, version + 1);
-                } catch (OptimisticLockException e) {
-                    throw e;
-                } catch (Exception e) {
-                    log.error("Failed to update session", e);
-                    throw new RuntimeException("Failed to update session", e);
-                }
-                return;
-            }
+        if (updated == 0) {
+            throw new OptimisticLockException(version, currentVersion);
         }
         
-        log.warn("会话不存在: sessionId={}", sessionId);
+        log.info("更新会话: sessionId={}, version={}", sessionId, version + 1);
     }
 
     @Override
-    public void updateState(String appId, String topicId, String sessionId, SessionState state, long version) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
+    public void updateState(String appId, String sessionId, SessionState state, long version) {
+        Long currentVersion = getVersion(appId, sessionId);
+        if (currentVersion == null) {
+            log.warn("会话不存在: appId={}, sessionId={}", appId, sessionId);
             return;
         }
         
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
+        if (currentVersion != version) {
+            throw new OptimisticLockException(version, currentVersion);
+        }
+
+        // Get current state for validation
+        SessionState oldState = getState(appId, sessionId);
+        if (oldState != null && !oldState.canTransitionTo(state)) {
+            throw new IllegalStateException(
+                String.format("Invalid state transition: %s -> %s", oldState, state)
+            );
+        }
+
+        long now = System.currentTimeMillis();
+        String sql = """
+            UPDATE app_session
+            SET state = ?, version = version + 1, last_active_at = ?
+            WHERE app_id = ? AND session_id = ? AND version = ?
+        """;
+
+        int updated = jdbcTemplate.update(sql, state.name(), now, appId, sessionId, version);
         
-        for (int i = 0; i < sessions.size(); i++) {
-            JsonNode sessionNode = sessions.get(i);
-            if (sessionId.equals(sessionNode.path(KEY_SESSION_ID).asText())) {
-                long actualVersion = sessionNode.path(KEY_VERSION).asLong();
-                if (actualVersion != version) {
-                    throw new OptimisticLockException(version, actualVersion);
-                }
-                
-                SessionState oldState = SessionState.valueOf(sessionNode.path(KEY_STATE).asText());
-                
-                // 状态转换验证
-                if (!oldState.canTransitionTo(state)) {
-                    throw new IllegalStateException(
-                        String.format("Invalid state transition: %s -> %s", oldState, state)
-                    );
-                }
-                
-                // 更新状态
-                ((com.fasterxml.jackson.databind.node.ObjectNode) sessionNode)
-                    .put(KEY_STATE, state.name())
-                    .put(KEY_VERSION, version + 1)
-                    .put(KEY_LAST_ACTIVE_AT, System.currentTimeMillis());
-                
-                metadata.set(KEY_SESSIONS, sessions);
-                sessionContextGateway.save(metadata.save());
-                
-                log.info("更新会话状态: sessionId={}, {} -> {}", sessionId, oldState, state);
-                return;
-            }
+        if (updated == 0) {
+            throw new OptimisticLockException(version, currentVersion);
+        }
+        
+        log.info("更新会话状态: sessionId={}, {} -> {}", sessionId, oldState, state);
+    }
+
+    @Override
+    public void activateSession(String appId, String sessionId) {
+        Long version = getVersion(appId, sessionId);
+        if (version != null) {
+            updateState(appId, sessionId, SessionState.ACTIVE, version);
         }
     }
 
     @Override
-    public void setActiveSession(String appId, String topicId, String sessionId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return;
-        }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        metadata.set(KEY_ACTIVE_SESSION_ID, sessionId);
-        sessionContextGateway.save(metadata.save());
-        
-        log.info("设置活跃会话: topicId={}, sessionId={}", topicId, sessionId);
-    }
-
-    @Override
-    public void activateSession(String appId, String topicId, String sessionId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return;
-        }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        for (JsonNode sessionNode : sessions) {
-            if (sessionId.equals(sessionNode.path(KEY_SESSION_ID).asText())) {
-                SessionState oldState = SessionState.valueOf(sessionNode.path(KEY_STATE).asText());
-                long version = sessionNode.path(KEY_VERSION).asLong();
-                updateState(appId, topicId, sessionId, SessionState.ACTIVE, version);
-                return;
-            }
-        }
-    }
-
-    @Override
-    public void idleSession(String appId, String topicId, String sessionId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return;
-        }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        for (JsonNode sessionNode : sessions) {
-            if (sessionId.equals(sessionNode.path(KEY_SESSION_ID).asText())) {
-                SessionState oldState = SessionState.valueOf(sessionNode.path(KEY_STATE).asText());
-                long version = sessionNode.path(KEY_VERSION).asLong();
-                updateState(appId, topicId, sessionId, SessionState.IDLE, version);
-                return;
-            }
+    public void idleSession(String appId, String sessionId) {
+        Long version = getVersion(appId, sessionId);
+        if (version != null) {
+            updateState(appId, sessionId, SessionState.IDLE, version);
         }
     }
 
     // ========== 会话删除 ==========
 
     @Override
-    public void deleteSession(String appId, String topicId, String sessionId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return;
-        }
+    public void deleteSession(String appId, String sessionId) {
+        String sql = "DELETE FROM app_session WHERE app_id = ? AND session_id = ?";
+        int deleted = jdbcTemplate.update(sql, appId, sessionId);
         
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        boolean removed = sessions.removeIf(
-            node -> sessionId.equals(node.path(KEY_SESSION_ID).asText())
-        );
-        
-        if (removed) {
-            metadata.set(KEY_SESSIONS, sessions);
-            
-            // 如果删除的是活跃会话，清除 activeSessionId
-            String activeSessionId = metadata.getString(KEY_ACTIVE_SESSION_ID).orElse(null);
-            if (sessionId.equals(activeSessionId)) {
-                metadata.remove(KEY_ACTIVE_SESSION_ID);
-            }
-            
-            sessionContextGateway.save(metadata.save());
+        if (deleted > 0) {
             log.info("删除会话: sessionId={}", sessionId);
         }
     }
 
     @Override
-    public void terminateSession(String appId, String topicId, String sessionId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return;
-        }
-        
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        for (JsonNode sessionNode : sessions) {
-            if (sessionId.equals(sessionNode.path(KEY_SESSION_ID).asText())) {
-                long version = sessionNode.path(KEY_VERSION).asLong();
-                try {
-                    updateState(appId, topicId, sessionId, SessionState.TERMINATED, version);
-                } catch (IllegalStateException e) {
-                    log.warn("无法终止会话: {}", e.getMessage());
-                }
-                return;
+    public void terminateSession(String appId, String sessionId) {
+        Long version = getVersion(appId, sessionId);
+        if (version != null) {
+            try {
+                updateState(appId, sessionId, SessionState.TERMINATED, version);
+            } catch (IllegalStateException e) {
+                log.warn("无法终止会话: {}", e.getMessage());
             }
         }
     }
 
     @Override
-    public int cleanupSessions(String appId, String topicId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isEmpty()) {
-            return 0;
+    public int cleanupSessions(String appId) {
+        String sql = """
+            DELETE FROM app_session
+            WHERE app_id = ? AND state IN (?, ?)
+        """;
+        
+        int deleted = jdbcTemplate.update(sql, appId, 
+            SessionState.TERMINATED.name(), SessionState.EXPIRED.name());
+        
+        if (deleted > 0) {
+            log.info("清理会话: appId={}, removed={}", appId, deleted);
         }
         
-        SessionMetadata metadata = SessionMetadata.of(contextOpt.get());
-        List<JsonNode> sessions = getSessionsList(metadata);
-        
-        int originalSize = sessions.size();
-        sessions.removeIf(node -> {
-            SessionState state = SessionState.valueOf(node.path(KEY_STATE).asText());
-            return state == SessionState.TERMINATED || state == SessionState.EXPIRED;
-        });
-        
-        int removed = originalSize - sessions.size();
-        if (removed > 0) {
-            metadata.set(KEY_SESSIONS, sessions);
-            sessionContextGateway.save(metadata.save());
-            log.info("清理会话: topicId={}, removed={}", topicId, removed);
-        }
-        
-        return removed;
+        return deleted;
     }
 
     // ========== 私有方法 ==========
 
-    private SessionContext getOrCreateContext(String topicId, String appId) {
-        Optional<SessionContext> contextOpt = sessionContextGateway.findByTopicId(topicId);
-        if (contextOpt.isPresent()) {
-            return contextOpt.get();
-        }
-        
-        SessionContext context = new SessionContext(topicId, appId);
-        sessionContextGateway.save(context);
-        return context;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<JsonNode> getSessionsList(SessionMetadata metadata) {
-        Optional<Object> sessionsOpt = metadata.getObject(KEY_SESSIONS, Object.class);
-        if (sessionsOpt.isEmpty()) {
-            return new ArrayList<>();
-        }
-        
+    private Long getVersion(String appId, String sessionId) {
+        String sql = "SELECT version FROM app_session WHERE app_id = ? AND session_id = ?";
         try {
-            // 重新序列化再反序列化为 List<JsonNode>
-            String json = objectMapper.writeValueAsString(sessionsOpt.get());
-            return objectMapper.readValue(json, new TypeReference<List<JsonNode>>() {});
+            return jdbcTemplate.queryForObject(sql, Long.class, appId, sessionId);
         } catch (Exception e) {
-            log.error("Failed to parse sessions list", e);
-            return new ArrayList<>();
+            return null;
         }
     }
 
-    private <T> AppSession<T> deserializeSession(JsonNode node, TypeToken<T> typeToken) {
-        AppSessionInfo info = deserializeSessionInfo(node);
-        
+    private SessionState getState(String appId, String sessionId) {
+        String sql = "SELECT state FROM app_session WHERE app_id = ? AND session_id = ?";
         try {
-            JsonNode dataNode = node.path(KEY_DATA);
-            T data = objectMapper.treeToValue(dataNode, 
-                (Class<T>) typeToken.getRawType());
-            return AppSession.fromInfo(info, data);
+            String stateName = jdbcTemplate.queryForObject(sql, String.class, appId, sessionId);
+            return stateName != null ? SessionState.valueOf(stateName) : null;
         } catch (Exception e) {
-            log.error("Failed to deserialize session data", e);
-            throw new RuntimeException("Failed to deserialize session data", e);
+            return null;
         }
     }
 
-    private AppSessionInfo deserializeSessionInfo(JsonNode node) {
-        AppSessionInfo info = new AppSessionInfo();
-        info.setSessionId(node.path(KEY_SESSION_ID).asText());
-        info.setAppId(node.path("appId").asText());
-        info.setTopicId(node.path("topicId").asText());
-        info.setState(SessionState.valueOf(node.path(KEY_STATE).asText()));
-        info.setCreatedAt(node.path(KEY_CREATED_AT).asLong());
-        info.setLastActiveAt(node.path(KEY_LAST_ACTIVE_AT).asLong());
-        info.setVersion(node.path(KEY_VERSION).asLong());
-        
-        if (node.has(KEY_EXPIRES_AT) && !node.path(KEY_EXPIRES_AT).isNull()) {
-            info.setExpiresAt(node.path(KEY_EXPIRES_AT).asLong());
-        }
-        
-        return info;
+    public String getDbFilePath() {
+        return new File(dbFilePath).getAbsolutePath();
     }
 }

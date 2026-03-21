@@ -118,7 +118,7 @@ public class BotMessageService {
             }
             
             SendResult result = sendReply(message, app, replyContent);
-            saveTopicMapping(result, app, replyContent);
+            saveTopicMapping(message, result, app, replyContent);
             
             message.markProcessed();
             log.info("=== BotMessageService.handleMessage 完成 ===\n");
@@ -301,7 +301,7 @@ public class BotMessageService {
         return result;
     }
 
-    private void saveTopicMapping(SendResult result, FishuAppI app, String replyContent) {
+    private void saveTopicMapping(Message message, SendResult result, FishuAppI app, String replyContent) {
         if (!result.isSuccess()) {
             return;
         }
@@ -330,7 +330,7 @@ public class BotMessageService {
         log.info("话题映射已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
 
         if (app.getAppId().equals("opencode") && replyContent.contains("Session ID: `")) {
-            extractAndSaveSessionId(replyContent, actualThreadId);
+            extractAndSaveSessionId(message, replyContent);
         }
     }
 
@@ -338,8 +338,9 @@ public class BotMessageService {
         return str == null || str.isEmpty();
     }
 
-    private void extractAndSaveSessionId(String replyContent, String topicId) {
+    private void extractAndSaveSessionId(Message message, String replyContent) {
         try {
+            String topicId = message.getTopicId();
             int startIndex = replyContent.indexOf("Session ID: `");
             if (startIndex == -1) {
                 return;
@@ -354,7 +355,7 @@ public class BotMessageService {
             String sessionId = replyContent.substring(startIndex, endIndex);
             log.info("从回复中提取到 sessionID: {}, topicId: {}", sessionId, topicId);
 
-            openCodeSessionManager.saveSession(topicId, sessionId);
+            openCodeSessionManager.saveSession(message, sessionId);
             log.info("OpenCode 会话已自动绑定到话题: topicId={}, sessionId={}", topicId, sessionId);
         } catch (Exception e) {
             log.error("提取或保存 sessionID 失败", e);

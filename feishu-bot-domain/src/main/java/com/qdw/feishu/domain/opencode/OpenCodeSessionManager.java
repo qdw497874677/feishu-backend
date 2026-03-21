@@ -1,8 +1,13 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.feishu.FeishuContextResolver;
 import com.qdw.feishu.domain.gateway.AppSessionGateway;
+import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.model.BindingResult;
+import com.qdw.feishu.domain.model.ImContextBinding;
+import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
@@ -12,20 +17,30 @@ import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
+/**
+ * OpenCode 会话管理器
+ * 
+ * Phase 2 重构：使用 ImContextBinding 管理会话与 IM 上下文的绑定关系。
+ * - IM 上下文（话题/聊天）通过 ImContextBindingGateway 绑定到应用会话
+ * - 应用会话数据通过 AppSessionGateway 管理
+ */
 @Slf4j
 @Component
 public class OpenCodeSessionManager {
 
     private final OpenCodeGateway openCodeGateway;
     private final AppSessionGateway appSessionGateway;
+    private final ImContextBindingGateway bindingGateway;
     
     private static final String APP_ID = "opencode";
     private static final TypeToken<OpenCodeSessionData> TYPE_TOKEN = new TypeToken<OpenCodeSessionData>() {};
 
     public OpenCodeSessionManager(OpenCodeGateway openCodeGateway,
-                                   AppSessionGateway appSessionGateway) {
+                                   AppSessionGateway appSessionGateway,
+                                   ImContextBindingGateway bindingGateway) {
         this.openCodeGateway = openCodeGateway;
         this.appSessionGateway = appSessionGateway;
+        this.bindingGateway = bindingGateway;
     }
 
     /**
@@ -40,16 +55,30 @@ public class OpenCodeSessionManager {
      */
     static final int MAX_PROJECT_NAME_LENGTH = 100;
 
+    // ========== IM 上下文解析 ==========
+
+    /**
+     * 从消息解析 IM 上下文引用
+     */
+    private Optional<ImContextRef> resolveContext(Message message) {
+        try {
+            return Optional.of(FeishuContextResolver.resolve(message));
+        } catch (IllegalArgumentException e) {
+            log.debug("Cannot resolve IM context from message: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    // ========== 话题状态检测 ==========
+
     /**
      * 检查话题是否已初始化（绑定了会话）
      */
     public boolean isTopicInitialized(Message message) {
-        String topicId = message.getTopicId();
-        if (topicId == null || topicId.isEmpty()) {
-            return false;
-        }
-        Optional<String> sessionIdOpt = getSessionId(topicId);
-        return sessionIdOpt.isPresent();
+        return resolveContext(message)
+            .flatMap(bindingGateway::findBinding)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .isPresent();
     }
 
     /**
@@ -59,38 +88,48 @@ public class OpenCodeSessionManager {
      * @return 话题状态：NON_TOPIC（无话题）、UNINITIALIZED（话题未初始化）、INITIALIZED（话题已初始化）
      */
     public TopicState detectTopicState(Message message) {
-        String topicId = message.getTopicId();
-        if (topicId == null || topicId.isEmpty()) {
-            return TopicState.NON_TOPIC;
-        }
-        boolean hasSession = getSessionId(topicId).isPresent();
-        return hasSession ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
+        return resolveContext(message)
+            .map(ctx -> {
+                boolean hasBinding = bindingGateway.findBinding(ctx)
+                    .filter(b -> b.getAppId().equals(APP_ID))
+                    .isPresent();
+                return hasBinding ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
+            })
+            .orElse(TopicState.NON_TOPIC);
     }
+
+    // ========== 会话状态查询 ==========
 
     /**
      * 获取当前会话状态信息
      */
     public String getCurrentSessionStatus(Message message) {
-        String topicId = message.getTopicId();
-
-        if (topicId == null || topicId.isEmpty()) {
+        Optional<ImContextRef> contextOpt = resolveContext(message);
+        
+        if (contextOpt.isEmpty()) {
             return "❌ 当前不在话题中，无法查看会话状态";
         }
 
-        Optional<String> sessionIdOpt = getSessionId(topicId);
+        ImContextRef contextRef = contextOpt.get();
+        Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID));
 
-        if (sessionIdOpt.isEmpty()) {
+        if (bindingOpt.isEmpty()) {
             return "📭 当前话题还没有 OpenCode 会话\n\n" +
                    "💡 发送 `/opencode <提示词>` 创建新会话";
         }
 
-        String sessionId = sessionIdOpt.get();
+        ImContextBinding binding = bindingOpt.get();
+        String sessionId = binding.getSessionId();
+        
         return "📋 **当前会话信息**\n\n" +
                "  🆔 Session ID: `" + sessionId + "`\n" +
-               "  💬 话题 ID: `" + topicId + "`\n" +
+               "  📍 Context: `" + contextRef.toStorageKey() + "`\n" +
                "  ✅ 状态: 活跃\n\n" +
                "💡 继续对话会自动使用此会话";
     }
+
+    // ========== OpenCode 命令处理 ==========
 
     /**
      * 处理会话列表命令
@@ -144,66 +183,169 @@ public class OpenCodeSessionManager {
         return openCodeGateway.listRecentSessions(project, limit);
     }
 
+    // ========== 会话绑定管理 ==========
+
     /**
-     * 保存会话到话题映射
+     * 保存会话绑定（将 OpenCode 会话绑定到当前 IM 上下文）
+     * 
+     * @param message 消息对象（用于解析 IM 上下文）
+     * @param openCodeSessionId OpenCode 会话 ID
      */
-    public void saveSession(String topicId, String sessionId) {
-        if (topicId != null && !topicId.isEmpty()) {
-            OpenCodeSessionData data = OpenCodeSessionData.create(sessionId);
-            appSessionGateway.createSession(APP_ID, topicId, data, TYPE_TOKEN);
-            log.info("已更新会话映射: topicId={}, sessionId={}", topicId, sessionId);
-        }
+    public void saveSession(Message message, String openCodeSessionId) {
+        resolveContext(message).ifPresent(contextRef -> {
+            saveSession(contextRef, openCodeSessionId);
+        });
     }
 
     /**
-     * 清除话题的会话映射
+     * 保存会话绑定（使用明确的 IM 上下文）
+     * 
+     * @param contextRef IM 上下文引用
+     * @param openCodeSessionId OpenCode 会话 ID
      */
-    public void clearSession(String topicId) {
-        if (topicId != null && !topicId.isEmpty()) {
-            appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
-                .ifPresent(session -> {
-                    appSessionGateway.deleteSession(APP_ID, topicId, session.getSessionId());
-                    log.info("已清除旧会话: topicId={}, sessionId={}", topicId, session.getSessionId());
-                });
-        }
-    }
-
-    /**
-     * 获取话题绑定的会话 ID
-     */
-    public Optional<String> getSessionId(String topicId) {
-        return appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
-            .map(session -> session.getData().getOpenCodeSessionId());
-    }
-
-    /**
-     * 检查话题是否已显式初始化
-     */
-    public boolean isExplicitlyInitialized(String topicId) {
-        return appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
-            .map(session -> session.getData().isExplicitlyInitialized())
-            .orElse(false);
-    }
-
-    public void setExplicitlyInitialized(String topicId) {
-        appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
-            .ifPresent(session -> {
+    public void saveSession(ImContextRef contextRef, String openCodeSessionId) {
+        // Check if already bound with same session
+        Optional<ImContextBinding> existingBinding = bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID));
+        
+        if (existingBinding.isPresent()) {
+            // Update existing session data
+            String sessionId = existingBinding.get().getSessionId();
+            Optional<AppSession<OpenCodeSessionData>> sessionOpt = 
+                appSessionGateway.getSession(APP_ID, sessionId, TYPE_TOKEN);
+            
+            if (sessionOpt.isPresent()) {
+                AppSession<OpenCodeSessionData> session = sessionOpt.get();
                 OpenCodeSessionData data = session.getData();
-                data.setExplicitlyInitialized(true);
-                appSessionGateway.updateSession(APP_ID, topicId, session.getSessionId(), 
-                    data, TYPE_TOKEN, session.getVersion());
-                log.info("已设置显式初始化标记: topicId={}", topicId);
+                
+                if (!data.getOpenCodeSessionId().equals(openCodeSessionId)) {
+                    data.setOpenCodeSessionId(openCodeSessionId);
+                    appSessionGateway.updateSession(APP_ID, sessionId, 
+                        data, TYPE_TOKEN, session.getVersion());
+                    log.info("更新会话数据: contextRef={}, sessionId={}", 
+                        contextRef.toStorageKey(), sessionId);
+                }
+            }
+        } else {
+            // Create new session and bind
+            OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+            String sessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
+            
+            BindingResult result = bindingGateway.bind(contextRef, APP_ID, sessionId);
+            log.info("创建并绑定会话: contextRef={}, sessionId={}, result={}", 
+                contextRef.toStorageKey(), sessionId, result);
+        }
+    }
+
+    /**
+     * 清除 IM 上下文的会话绑定
+     */
+    public void clearSession(Message message) {
+        resolveContext(message).ifPresent(this::clearSession);
+    }
+
+    /**
+     * 清除 IM 上下文的会话绑定
+     */
+    public void clearSession(ImContextRef contextRef) {
+        bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .ifPresent(binding -> {
+                appSessionGateway.deleteSession(APP_ID, binding.getSessionId());
+                bindingGateway.clearBinding(contextRef);
+                log.info("清除会话绑定: contextRef={}, sessionId={}", 
+                    contextRef.toStorageKey(), binding.getSessionId());
             });
     }
 
-    public void clearExplicitlyInitialized(String topicId) {
-        appSessionGateway.getActiveSession(APP_ID, topicId, TYPE_TOKEN)
+    // ========== 会话查询 ==========
+
+    /**
+     * 获取消息关联的 OpenCode 会话 ID
+     */
+    public Optional<String> getSessionId(Message message) {
+        return resolveContext(message)
+            .flatMap(this::getSessionId);
+    }
+
+    /**
+     * 获取 IM 上下文绑定的 OpenCode 会话 ID
+     */
+    public Optional<String> getSessionId(ImContextRef contextRef) {
+        return bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .flatMap(binding -> appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN))
+            .map(session -> session.getData().getOpenCodeSessionId());
+    }
+
+    // ========== 显式初始化标记 ==========
+
+    /**
+     * 检查 IM 上下文是否已显式初始化
+     */
+    public boolean isExplicitlyInitialized(Message message) {
+        return resolveContext(message)
+            .flatMap(this::isExplicitlyInitializedOpt)
+            .orElse(false);
+    }
+
+    /**
+     * 检查 IM 上下文是否已显式初始化
+     */
+    public boolean isExplicitlyInitialized(ImContextRef contextRef) {
+        return isExplicitlyInitializedOpt(contextRef).orElse(false);
+    }
+
+    private Optional<Boolean> isExplicitlyInitializedOpt(ImContextRef contextRef) {
+        return bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .flatMap(binding -> appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN))
+            .map(session -> session.getData().isExplicitlyInitialized());
+    }
+
+    /**
+     * 设置显式初始化标记
+     */
+    public void setExplicitlyInitialized(Message message) {
+        resolveContext(message).ifPresent(this::setExplicitlyInitialized);
+    }
+
+    /**
+     * 设置显式初始化标记
+     */
+    public void setExplicitlyInitialized(ImContextRef contextRef) {
+        bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .flatMap(binding -> appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN))
+            .ifPresent(session -> {
+                OpenCodeSessionData data = session.getData();
+                data.setExplicitlyInitialized(true);
+                appSessionGateway.updateSession(APP_ID, session.getSessionId(), 
+                    data, TYPE_TOKEN, session.getVersion());
+                log.info("设置显式初始化标记: contextRef={}", contextRef.toStorageKey());
+            });
+    }
+
+    /**
+     * 清除显式初始化标记
+     */
+    public void clearExplicitlyInitialized(Message message) {
+        resolveContext(message).ifPresent(this::clearExplicitlyInitialized);
+    }
+
+    /**
+     * 清除显式初始化标记
+     */
+    public void clearExplicitlyInitialized(ImContextRef contextRef) {
+        bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .flatMap(binding -> appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN))
             .ifPresent(session -> {
                 OpenCodeSessionData data = session.getData();
                 data.setExplicitlyInitialized(false);
-                appSessionGateway.updateSession(APP_ID, topicId, session.getSessionId(), 
+                appSessionGateway.updateSession(APP_ID, session.getSessionId(), 
                     data, TYPE_TOKEN, session.getVersion());
-                log.info("已清除显式初始化标记: topicId={}", topicId);
+                log.info("清除显式初始化标记: contextRef={}", contextRef.toStorageKey());
             });
     }
 }

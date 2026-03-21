@@ -48,13 +48,13 @@ public class OpenCodeTaskExecutor {
             return executeTask(message, prompt, null);
         }
 
-        return sessionManager.getSessionId(topicId)
+        return sessionManager.getSessionId(message)
             .map(sessionId -> {
                 log.info("找到活跃会话，继续使用: sessionId={}", sessionId);
                 return executeTask(message, prompt, sessionId);
             })
             .orElseGet(() -> {
-                log.info("话题无活跃会话，创建新会话: topicId={}", topicId);
+                log.info("话题无活跃会话，创建新会话");
                 return executeWithNewSession(message, prompt);
             });
     }
@@ -64,8 +64,7 @@ public class OpenCodeTaskExecutor {
     }
 
     public String executeWithNewSession(Message message, String prompt, String project) {
-        String topicId = message.getTopicId();
-        sessionManager.clearSession(topicId);
+        sessionManager.clearSession(message);
         String enhancedPrompt = enhancePromptWithWorkDirectory(prompt, project);
         return executeTask(message, enhancedPrompt, null);
     }
@@ -84,14 +83,7 @@ public class OpenCodeTaskExecutor {
 
     public String executeWithSpecificSession(Message message, String prompt, String sessionId) {
         log.info("使用指定会话执行: sessionId={}", sessionId);
-        String topicId = message.getTopicId();
-        sessionManager.saveSession(topicId, sessionId);
-
-        streamingHandler.registerSession(sessionId, message);
-
-        if (prompt == null || prompt.isEmpty()) {
-            return buildInitializationSuccessResponse(topicId, sessionId);
-        }
+        sessionManager.saveSession(message, sessionId);
         return executeTask(message, prompt, sessionId);
     }
 
@@ -109,7 +101,7 @@ public class OpenCodeTaskExecutor {
             String response = buildSessionCreatedResponse(topicId, sessionId, workDir);
 
             if (topicId != null && !topicId.isEmpty()) {
-                sessionManager.saveSession(topicId, sessionId);
+                sessionManager.saveSession(message, sessionId);
             } else {
                 log.info("topicId 为空，将在飞书返回 threadId 后保存会话");
                 response += "\n\n⚠️ **提示**：会话已创建，将在话题创建后自动绑定";
@@ -182,7 +174,7 @@ public class OpenCodeTaskExecutor {
 
             String extractedSessionId = responseFormatter.extractSessionId(result);
             if (extractedSessionId != null && message.getTopicId() != null) {
-                sessionManager.saveSession(message.getTopicId(), extractedSessionId);
+                sessionManager.saveSession(message, extractedSessionId);
                 actualSessionId = extractedSessionId;
             }
 

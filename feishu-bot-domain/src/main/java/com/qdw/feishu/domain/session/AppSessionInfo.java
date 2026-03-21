@@ -5,6 +5,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * 会话基础信息（不含泛型 data，用于列表查询）
+ * 
+ * Phase 2 重构：移除 topicId 字段，会话与 IM 上下文解耦。
+ * 会话与 IM 上下文的绑定关系由 ImContextBinding 管理。
  */
 @Data
 @NoArgsConstructor
@@ -15,9 +18,6 @@ public class AppSessionInfo {
     
     /** 所属应用 */
     private String appId;
-    
-    /** 绑定的话题 */
-    private String topicId;
     
     /** 会话状态 */
     private SessionState state;
@@ -34,10 +34,9 @@ public class AppSessionInfo {
     /** 乐观锁版本号 */
     private long version;
     
-    public AppSessionInfo(String sessionId, String appId, String topicId) {
+    public AppSessionInfo(String sessionId, String appId) {
         this.sessionId = sessionId;
         this.appId = appId;
-        this.topicId = topicId;
         this.state = SessionState.CREATED;
         this.createdAt = System.currentTimeMillis();
         this.lastActiveAt = System.currentTimeMillis();
