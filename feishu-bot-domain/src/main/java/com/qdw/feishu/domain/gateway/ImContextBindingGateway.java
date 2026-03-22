@@ -33,9 +33,15 @@ public interface ImContextBindingGateway {
      * - if context is bound to same (appId, sessionId): no-op, return noChange
      * - if context is bound to different session: atomically replace
      * 
-     * @param contextRef the IM context to bind
-     * @param appId the application ID
-     * @param sessionId the internal app session ID
+     * Session ID Semantics:
+     * - sessionId is nullable and valid as persisted state
+     * - null sessionId = entered app context without active session
+     * - non-null sessionId = app context with active session
+     * - This enables two-phase binding: app context first, then session activation
+     * 
+     * @param contextRef the IM context to bind (required)
+     * @param appId the application ID (required)
+     * @param sessionId the internal app session ID (nullable)
      * @return BindingResult indicating what happened
      */
     BindingResult bind(ImContextRef contextRef, String appId, String sessionId);

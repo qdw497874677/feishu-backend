@@ -280,15 +280,93 @@ class ImContextBindingGatewayImplTest {
         );
     }
 
-    @Test
-    void should_throwException_when_bindWithNullSessionId() {
-        // Given
-        ImContextRef contextRef = ImContextRef.feishuThread("thread_test");
+    // ========== Nullable SessionId Tests (Task 2) ==========
 
-        // When & Then
-        assertThrows(IllegalArgumentException.class, () -> 
-            gateway.bind(contextRef, "opencode", null)
-        );
+    @Test
+    void should_bind_when_sessionIdIsNull() {
+        // Given
+        ImContextRef contextRef = ImContextRef.feishuThread("thread_null_session");
+        String appId = "opencode";
+        String sessionId = null;
+
+        // When
+        BindingResult result = gateway.bind(contextRef, appId, sessionId);
+
+        // Then
+        assertTrue(result.isCreated());
+        assertNull(result.getBinding().getSessionId());
+        assertEquals(appId, result.getBinding().getAppId());
+    }
+
+    @Test
+    void should_returnNoChange_when_bindingMatchesNullSession() {
+        // Given
+        ImContextRef contextRef = ImContextRef.feishuThread("thread_null_match");
+        String appId = "opencode";
+        
+        // First bind with null session
+        gateway.bind(contextRef, appId, null);
+
+        // When: bind again with null session
+        BindingResult result = gateway.bind(contextRef, appId, null);
+
+        // Then
+        assertTrue(result.isNoChange());
+        assertNull(result.getBinding().getSessionId());
+    }
+
+    @Test
+    void should_update_when_bindingProgressesFromNullToConcreteSession() {
+        // Given
+        ImContextRef contextRef = ImContextRef.feishuThread("thread_null_to_concrete");
+        String appId = "opencode";
+        
+        // First bind with null session
+        gateway.bind(contextRef, appId, null);
+
+        // When: bind with concrete session
+        BindingResult result = gateway.bind(contextRef, appId, "ses_concrete123");
+
+        // Then
+        assertTrue(result.isUpdated());
+        assertEquals("ses_concrete123", result.getBinding().getSessionId());
+    }
+
+    @Test
+    void should_findBindingWithNullSessionId_when_persisted() {
+        // Given
+        ImContextRef contextRef = ImContextRef.feishuThread("thread_persist_null");
+        gateway.bind(contextRef, "opencode", null);
+
+        // When
+        Optional<ImContextBinding> binding = gateway.findBinding(contextRef);
+
+        // Then
+        assertTrue(binding.isPresent());
+        assertNull(binding.get().getSessionId());
+        assertEquals("opencode", binding.get().getAppId());
+    }
+
+    @Test
+    void should_persistNullSessionIdAcrossInstances_when_reopened() {
+        // Given
+        ImContextRef contextRef = ImContextRef.feishuThread("thread_null_persist");
+        gateway.bind(contextRef, "opencode", null);
+
+        // Close and reopen
+        gateway.cleanup();
+        ImContextBindingGatewayImpl newGateway = new ImContextBindingGatewayImpl(dbPath);
+        newGateway.init();
+
+        // When
+        Optional<ImContextBinding> binding = newGateway.findBinding(contextRef);
+
+        // Then
+        assertTrue(binding.isPresent());
+        assertNull(binding.get().getSessionId());
+        assertEquals("opencode", binding.get().getAppId());
+
+        newGateway.cleanup();
     }
 
     @Test
@@ -389,5 +467,74 @@ class ImContextBindingGatewayImplTest {
         assertEquals("ses_persist", binding.get().getSessionId());
 
         newGateway.cleanup();
+    }
+
+    // ========== Schema Migration Tests (Task 2) ==========
+
+    /**
+     * Schema Migration Regression Test.
+     * 
+     * Verifies that an existing DB with old schema (NOT NULL session_id) is
+     * automatically migrated to the new nullable schema.
+     * 
+     * Strategy: Create a DB with old schema, then verify the gateway migrates it.
+     */
+    @Test
+    void should_migrateOldSchema_when_existingTableHasNotNullSessionId() {
+        // Given: A database file with old schema (NOT NULL on session_id)
+        String oldSchemaDbPath = tempDir.resolve("old-schema.db").toString();
+        
+        // Create old schema table directly using raw JDBC
+        try (var conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + oldSchemaDbPath);
+             var stmt = conn.createStatement()) {
+            
+            // Create table with OLD schema (NOT NULL on session_id)
+            stmt.execute("""
+                CREATE TABLE im_context_binding (
+                    context_key TEXT PRIMARY KEY NOT NULL,
+                    platform TEXT NOT NULL,
+                    context_type TEXT NOT NULL,
+                    context_id TEXT NOT NULL,
+                    app_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_active_at INTEGER NOT NULL
+                )
+            """);
+            
+            // Insert a row with the old schema (session_id must be non-null)
+            stmt.execute("""
+                INSERT INTO im_context_binding 
+                (context_key, platform, context_type, context_id, app_id, session_id, created_at, last_active_at)
+                VALUES ('feishu:thread:old_thread', 'feishu', 'thread', 'old_thread', 'opencode', 'ses_old', 1000, 2000)
+            """);
+        } catch (Exception e) {
+            fail("Failed to set up old schema database: " + e.getMessage());
+        }
+
+        // When: Gateway initializes (should detect and migrate)
+        ImContextBindingGatewayImpl migratedGateway = new ImContextBindingGatewayImpl(oldSchemaDbPath);
+        migratedGateway.init();
+
+        // Then: Gateway should work with nullable session_id
+        // 1. Old data is cleared (drop-recreate strategy)
+        Optional<ImContextBinding> oldBinding = migratedGateway.findBinding(
+            ImContextRef.feishuThread("old_thread")
+        );
+        assertTrue(oldBinding.isEmpty(), "Old data should be cleared after migration");
+
+        // 2. Can create new binding with null session_id
+        ImContextRef newContext = ImContextRef.feishuThread("new_null_session");
+        BindingResult result = migratedGateway.bind(newContext, "opencode", null);
+        
+        assertTrue(result.isCreated());
+        assertNull(result.getBinding().getSessionId());
+
+        // 3. Can retrieve binding with null session_id
+        Optional<ImContextBinding> retrieved = migratedGateway.findBinding(newContext);
+        assertTrue(retrieved.isPresent());
+        assertNull(retrieved.get().getSessionId());
+
+        migratedGateway.cleanup();
     }
 }

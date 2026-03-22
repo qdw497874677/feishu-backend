@@ -25,6 +25,18 @@ import java.util.Optional;
  * 
  * Persists IM context to app session bindings using SQLite.
  * Uses the same database file as SessionContextSqliteGateway for consistency.
+ * 
+ * Schema Migration Strategy (Task 2):
+ * Since SQLite's CREATE TABLE IF NOT EXISTS won't alter existing tables,
+ * we use a drop-and-recreate strategy for the im_context_binding table.
+ * 
+ * Rationale: The binding table is transient cache data that can be rebuilt
+ * from the authoritative session data. This is acceptable because:
+ * - Bindings can be re-established when users interact with sessions
+ * - No critical data loss occurs if bindings are cleared
+ * - Simpler than create-copy-swap for this use case
+ * 
+ * For production systems with non-disposable data, prefer create-copy-swap.
  */
 @Slf4j
 @Component
@@ -37,11 +49,13 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
 
     private final JdbcTemplate jdbcTemplate;
     private final String dbFilePath;
+    private final DataSource dataSource;
 
     public ImContextBindingGatewayImpl(
             @Value("${feishu.topic-mapping.sqlite.path:feishu-topic-mappings.db}") String dbFilePath) {
         this.dbFilePath = dbFilePath;
-        this.jdbcTemplate = new JdbcTemplate(createDataSource());
+        this.dataSource = createDataSource();
+        this.jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
     @PostConstruct
@@ -59,7 +73,14 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
 
     @PreDestroy
     public void cleanup() {
-        log.info("SQLite IM Context Binding connection closed");
+        if (dataSource instanceof AutoCloseable) {
+            try {
+                ((AutoCloseable) dataSource).close();
+                log.info("SQLite IM Context Binding connection closed");
+            } catch (Exception e) {
+                log.warn("Failed to close SQLite datasource", e);
+            }
+        }
     }
 
     private DataSource createDataSource() {
@@ -88,6 +109,48 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
     }
 
     private void createTableIfNotExists() {
+        // Migration strategy: Check for old schema and drop-recreate if needed
+        // See class-level documentation for rationale
+        if (needsSchemaMigration()) {
+            log.info("Detected old schema with NOT NULL session_id, migrating to nullable schema");
+            dropAndRecreateTable();
+        } else {
+            createTable();
+        }
+        createIndexesIfNotExist();
+    }
+    
+    /**
+     * Check if the table exists with the old NOT NULL schema.
+     * Returns true if table exists but has NOT NULL constraint on session_id.
+     */
+    private boolean needsSchemaMigration() {
+        try {
+            String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='im_context_binding'";
+            String createSql = jdbcTemplate.queryForObject(sql, String.class);
+            
+            // If table exists and has NOT NULL on session_id, needs migration
+            return createSql != null && createSql.contains("session_id TEXT NOT NULL");
+        } catch (Exception e) {
+            // Table doesn't exist, no migration needed
+            return false;
+        }
+    }
+    
+    /**
+     * Drop and recreate the table with nullable session_id.
+     * This is acceptable for binding data as it's transient cache.
+     */
+    private void dropAndRecreateTable() {
+        jdbcTemplate.execute("DROP TABLE IF EXISTS im_context_binding");
+        log.info("Dropped old im_context_binding table");
+        createTable();
+    }
+    
+    /**
+     * Create the table with current schema (nullable session_id).
+     */
+    private void createTable() {
         String sql = """
             CREATE TABLE IF NOT EXISTS im_context_binding (
                 context_key TEXT PRIMARY KEY NOT NULL,
@@ -95,16 +158,14 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
                 context_type TEXT NOT NULL,
                 context_id TEXT NOT NULL,
                 app_id TEXT NOT NULL,
-                session_id TEXT NOT NULL,
+                session_id TEXT,
                 created_at INTEGER NOT NULL,
                 last_active_at INTEGER NOT NULL
             )
         """;
 
         jdbcTemplate.execute(sql);
-        log.info("IM Context Binding table ready");
-
-        createIndexesIfNotExist();
+        log.info("IM Context Binding table ready (with nullable session_id)");
     }
 
     private void createIndexesIfNotExist() {
@@ -130,9 +191,10 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
 
     @Override
     public BindingResult bind(ImContextRef contextRef, String appId, String sessionId) {
-        if (contextRef == null || appId == null || sessionId == null) {
-            throw new IllegalArgumentException("contextRef, appId, and sessionId cannot be null");
+        if (contextRef == null || appId == null) {
+            throw new IllegalArgumentException("contextRef and appId cannot be null");
         }
+        // sessionId is nullable - null means app context without active session
 
         String contextKey = contextRef.toStorageKey();
 
