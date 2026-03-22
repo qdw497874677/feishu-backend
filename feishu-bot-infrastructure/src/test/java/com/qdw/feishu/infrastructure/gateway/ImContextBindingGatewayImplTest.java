@@ -542,4 +542,91 @@ class ImContextBindingGatewayImplTest {
 
         migratedGateway.cleanup();
     }
+
+    /**
+     * Restart-safety test for migration.
+     * 
+     * Verifies that if a migration was interrupted (leaving stale temp table),
+     * a subsequent migration attempt succeeds correctly.
+     */
+    @Test
+    void should_handleStaleTempTable_when_previousMigrationWasInterrupted() {
+        // Given: A database with old schema AND a stale temp table from interrupted migration
+        String interruptedDbPath = tempDir.resolve("interrupted-migration.db").toString();
+        
+        try (var conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + interruptedDbPath);
+             var stmt = conn.createStatement()) {
+            
+            // Create old schema table with data
+            stmt.execute("""
+                CREATE TABLE im_context_binding (
+                    context_key TEXT PRIMARY KEY NOT NULL,
+                    platform TEXT NOT NULL,
+                    context_type TEXT NOT NULL,
+                    context_id TEXT NOT NULL,
+                    app_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_active_at INTEGER NOT NULL
+                )
+            """);
+            stmt.execute("""
+                INSERT INTO im_context_binding 
+                VALUES ('feishu:thread:thread1', 'feishu', 'thread', 'thread1', 'opencode', 'ses_1', 1000, 2000)
+            """);
+            
+            // Simulate interrupted migration: create stale temp table (partial migration state)
+            stmt.execute("""
+                CREATE TABLE im_context_binding_new (
+                    context_key TEXT PRIMARY KEY NOT NULL,
+                    platform TEXT NOT NULL,
+                    context_type TEXT NOT NULL,
+                    context_id TEXT NOT NULL,
+                    app_id TEXT NOT NULL,
+                    session_id TEXT,
+                    created_at INTEGER NOT NULL,
+                    last_active_at INTEGER NOT NULL
+                )
+            """);
+            // Partially copied data (incomplete state)
+            stmt.execute("""
+                INSERT INTO im_context_binding_new 
+                VALUES ('feishu:thread:thread1', 'feishu', 'thread', 'thread1', 'opencode', 'ses_1', 1000, 2000)
+            """);
+            // But original table still exists - this is the interrupted state
+            
+        } catch (Exception e) {
+            fail("Failed to set up interrupted migration state: " + e.getMessage());
+        }
+
+        // When: Gateway initializes (should detect stale temp table, clean up, and complete migration)
+        ImContextBindingGatewayImpl recoveredGateway = new ImContextBindingGatewayImpl(interruptedDbPath);
+        recoveredGateway.init();
+
+        // Then: Migration should complete successfully
+        // 1. Original data is preserved
+        Optional<ImContextBinding> binding1 = recoveredGateway.findBinding(
+            ImContextRef.feishuThread("thread1")
+        );
+        assertTrue(binding1.isPresent(), "Data should be preserved after recovery migration");
+        assertEquals("ses_1", binding1.get().getSessionId());
+
+        // 2. No stale temp table remains
+        try (var conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + interruptedDbPath);
+             var stmt = conn.createStatement();
+             var rs = stmt.executeQuery(
+                 "SELECT name FROM sqlite_master WHERE type='table' AND name='im_context_binding_new'")) {
+            assertFalse(rs.next(), "Stale temp table should be cleaned up");
+        } catch (Exception e) {
+            fail("Failed to verify temp table cleanup: " + e.getMessage());
+        }
+
+        // 3. New nullable bindings work
+        ImContextRef newContext = ImContextRef.feishuThread("new_nullable");
+        BindingResult result = recoveredGateway.bind(newContext, "opencode", null);
+        assertTrue(result.isCreated());
+        assertNull(result.getBinding().getSessionId());
+
+        recoveredGateway.cleanup();
+    }
 }

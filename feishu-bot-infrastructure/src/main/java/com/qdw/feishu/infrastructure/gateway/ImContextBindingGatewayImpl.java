@@ -29,11 +29,14 @@ import java.util.Optional;
  * Uses the same database file as SessionContextSqliteGateway for consistency.
  * 
  * Schema Migration Strategy (Task 2):
- * Uses create-copy-swap pattern to migrate from NOT NULL to nullable session_id:
- * 1. Create new table with nullable schema
- * 2. Copy existing data to new table
- * 3. Drop old table
+ * Uses atomic create-copy-swap pattern to migrate from NOT NULL to nullable session_id:
+ * 1. Drop any stale temp table from interrupted migration
+ * 2. Create new table with nullable schema
+ * 3. Copy existing data to new table
+ * 4. Drop old table
+ * 5. Rename new table to final name
  * 
+ * All steps run in a single transaction for atomicity and restart-safety.
  * This preserves all existing bindings during migration.
  */
 @Slf4j
@@ -156,42 +159,83 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
     }
     
     /**
-     * Migrate table using create-copy-swap pattern.
+     * Migrate table using atomic create-copy-swap pattern.
      * Preserves all existing data while changing session_id from NOT NULL to nullable.
+     * 
+     * All operations run in a single transaction for atomicity.
+     * Handles stale temp table from interrupted migration attempts.
      */
     private void migrateTableToNullableSessionId() {
-        log.info("Starting create-copy-swap migration for im_context_binding");
+        log.info("Starting atomic create-copy-swap migration for im_context_binding");
         
-        // Step 1: Create new table with nullable session_id
-        jdbcTemplate.execute("""
-            CREATE TABLE im_context_binding_new (
-                context_key TEXT PRIMARY KEY NOT NULL,
-                platform TEXT NOT NULL,
-                context_type TEXT NOT NULL,
-                context_id TEXT NOT NULL,
-                app_id TEXT NOT NULL,
-                session_id TEXT,
-                created_at INTEGER NOT NULL,
-                last_active_at INTEGER NOT NULL
-            )
-        """);
-        log.debug("Created new table with nullable session_id");
-        
-        // Step 2: Copy existing data to new table
-        int copiedRows = jdbcTemplate.update("""
-            INSERT INTO im_context_binding_new
-            SELECT context_key, platform, context_type, context_id, app_id, session_id, created_at, last_active_at
-            FROM im_context_binding
-        """);
-        log.info("Copied {} existing bindings to new table", copiedRows);
-        
-        // Step 3: Drop old table
-        jdbcTemplate.execute("DROP TABLE im_context_binding");
-        log.debug("Dropped old table");
-        
-        // Step 4: Rename new table to final name
-        jdbcTemplate.execute("ALTER TABLE im_context_binding_new RENAME TO im_context_binding");
-        log.info("Migration completed: im_context_binding now has nullable session_id");
+        jdbcTemplate.execute((java.sql.Connection conn) -> {
+            try {
+                // Disable auto-commit for transaction
+                conn.setAutoCommit(false);
+                
+                try {
+                    // Step 0: Clean up any stale temp table from interrupted migration
+                    try (var stmt = conn.createStatement()) {
+                        stmt.execute("DROP TABLE IF EXISTS im_context_binding_new");
+                    }
+                    log.debug("Cleaned up any stale temp table");
+                    
+                    // Step 1: Create new table with nullable session_id
+                    try (var stmt = conn.createStatement()) {
+                        stmt.execute("""
+                            CREATE TABLE im_context_binding_new (
+                                context_key TEXT PRIMARY KEY NOT NULL,
+                                platform TEXT NOT NULL,
+                                context_type TEXT NOT NULL,
+                                context_id TEXT NOT NULL,
+                                app_id TEXT NOT NULL,
+                                session_id TEXT,
+                                created_at INTEGER NOT NULL,
+                                last_active_at INTEGER NOT NULL
+                            )
+                        """);
+                    }
+                    log.debug("Created new table with nullable session_id");
+                    
+                    // Step 2: Copy existing data to new table
+                    int copiedRows;
+                    try (var stmt = conn.createStatement()) {
+                        stmt.execute("""
+                            INSERT INTO im_context_binding_new
+                            SELECT context_key, platform, context_type, context_id, app_id, session_id, created_at, last_active_at
+                            FROM im_context_binding
+                        """);
+                        copiedRows = stmt.getUpdateCount();
+                    }
+                    log.info("Copied {} existing bindings to new table", copiedRows);
+                    
+                    // Step 3: Drop old table
+                    try (var stmt = conn.createStatement()) {
+                        stmt.execute("DROP TABLE im_context_binding");
+                    }
+                    log.debug("Dropped old table");
+                    
+                    // Step 4: Rename new table to final name
+                    try (var stmt = conn.createStatement()) {
+                        stmt.execute("ALTER TABLE im_context_binding_new RENAME TO im_context_binding");
+                    }
+                    
+                    // Commit the transaction
+                    conn.commit();
+                    log.info("Migration completed: im_context_binding now has nullable session_id");
+                    
+                    return null;
+                } catch (Exception e) {
+                    // Rollback on any error
+                    conn.rollback();
+                    log.error("Migration failed, rolled back", e);
+                    throw e;
+                }
+            } finally {
+                // Restore auto-commit
+                conn.setAutoCommit(true);
+            }
+        });
     }
     
     /**

@@ -31,7 +31,11 @@ public interface ImContextBindingGateway {
      * Upsert semantics:
      * - if context is unbound: create new binding
      * - if context is bound to same (appId, sessionId): no-op, return noChange
-     * - if context is bound to different session: atomically replace
+     * - if context is bound to different session: replace with new binding
+     * 
+     * Note: The replacement is done via a single UPDATE statement but is not
+     * guaranteed to be atomic with the existence check at the DB isolation level.
+     * For this use case (single-threaded gateway per context), this is acceptable.
      * 
      * Session ID Semantics:
      * - sessionId is nullable and valid as persisted state
