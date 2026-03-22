@@ -2,6 +2,8 @@ package com.qdw.feishu.domain.model;
 
 import lombok.Value;
 
+import java.util.Objects;
+
 /**
  * Mapping from an IM context to an app session.
  * 
@@ -13,6 +15,12 @@ import lombok.Value;
  * - One IM context can have at most one current binding
  * - Binding can be updated (rebound to different session)
  * - Binding targets an app session by (appId, sessionId)
+ * 
+ * Session ID Semantics:
+ * - sessionId is explicitly nullable and valid as persisted state
+ * - null sessionId = entered app context without active session
+ * - non-null sessionId = app context with active session
+ * - This enables two-phase binding: app context first, then session activation
  */
 @Value
 public class ImContextBinding {
@@ -23,7 +31,10 @@ public class ImContextBinding {
     /** The application ID */
     String appId;
     
-    /** The internal app session ID */
+    /** 
+     * The internal app session ID.
+     * Nullable: null means app context is active but no session is bound yet.
+     */
     String sessionId;
     
     /** When this binding was created (epoch millis) */
@@ -71,12 +82,15 @@ public class ImContextBinding {
     /**
      * Check if this binding matches the given app and session.
      * 
+     * Uses null-safe comparison for sessionId. Returns true only when
+     * both appId and sessionId match exactly (including both being null).
+     * 
      * @param appId the app ID to check
-     * @param sessionId the session ID to check
+     * @param sessionId the session ID to check (nullable)
      * @return true if both match
      */
     public boolean matches(String appId, String sessionId) {
-        return this.appId.equals(appId) && this.sessionId.equals(sessionId);
+        return this.appId.equals(appId) && Objects.equals(this.sessionId, sessionId);
     }
     
     /**

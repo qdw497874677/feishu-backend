@@ -1,26 +1,26 @@
 package com.qdw.feishu.infrastructure.adapter;
 
- 
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1Data;
 import com.qdw.feishu.domain.adapter.CommandAdapter;
 import com.qdw.feishu.domain.command.EventSource;
 import com.qdw.feishu.domain.command.UnifiedCommand;
-import com.qdw.feishu.domain.gateway.TopicAppBindingGateway;
-import com.qdw.feishu.domain.model.TopicAppBinding;
+import com.qdw.feishu.domain.feishu.FeishuContextResolver;
+import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
+import com.qdw.feishu.domain.model.ImContextRef;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
- 
+
 import java.util.Optional;
- 
+
 @Slf4j
 @Component
 public class MessageCommandAdapter implements CommandAdapter {
     
-    private final TopicAppBindingGateway topicAppBindingGateway;
+    private final ImContextBindingGateway bindingGateway;
     
-    public MessageCommandAdapter(TopicAppBindingGateway topicAppBindingGateway) {
-        this.topicAppBindingGateway = topicAppBindingGateway;
+    public MessageCommandAdapter(ImContextBindingGateway bindingGateway) {
+        this.bindingGateway = bindingGateway;
     }
     
     @Override
@@ -43,12 +43,13 @@ public class MessageCommandAdapter implements CommandAdapter {
             subCommand = parts.length > 1 ? parts[1] : null;
             args = parts.length > 2 ? extractArgs(parts) : new String[0];
         } else if (topicId != null && !topicId.isEmpty()) {
-            // 话题中的消息，检查话题绑定
-            Optional<TopicAppBinding> binding = topicAppBindingGateway.findByTopicId(topicId);
+            // 话题中的消息，使用 ImContextBinding 查找绑定的应用
+            ImContextRef contextRef = ImContextRef.feishuThread(topicId);
+            Optional<?> binding = bindingGateway.findBinding(contextRef);
             if (binding.isPresent()) {
-                appId = binding.get().getAppId();
+                appId = ((com.qdw.feishu.domain.model.ImContextBinding) binding.get()).getAppId();
                 subCommand = parts.length > 0 ? parts[0] : null;
-                args = parts.length > 1 ? extractArgsFromContent(parts) : new String[1];
+                args = parts.length > 1 ? extractArgsFromContent(parts) : new String[0];
                 log.debug("话题消息映射到应用: topicId={}, appId={}", topicId, appId);
             } else {
                 // 没有绑定，使用 help

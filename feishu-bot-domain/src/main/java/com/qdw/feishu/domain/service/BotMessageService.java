@@ -5,13 +5,16 @@ import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.exception.MessageSysException;
+import com.qdw.feishu.domain.feishu.FeishuContextResolver;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
-import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
-import com.qdw.feishu.domain.gateway.TopicAppBindingGateway;
+import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.ReactionEmoji;
 import com.qdw.feishu.domain.message.SendResult;
-import com.qdw.feishu.domain.model.TopicAppBinding;
+import com.qdw.feishu.domain.model.BindingResult;
+import com.qdw.feishu.domain.model.ImContextBinding;
+import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.router.AppRouter;
@@ -27,20 +30,20 @@ public class BotMessageService {
     private final FeishuGateway feishuGateway;
     private final AppRouter appRouter;
     private final AppRegistry appRegistry;
-    private final TopicAppBindingGateway topicAppBindingGateway;
+    private final ImContextBindingGateway bindingGateway;
     private final ReplyStrategyFactory replyStrategyFactory;
     private final OpenCodeSessionManager openCodeSessionManager;
 
     public BotMessageService(FeishuGateway feishuGateway,
                             AppRouter appRouter,
                             AppRegistry appRegistry,
-                            TopicAppBindingGateway topicAppBindingGateway,
+                            ImContextBindingGateway bindingGateway,
                             ReplyStrategyFactory replyStrategyFactory,
                             OpenCodeSessionManager openCodeSessionManager) {
         this.feishuGateway = feishuGateway;
         this.appRouter = appRouter;
         this.appRegistry = appRegistry;
-        this.topicAppBindingGateway = topicAppBindingGateway;
+        this.bindingGateway = bindingGateway;
         this.replyStrategyFactory = replyStrategyFactory;
         this.openCodeSessionManager = openCodeSessionManager;
     }
@@ -80,7 +83,7 @@ public class BotMessageService {
         return null;
     }
 
-    private void handleUnknownTopic(Message message) {
+    private void handleUnknownContext(Message message) {
         String errorReply = "话题已失效，请重新发送命令触发应用。";
         SendResult result = feishuGateway.sendMessage(message, errorReply, null);
         if (!result.isSuccess()) {
@@ -118,7 +121,7 @@ public class BotMessageService {
             }
             
             SendResult result = sendReply(message, app, replyContent);
-            saveTopicMapping(message, result, app, replyContent);
+            saveContextBinding(message, result, app, replyContent);
             
             message.markProcessed();
             log.info("=== BotMessageService.handleMessage 完成 ===\n");
@@ -142,24 +145,36 @@ public class BotMessageService {
         
         if (topicId != null && !topicId.isEmpty()) {
             log.info("消息来自话题: topicId={}", topicId);
-            return resolveAppFromTopic(message, topicId);
+            return resolveAppFromContext(message, topicId);
         } else {
             return resolveAppFromCommand(message);
         }
     }
 
-    private FishuAppI resolveAppFromTopic(Message message, String topicId) {
-        var binding = topicAppBindingGateway.findByTopicId(topicId);
-        if (!binding.isPresent()) {
-            log.warn("话题绑定不存在: topicId={}，降级为默认处理", topicId);
-            handleUnknownTopic(message);
+    private FishuAppI resolveAppFromContext(Message message, String topicId) {
+        // 使用 ImContextBinding 统一处理路由
+        Optional<ImContextRef> contextRefOpt = resolveContextRef(message);
+        
+        if (contextRefOpt.isEmpty()) {
+            log.warn("无法解析 IM 上下文: topicId={}，降级为默认处理", topicId);
+            handleUnknownContext(message);
             message.markProcessed();
             return null;
         }
         
-        TopicAppBinding topicAppBinding = binding.get();
-        String appId = topicAppBinding.getAppId();
-        log.info("找到话题绑定: topicId={}, appId={}", topicId, appId);
+        ImContextRef contextRef = contextRefOpt.get();
+        Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef);
+        
+        if (bindingOpt.isEmpty()) {
+            log.warn("IM 上下文未绑定: contextRef={}，降级为默认处理", contextRef.toStorageKey());
+            handleUnknownContext(message);
+            message.markProcessed();
+            return null;
+        }
+        
+        ImContextBinding binding = bindingOpt.get();
+        String appId = binding.getAppId();
+        log.info("找到上下文绑定: contextRef={}, appId={}", contextRef.toStorageKey(), appId);
         
         FishuAppI app = appRegistry.getApp(appId).orElse(null);
         if (app == null) {
@@ -169,9 +184,21 @@ public class BotMessageService {
             return null;
         }
         
-        topicAppBinding.activate();
-        topicAppBindingGateway.save(topicAppBinding);
+        // 更新绑定活跃时间
+        bindingGateway.touchBinding(contextRef);
         return app;
+    }
+    
+    /**
+     * 解析消息的 IM 上下文引用
+     */
+    private Optional<ImContextRef> resolveContextRef(Message message) {
+        try {
+            return Optional.of(FeishuContextResolver.resolve(message));
+        } catch (IllegalArgumentException e) {
+            log.debug("无法解析 IM 上下文: {}", e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private FishuAppI resolveAppFromCommand(Message message) {
@@ -222,18 +249,18 @@ public class BotMessageService {
     }
 
     private void preprocessContent(Message message, FishuAppI app) {
-        String topicId = message.getTopicId();
+        Optional<ImContextRef> contextRefOpt = resolveContextRef(message);
         
-        if (topicId == null || topicId.isEmpty()) {
+        if (contextRefOpt.isEmpty()) {
             return;
         }
         
-        var binding = topicAppBindingGateway.findByTopicId(topicId);
-        if (!binding.isPresent()) {
+        ImContextRef contextRef = contextRefOpt.get();
+        Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef);
+        
+        if (bindingOpt.isEmpty()) {
             return;
         }
-        
-        TopicAppBinding topicBinding = binding.get();
         
         String content = message.getContent().trim();
         String appId = app.getAppId();
@@ -301,7 +328,13 @@ public class BotMessageService {
         return result;
     }
 
-    private void saveTopicMapping(Message message, SendResult result, FishuAppI app, String replyContent) {
+    /**
+     * 保存上下文绑定
+     * 
+     * 对于无状态应用（help, time, bash, history）：sessionId = null
+     * 对于有状态应用（opencode）：sessionId 由 OpenCodeSessionManager 管理
+     */
+    private void saveContextBinding(Message message, SendResult result, FishuAppI app, String replyContent) {
         if (!result.isSuccess()) {
             return;
         }
@@ -313,22 +346,30 @@ public class BotMessageService {
         
         log.info("获取到飞书返回的 threadId: {}", actualThreadId);
         
-        Optional<TopicAppBinding> existingBinding = topicAppBindingGateway.findByTopicId(actualThreadId);
+        // 解析 IM 上下文
+        Optional<ImContextRef> contextRefOpt = resolveContextRef(message);
+        if (contextRefOpt.isEmpty()) {
+            log.warn("无法解析 IM 上下文，跳过绑定保存");
+            return;
+        }
         
-        TopicAppBinding binding;
+        ImContextRef contextRef = contextRefOpt.get();
+        
+        // 检查现有绑定
+        Optional<ImContextBinding> existingBinding = bindingGateway.findBinding(contextRef);
+        
         if (existingBinding.isPresent()) {
-            TopicAppBinding old = existingBinding.get();
-            binding = new TopicAppBinding(old.getTopicId(), old.getAppId(), old.getMetadata());
-            binding.setLastActiveAt(System.currentTimeMillis());
-            log.debug("话题绑定已存在，保留 metadata: topicId={}", actualThreadId);
+            // 更新现有绑定的活跃时间
+            bindingGateway.touchBinding(contextRef);
+            log.debug("上下文绑定已存在，更新活跃时间: contextRef={}", contextRef.toStorageKey());
         } else {
-            binding = new TopicAppBinding(actualThreadId, app.getAppId());
-            log.debug("创建新话题绑定: topicId={}", actualThreadId);
+            // 创建新绑定（无状态应用 sessionId = null）
+            BindingResult bindingResult = bindingGateway.bind(contextRef, app.getAppId(), null);
+            log.info("创建新上下文绑定: contextRef={}, appId={}, result={}", 
+                    contextRef.toStorageKey(), app.getAppId(), bindingResult);
         }
 
-        topicAppBindingGateway.save(binding);
-        log.info("话题绑定已保存: topicId={}, appId={}", actualThreadId, app.getAppId());
-
+        // 对于 OpenCode，提取并保存 session ID
         if (app.getAppId().equals("opencode") && replyContent.contains("Session ID: `")) {
             extractAndSaveSessionId(message, replyContent);
         }

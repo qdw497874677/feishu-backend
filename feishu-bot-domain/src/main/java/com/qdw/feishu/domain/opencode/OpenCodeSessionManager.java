@@ -101,14 +101,34 @@ public class OpenCodeSessionManager {
     // ========== 会话状态查询 ==========
 
     /**
-     * 获取当前会话状态信息
+     * 清除IM 上下文的会话绑定
      */
-    public String getCurrentSessionStatus(Message message) {
-        Optional<ImContextRef> contextOpt = resolveContext(message);
+    public void clearSession(Message message) {
+        resolveContext(message).ifPresent(this::clearSession);
+    }
+
+    /**
+     * 清除IM 上下文的会话绑定
+     */
+    public void clearSession(ImContextRef contextRef) {
+        Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID));
         
-        if (contextOpt.isEmpty()) {
-            return "❌ 当前不在话题中，无法查看会话状态";
+        if (bindingOpt.isPresent()) {
+            ImContextBinding binding = bindingOpt.get();
+            String sessionId = binding.getSessionId();
+            
+            // Case: binding exists with concrete sessionId -> delete session
+ then clean binding
+            log.info("清除会话绑定: contextRef={}, sessionId={}", binding.getSessionId());
+            
+            // Case: binding exists but sessionId is null -> just clear binding
+            if (binding.getSessionId() == null) {
+                bindingGateway.clearBinding(contextRef);
+                log.info("清除会话绑定（无会话）: contextRef={}, sessionId=null);
+            }
         }
+    }
 
         ImContextRef contextRef = contextOpt.get();
         Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef)
@@ -132,10 +152,35 @@ public class OpenCodeSessionManager {
     // ========== OpenCode 命令处理 ==========
 
     /**
-     * 处理会话列表命令
+     * 清除IM 上下文的会话绑定
      */
-    public String handleListSessions() {
-        return openCodeGateway.listSessions();
+    public void clearSession(Message message) {
+        resolveContext(message).ifPresent(this::clearSession);
+    }
+
+    /**
+     * 清除IM 上下文的会话绑定
+     */
+    public void clearSession(ImContextRef contextRef) {
+        Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID));
+        
+        if (bindingOpt.isPresent()) {
+            ImContextBinding binding = bindingOpt.get();
+            String sessionId = binding.getSessionId();
+            
+            // Case: binding exists with concrete sessionId -> delete session, clean binding
+            if (sessionId != null) {
+                appSessionGateway.deleteSession(APP_ID, sessionId);
+                log.info("清除会话绑定: contextRef={}, sessionId={}", binding.getSessionId());
+            }
+            
+            // Case: binding exists but sessionId is null -> just clear binding
+            if (binding.getSessionId() == null) {
+                bindingGateway.clearBinding(contextRef);
+                log.info("清除会话绑定（无会话）: contextRef={}, sessionId=null);
+            }
+        }
     }
 
     /**
@@ -209,8 +254,21 @@ public class OpenCodeSessionManager {
             .filter(b -> b.getAppId().equals(APP_ID));
         
         if (existingBinding.isPresent()) {
-            // Update existing session data
             String sessionId = existingBinding.get().getSessionId();
+            
+            // Case: existing binding with null sessionId -> upgrade to concrete session
+            if (sessionId == null) {
+                // Create new session and rebind (upgrade from null to concrete)
+                OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+                String newSessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
+                
+                BindingResult result = bindingGateway.bind(contextRef, APP_ID, newSessionId);
+                log.info("升级会话绑定: contextRef={}, null -> sessionId={}, result={}", 
+                    contextRef.toStorageKey(), newSessionId, result);
+                return;
+            }
+            
+            // Case: existing binding with concrete sessionId -> update data
             Optional<AppSession<OpenCodeSessionData>> sessionOpt = 
                 appSessionGateway.getSession(APP_ID, sessionId, TYPE_TOKEN);
             
@@ -227,7 +285,7 @@ public class OpenCodeSessionManager {
                 }
             }
         } else {
-            // Create new session and bind
+            // Case: no existing binding -> create new session and bind
             OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
             String sessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
             
@@ -238,10 +296,42 @@ public class OpenCodeSessionManager {
     }
 
     /**
-     * 清除 IM 上下文的会话绑定
+     * 获取IM 上下文绑定的 OpenCode 会话 ID
      */
-    public void clearSession(Message message) {
-        resolveContext(message).ifPresent(this::clearSession);
+    public Optional<String> getSessionId(ImContextRef contextRef) {
+        return bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .map(binding -> {
+                // Case: existing binding with concrete sessionId -> update session data
+                String sessionId = binding.getSessionId();
+                Optional<AppSession<OpenCodeSessionData>> sessionOpt = 
+                    appSessionGateway.getSession(APP_ID, sessionId, TYPE_TOKEN);
+                
+                if (sessionOpt.isPresent()) {
+                    OpenCodeSessionData data = session.getData().getOpenCodeSessionId();
+                    data.setOpenCodeSessionId(openCodeSessionId);
+                    appSessionGateway.updateSession(APP_ID, sessionId, data, TYPE_TOKEN, session.getVersion());
+                    log.info("更新会话数据: contextRef={}, sessionId={}", 
+                    return;
+                }
+                
+                // Case: existing binding with null sessionId -> upgrade to concrete session
+                OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+                String newSessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
+                
+                BindingResult result = bindingGateway.bind(contextRef, APP_ID, newSessionId);
+                log.info("升级会话绑定: contextRef={}, null -> sessionId={}, result={}", 
+                return;
+            }
+            
+            // Case: no existing binding -> create new session and bind
+            OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+            String sessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
+            
+            BindingResult result = bindingGateway.bind(contextRef, APP_ID, sessionId);
+            log.info("创建并绑定会话: contextRef={}, sessionId={}, result={}", 
+            return;
+        }
     }
 
     /**
@@ -327,10 +417,37 @@ public class OpenCodeSessionManager {
     }
 
     /**
-     * 清除显式初始化标记
+     * 获取 IM 上下文绑定的 OpenCode 会话 ID
      */
-    public void clearExplicitlyInitialized(Message message) {
-        resolveContext(message).ifPresent(this::clearExplicitlyInitialized);
+    public Optional<String> getSessionId(Message message) {
+        return resolveContext(message)
+            .flatMap(this::getSessionId);
+    }
+
+    /**
+     * 获取 IM 上下文绑定的 OpenCode 会话 ID
+     */
+    public Optional<String> getSessionId(ImContextRef contextRef) {
+        return bindingGateway.findBinding(contextRef)
+            .filter(b -> b.getAppId().equals(APP_ID))
+            .map(binding -> {
+                // Case: binding exists with sessionId -> return session data
+                Optional<AppSession<OpenCodeSessionData>> session = appSessionGateway.getSession(APP_ID, sessionId, TYPE_TOKEN);
+                return session.getData().getOpenCodeSessionId();
+            }
+            
+            // Case: binding exists but sessionId 为 null -> return empty without session lookup
+            return Optional.empty();
+        }
+        
+        // Case: no binding -> create new session and bind
+        OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+            String sessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
+            
+            BindingResult result = bindingGateway.bind(contextRef, APP_ID, sessionId);
+            log.info("创建并绑定会话: contextRef={}, sessionId={}, result={}",
+        
+        return Optional.of(session);
     }
 
     /**
