@@ -18,6 +18,8 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -122,19 +124,35 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
     
     /**
      * Check if the table exists with the old NOT NULL schema.
+     * Uses PRAGMA table_info to structurally detect column nullability.
      * Returns true if table exists but has NOT NULL constraint on session_id.
      */
     private boolean needsSchemaMigration() {
         try {
-            String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='im_context_binding'";
-            String createSql = jdbcTemplate.queryForObject(sql, String.class);
+            // Use PRAGMA table_info which returns: cid, name, type, notnull, dflt_value, pk
+            // notnull = 1 means NOT NULL constraint, 0 means nullable
+            List<Map<String, Object>> columns = jdbcTemplate.queryForList(
+                "PRAGMA table_info(im_context_binding)");
             
-            // If table exists and has NOT NULL on session_id, needs migration
-            return createSql != null && createSql.contains("session_id TEXT NOT NULL");
-        } catch (Exception e) {
-            // Table doesn't exist, no migration needed
+            for (Map<String, Object> column : columns) {
+                String columnName = (String) column.get("name");
+                if ("session_id".equals(columnName)) {
+                    Integer notNull = (Integer) column.get("notnull");
+                    // If notnull = 1, the column has NOT NULL constraint
+                    if (notNull != null && notNull == 1) {
+                        return true;
+                    }
+                }
+            }
+            // Table exists but session_id is already nullable (or column not found)
+            return false;
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            // Table doesn't exist - no migration needed
+            log.debug("Table im_context_binding not found, no migration needed");
             return false;
         }
+        // Note: Other unexpected DB errors will propagate up and fail initialization
+        // This is intentional - we should not silently swallow real DB problems
     }
     
     /**
