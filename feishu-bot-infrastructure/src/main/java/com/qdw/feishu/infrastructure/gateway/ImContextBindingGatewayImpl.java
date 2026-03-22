@@ -29,16 +29,12 @@ import java.util.Optional;
  * Uses the same database file as SessionContextSqliteGateway for consistency.
  * 
  * Schema Migration Strategy (Task 2):
- * Since SQLite's CREATE TABLE IF NOT EXISTS won't alter existing tables,
- * we use a drop-and-recreate strategy for the im_context_binding table.
+ * Uses create-copy-swap pattern to migrate from NOT NULL to nullable session_id:
+ * 1. Create new table with nullable schema
+ * 2. Copy existing data to new table
+ * 3. Drop old table
  * 
- * Rationale: The binding table is transient cache data that can be rebuilt
- * from the authoritative session data. This is acceptable because:
- * - Bindings can be re-established when users interact with sessions
- * - No critical data loss occurs if bindings are cleared
- * - Simpler than create-copy-swap for this use case
- * 
- * For production systems with non-disposable data, prefer create-copy-swap.
+ * This preserves all existing bindings during migration.
  */
 @Slf4j
 @Component
@@ -111,11 +107,11 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
     }
 
     private void createTableIfNotExists() {
-        // Migration strategy: Check for old schema and drop-recreate if needed
+        // Migration strategy: Check for old schema and migrate if needed
         // See class-level documentation for rationale
         if (needsSchemaMigration()) {
             log.info("Detected old schema with NOT NULL session_id, migrating to nullable schema");
-            dropAndRecreateTable();
+            migrateTableToNullableSessionId();
         } else {
             createTable();
         }
@@ -137,10 +133,14 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
             for (Map<String, Object> column : columns) {
                 String columnName = (String) column.get("name");
                 if ("session_id".equals(columnName)) {
-                    Integer notNull = (Integer) column.get("notnull");
-                    // If notnull = 1, the column has NOT NULL constraint
-                    if (notNull != null && notNull == 1) {
-                        return true;
+                    Object notNullObj = column.get("notnull");
+                    // Handle Number types robustly (SQLite may return Long or Integer)
+                    if (notNullObj instanceof Number) {
+                        int notNull = ((Number) notNullObj).intValue();
+                        // If notnull = 1, the column has NOT NULL constraint
+                        if (notNull == 1) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -156,13 +156,42 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
     }
     
     /**
-     * Drop and recreate the table with nullable session_id.
-     * This is acceptable for binding data as it's transient cache.
+     * Migrate table using create-copy-swap pattern.
+     * Preserves all existing data while changing session_id from NOT NULL to nullable.
      */
-    private void dropAndRecreateTable() {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS im_context_binding");
-        log.info("Dropped old im_context_binding table");
-        createTable();
+    private void migrateTableToNullableSessionId() {
+        log.info("Starting create-copy-swap migration for im_context_binding");
+        
+        // Step 1: Create new table with nullable session_id
+        jdbcTemplate.execute("""
+            CREATE TABLE im_context_binding_new (
+                context_key TEXT PRIMARY KEY NOT NULL,
+                platform TEXT NOT NULL,
+                context_type TEXT NOT NULL,
+                context_id TEXT NOT NULL,
+                app_id TEXT NOT NULL,
+                session_id TEXT,
+                created_at INTEGER NOT NULL,
+                last_active_at INTEGER NOT NULL
+            )
+        """);
+        log.debug("Created new table with nullable session_id");
+        
+        // Step 2: Copy existing data to new table
+        int copiedRows = jdbcTemplate.update("""
+            INSERT INTO im_context_binding_new
+            SELECT context_key, platform, context_type, context_id, app_id, session_id, created_at, last_active_at
+            FROM im_context_binding
+        """);
+        log.info("Copied {} existing bindings to new table", copiedRows);
+        
+        // Step 3: Drop old table
+        jdbcTemplate.execute("DROP TABLE im_context_binding");
+        log.debug("Dropped old table");
+        
+        // Step 4: Rename new table to final name
+        jdbcTemplate.execute("ALTER TABLE im_context_binding_new RENAME TO im_context_binding");
+        log.info("Migration completed: im_context_binding now has nullable session_id");
     }
     
     /**
@@ -299,10 +328,12 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
             }, contextKey);
 
             return Optional.ofNullable(binding);
-        } catch (Exception e) {
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            // No binding found for this context - expected case
             log.debug("Binding not found: contextKey={}", contextKey);
             return Optional.empty();
         }
+        // Note: Other DataAccessExceptions (connection issues, SQL errors) will propagate up
     }
 
     @Override
@@ -333,10 +364,12 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
         try {
             Integer count = jdbcTemplate.queryForObject(sql, Integer.class, contextKey, appId);
             return count != null && count > 0;
-        } catch (Exception e) {
-            log.debug("Failed to check binding: contextKey={}, appId={}", contextKey, appId);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            // No rows returned - shouldn't happen for COUNT(*), but handle defensively
+            log.debug("No result for binding check: contextKey={}, appId={}", contextKey, appId);
             return false;
         }
+        // Note: Other DataAccessExceptions (connection issues, SQL errors) will propagate up
     }
 
     @Override

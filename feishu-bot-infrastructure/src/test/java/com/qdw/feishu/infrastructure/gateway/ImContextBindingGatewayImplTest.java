@@ -475,9 +475,11 @@ class ImContextBindingGatewayImplTest {
      * Schema Migration Regression Test.
      * 
      * Verifies that an existing DB with old schema (NOT NULL session_id) is
-     * automatically migrated to the new nullable schema.
+     * automatically migrated to the new nullable schema using create-copy-swap.
      * 
-     * Strategy: Create a DB with old schema, then verify the gateway migrates it.
+     * Key assertions:
+     * - Existing data is preserved during migration
+     * - New nullable session_id works after migration
      */
     @Test
     void should_migrateOldSchema_when_existingTableHasNotNullSessionId() {
@@ -512,16 +514,19 @@ class ImContextBindingGatewayImplTest {
             fail("Failed to set up old schema database: " + e.getMessage());
         }
 
-        // When: Gateway initializes (should detect and migrate)
+        // When: Gateway initializes (should detect and migrate using create-copy-swap)
         ImContextBindingGatewayImpl migratedGateway = new ImContextBindingGatewayImpl(oldSchemaDbPath);
         migratedGateway.init();
 
         // Then: Gateway should work with nullable session_id
-        // 1. Old data is cleared (drop-recreate strategy)
+        
+        // 1. Old data is PRESERVED (create-copy-swap strategy)
         Optional<ImContextBinding> oldBinding = migratedGateway.findBinding(
             ImContextRef.feishuThread("old_thread")
         );
-        assertTrue(oldBinding.isEmpty(), "Old data should be cleared after migration");
+        assertTrue(oldBinding.isPresent(), "Old data should be preserved after migration");
+        assertEquals("ses_old", oldBinding.get().getSessionId(), "Old session_id should be preserved");
+        assertEquals("opencode", oldBinding.get().getAppId(), "Old app_id should be preserved");
 
         // 2. Can create new binding with null session_id
         ImContextRef newContext = ImContextRef.feishuThread("new_null_session");
