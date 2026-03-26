@@ -1,10 +1,11 @@
 package com.qdw.feishu.app.listener;
 
-import com.qdw.feishu.app.router.CommandRouter;
+import com.qdw.feishu.app.message.BotMessageAppService;
+import com.qdw.feishu.app.opencode.OpenCodeMessageAppService;
 import com.qdw.feishu.domain.exception.MessageBizException;
-import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
-import com.qdw.feishu.domain.service.BotMessageService;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
+import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.service.MessageDeduplicator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -18,16 +19,19 @@ import org.springframework.stereotype.Component;
 @Component
 public class ReceiveMessageListenerExe {
 
-    private final BotMessageService botMessageService;
-    private final CommandRouter commandRouter;
+    private final BotMessageAppService botMessageAppService;
+    private final OpenCodeMessageAppService openCodeMessageAppService;
     private final MessageDeduplicator messageDeduplicator;
+    private final FeishuGateway feishuGateway;
 
-    public ReceiveMessageListenerExe(BotMessageService botMessageService,
-                                    CommandRouter commandRouter,
-                                    MessageDeduplicator messageDeduplicator) {
-        this.botMessageService = botMessageService;
-        this.commandRouter = commandRouter;
+    public ReceiveMessageListenerExe(BotMessageAppService botMessageAppService,
+                                     OpenCodeMessageAppService openCodeMessageAppService,
+                                     MessageDeduplicator messageDeduplicator,
+                                     FeishuGateway feishuGateway) {
+        this.botMessageAppService = botMessageAppService;
+        this.openCodeMessageAppService = openCodeMessageAppService;
         this.messageDeduplicator = messageDeduplicator;
+        this.feishuGateway = feishuGateway;
     }
 
     /**
@@ -50,10 +54,21 @@ public class ReceiveMessageListenerExe {
 
         try {
             log.info("开始处理消息...");
-            botMessageService.handleMessage(message);
+            if (!openCodeMessageAppService.tryHandle(message)) {
+                botMessageAppService.handleMessage(message);
+            }
             log.info("消息处理成功");
         } catch (MessageBizException e) {
-            log.warn("业务异常: {}", e.getMessage());
+            String errorReply = e.getMessage();
+            if (errorReply == null || errorReply.isEmpty()) {
+                errorReply = "操作失败，请稍后重试";
+            }
+            SendResult result = feishuGateway.sendMessage(message, errorReply, message.getTopicId());
+            if (result.isSuccess()) {
+                log.info("业务异常已回复给用户: {}", errorReply);
+            } else {
+                log.warn("业务异常回复发送失败: {}", result.getErrorMessage());
+            }
         } catch (Exception e) {
             log.error("消息处理失败", e);
         }
