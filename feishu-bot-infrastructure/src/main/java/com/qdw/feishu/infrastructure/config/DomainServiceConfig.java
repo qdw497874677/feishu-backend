@@ -1,12 +1,9 @@
 package com.qdw.feishu.infrastructure.config;
 
 import com.qdw.feishu.domain.core.AppRegistry;
-import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
-import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
-import com.qdw.feishu.domain.router.AppRouter;
 import com.qdw.feishu.domain.service.BotMessageService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,12 +19,8 @@ public class DomainServiceConfig {
     }
 
     @Bean
-    public BotMessageService botMessageService(FeishuGateway feishuGateway,
-                                              AppRouter appRouter,
-                                              AppRegistry appRegistry,
-                                              ImContextBindingGateway bindingGateway,
-                                              ReplyStrategyFactory replyStrategyFactory,
-                                              OpenCodeSessionManager openCodeSessionManager) {
-        return new BotMessageService(feishuGateway, appRouter, appRegistry, bindingGateway, replyStrategyFactory, openCodeSessionManager);
+    public BotMessageService botMessageService(AppRegistry appRegistry,
+                                               ImContextBindingGateway bindingGateway) {
+        return new BotMessageService(appRegistry, bindingGateway);
     }
 }

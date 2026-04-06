@@ -1,0 +1,299 @@
+package com.qdw.feishu.app.opencode;
+
+import com.qdw.feishu.app.message.BotMessageAppService;
+import com.qdw.feishu.app.session.ContextSessionOrchestrator;
+import com.qdw.feishu.app.session.ContextSessionStatus;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
+import com.qdw.feishu.domain.message.HandledMessageResult;
+import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.SendResult;
+import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.ImContextBinding;
+import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
+import com.qdw.feishu.domain.opencode.OpenCodeApp;
+import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
+import com.qdw.feishu.domain.session.AppSession;
+import com.qdw.feishu.domain.session.TypeToken;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
+
+@ExtendWith(MockitoExtension.class)
+class OpenCodeMessageAppServiceTest {
+
+    @Mock
+    private ContextSessionOrchestrator contextSessionOrchestrator;
+
+    @Mock
+    private BotMessageAppService botMessageAppService;
+
+    @Mock
+    private FeishuGateway feishuGateway;
+
+    @Mock
+    private OpenCodeSessionManager openCodeSessionManager;
+
+    @Mock
+    private OpenCodeApp openCodeApp;
+
+    private OpenCodeMessageAppService appService;
+
+    @BeforeEach
+    void setUp() {
+        appService = new OpenCodeMessageAppService(
+                contextSessionOrchestrator,
+                botMessageAppService,
+                feishuGateway,
+                openCodeSessionManager,
+                openCodeApp
+        );
+    }
+
+    @Test
+    void should_repairBindingToNull_when_bindingSessionIsDangling() {
+        Message message = createTopicMessage("/opencode session status", "omt_dangling");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_dangling");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_missing");
+        SendResult expected = SendResult.success("msg_1", "omt_dangling");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.dangling(binding));
+        when(openCodeSessionManager.getCurrentSessionStatus(message)).thenReturn("status guidance");
+        when(feishuGateway.sendMessage(message, "⚠️ 检测到当前 OpenCode 会话已失效，已自动修复为未激活会话状态。\n\nstatus guidance", "omt_dangling"))
+                .thenReturn(expected);
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(contextSessionOrchestrator).repairDanglingSessionBinding(contextRef, "opencode");
+        verify(botMessageAppService, never()).handleMessage(message);
+    }
+
+    @Test
+    void should_routeThroughAppLayerOrchestrator_inRealOpenCodeFlow() {
+        Message message = createTopicMessage("/opencode projects", "omt_app");
+        SendResult expected = SendResult.success("msg_2", "omt_app");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.unbound());
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(contextSessionOrchestrator).enterAppContext(ImContextRef.feishuThread("omt_app"), "opencode");
+        verify(botMessageAppService).handleMessage(message);
+    }
+
+    @Test
+    void should_supportPlainText_when_contextAlreadyBoundToOpenCode() {
+        Message message = createTopicMessage("继续处理这个问题", "omt_bound");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_bound");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+
+        assertEquals(true, appService.supports(message));
+    }
+
+    @Test
+    void should_allow_statusAndProjectsCommands_when_inOpenCodeWithoutSession() {
+        Message message = createTopicMessage("/opencode projects", "omt_open");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_open");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult expected = SendResult.success("msg_3", "omt_open");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(botMessageAppService).handleMessage(message);
+    }
+
+    @Test
+    void should_upgradeSessionInAppLayer_when_openCodeReplyContainsSessionId() {
+        Message message = createTopicMessage("/opencode hello", "omt_activate");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_activate");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult expected = SendResult.success("msg_7", "omt_activate");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "opencode", "Created\nSession ID: `oc_ses_123`"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(openCodeSessionManager).saveSession(message, "oc_ses_123");
+    }
+
+    @Test
+    void should_notUpgradeSession_when_replyDoesNotContainSessionId() {
+        Message message = createTopicMessage("/opencode projects", "omt_no_upgrade");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_no_upgrade");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult expected = SendResult.success("msg_8", "omt_no_upgrade");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verifyNoInteractions(openCodeSessionManager);
+    }
+
+    @Test
+    void should_notUpgradeSession_when_sendFails() {
+        Message message = createTopicMessage("/opencode hello", "omt_failed_send");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_failed_send");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult failed = SendResult.failure("send failed");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(failed, "opencode", "Created\nSession ID: `oc_ses_123`"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(failed, result);
+        verifyNoInteractions(openCodeSessionManager);
+    }
+
+    @Test
+    void should_notUpgradeSession_when_detailedResultIsForOtherApp() {
+        Message message = createTopicMessage("/opencode hello", "omt_other_app_result");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_other_app_result");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult expected = SendResult.success("msg_9", "omt_other_app_result");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "help", "Created\nSession ID: `oc_ses_123`"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verifyNoInteractions(openCodeSessionManager);
+    }
+
+    @Test
+    void should_reject_chatCommand_when_inOpenCodeWithoutSession() {
+        Message message = createTopicMessage("/opencode chat hello", "omt_no_session");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_no_session");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult expected = SendResult.success("msg_4", "omt_no_session");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        when(openCodeSessionManager.getCurrentSessionStatus(message)).thenReturn("need session first");
+        when(feishuGateway.sendMessage(message, "need session first", "omt_no_session")).thenReturn(expected);
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(botMessageAppService, never()).handleMessage(message);
+    }
+
+    @Test
+    void should_rejectWhen_boundToOtherApp() {
+        Message message = createTopicMessage("/opencode projects", "omt_other");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_other");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "bash", null);
+        SendResult expected = SendResult.success("msg_5", "omt_other");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.boundToOtherApp(binding));
+        when(feishuGateway.sendMessage(eq(message), eq("❌ 当前上下文已绑定到其他应用：`bash`\n\n请先退出当前应用上下文，或在新的消息/话题中使用 OpenCode。"), eq("omt_other")))
+                .thenReturn(expected);
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(botMessageAppService, never()).handleMessage(message);
+    }
+
+    @Test
+    void should_delegateToBotService_when_contextCannotBeResolved() {
+        Message message = new Message();
+        message.setContent("/opencode projects");
+        message.setMessageId("msg-resolve");
+        SendResult expected = SendResult.success("msg_6");
+        when(botMessageAppService.handleMessage(message)).thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        verify(botMessageAppService).handleMessage(message);
+    }
+
+    @Test
+    void should_bypass_when_notOpenCodeCommand() {
+        Message message = createTopicMessage("/help", "omt_help");
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.getAppAliases()).thenReturn(java.util.List.of("oc", "code"));
+
+        assertEquals(false, appService.supports(message));
+    }
+
+    @Test
+    void should_supportExplicitOpenCodeAliasCommand() {
+        Message message = createTopicMessage("/oc projects", "omt_alias");
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.getAppAliases()).thenReturn(java.util.List.of("oc", "code"));
+
+        assertEquals(true, appService.supports(message));
+    }
+
+    @Test
+    void should_loadStatusOnlyOnce_when_tryHandleImplicitMessageInBoundOpenCodeContext() {
+        Message message = createTopicMessage("继续", "omt_try_handle_once");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_try_handle_once");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_123");
+        SendResult expected = SendResult.success("msg_10", "omt_try_handle_once");
+
+        OpenCodeSessionData sessionData = OpenCodeSessionData.create("ses_123");
+        AppSession<OpenCodeSessionData> session = new AppSession<>("ses_123", "opencode", sessionData);
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), org.mockito.ArgumentMatchers.<TypeToken<OpenCodeSessionData>>any()))
+                .thenReturn(ContextSessionStatus.inAppWithSession(binding, session));
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "opencode", "plain reply"));
+
+        assertEquals(true, appService.tryHandle(message));
+        verify(contextSessionOrchestrator, times(1)).loadStatus(eq(contextRef), eq("opencode"), any());
+        verify(botMessageAppService).handleMessage(message);
+    }
+
+    private Message createTopicMessage(String content, String topicId) {
+        Message message = new Message();
+        message.setContent(content);
+        message.setTopicId(topicId);
+        message.setChatId("chat_test");
+        message.setMessageId("msg_" + topicId);
+        message.setSender(new Sender("ou_test", "tester"));
+        return message;
+    }
+}

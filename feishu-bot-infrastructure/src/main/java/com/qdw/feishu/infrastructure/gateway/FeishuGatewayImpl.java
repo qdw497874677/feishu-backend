@@ -127,8 +127,13 @@ public class FeishuGatewayImpl implements FeishuGateway {
                         return sendReplyToTopic(topicId, content);
                     }
                 } else {
-                    log.info("Creating new thread by replying to original message: messageId={}", message.getMessageId());
-                    return sendReplyToMessage(message.getMessageId(), content);
+                    if (message.getMessageId() != null && !message.getMessageId().isEmpty()) {
+                        log.info("Creating new thread by replying to original message: messageId={}", message.getMessageId());
+                        return sendReplyToMessage(message.getMessageId(), content);
+                    } else {
+                        log.info("No messageId or topicId, sending new message to chat: chatId={}", message.getChatId());
+                        return sendMessageToChat(message.getChatId(), content);
+                    }
                 }
             } catch (Exception e) {
                 log.error("Exception sending message", e);

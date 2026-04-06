@@ -1,0 +1,118 @@
+package com.qdw.feishu.app.message;
+
+import com.qdw.feishu.domain.app.FishuAppI;
+import com.qdw.feishu.domain.core.ReplyMode;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
+import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
+import com.qdw.feishu.domain.message.BotRoutingDecision;
+import com.qdw.feishu.domain.message.HandledMessageResult;
+import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.SendResult;
+import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.BindingResult;
+import com.qdw.feishu.domain.model.ImContextBinding;
+import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.reply.ReplyStrategy;
+import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
+import com.qdw.feishu.domain.service.BotMessageService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class BotMessageAppServiceTest {
+
+    @Mock
+    private BotMessageService botMessageService;
+
+    @Mock
+    private FeishuGateway feishuGateway;
+
+    @Mock
+    private ImContextBindingGateway bindingGateway;
+
+    @Mock
+    private FishuAppI helpApp;
+
+    @Mock
+    private FishuAppI openCodeApp;
+
+    private BotMessageAppService appService;
+
+    @BeforeEach
+    void setUp() {
+        ReplyStrategy replyStrategy = new ReplyStrategy() {
+            @Override
+            public ReplyMode getReplyMode() {
+                return ReplyMode.DEFAULT;
+            }
+
+            @Override
+            public SendResult reply(Message message, String replyContent, String topicId) {
+                return feishuGateway.sendMessage(message, replyContent, topicId);
+            }
+        };
+        appService = new BotMessageAppService(
+                botMessageService,
+                feishuGateway,
+                bindingGateway,
+                new ReplyStrategyFactory(List.of(replyStrategy))
+        );
+    }
+
+    @Test
+    void should_executeStatelessRouteWithoutPersistingBinding() {
+        Message message = createMessage("/help", null, "chat_help");
+        SendResult expected = SendResult.success("msg_help");
+
+        when(botMessageService.routeMessage(message)).thenReturn(new BotRoutingDecision("help", helpApp, false));
+        when(helpApp.execute(message)).thenReturn("help text");
+        when(helpApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        when(feishuGateway.sendMessage(message, "help text", null)).thenReturn(expected);
+
+        HandledMessageResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result.getSendResult());
+        assertEquals("help", result.getAppId());
+        verify(bindingGateway, never()).bind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void should_persistOpenCodeBindingUsingReturnedThreadId_when_routeRequestsPersistence() {
+        Message message = createMessage("/opencode projects", "omt_route", "chat_route");
+        SendResult expected = SendResult.success("msg_open", "omt_actual");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_actual");
+
+        when(botMessageService.routeMessage(message)).thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
+        when(openCodeApp.execute(message)).thenReturn("project list");
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        when(feishuGateway.sendMessage(message, "project list", "omt_route")).thenReturn(expected);
+        when(bindingGateway.bind(contextRef, "opencode", null))
+                .thenReturn(BindingResult.created(ImContextBinding.create(contextRef, "opencode", null)));
+
+        HandledMessageResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result.getSendResult());
+        assertEquals("opencode", result.getAppId());
+        verify(bindingGateway).bind(contextRef, "opencode", null);
+    }
+
+    private Message createMessage(String content, String topicId, String chatId) {
+        Message message = new Message();
+        message.setContent(content);
+        message.setTopicId(topicId);
+        message.setChatId(chatId);
+        message.setMessageId("msg_" + chatId);
+        message.setSender(new Sender("ou_test", "tester"));
+        return message;
+    }
+}

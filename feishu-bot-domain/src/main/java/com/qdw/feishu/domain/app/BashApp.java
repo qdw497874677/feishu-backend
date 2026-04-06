@@ -154,6 +154,10 @@ public class BashApp implements FishuAppI {
 
         String command = parts[1].trim();
 
+        if (command.equals("help")) {
+            return getHelp();
+        }
+
         if (command.equals("history")) {
             return formatHistory();
         }

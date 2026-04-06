@@ -1,8 +1,8 @@
 package com.qdw.feishu.adapter.test;
 
+import com.qdw.feishu.app.message.BotMessageAppService;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
-import com.qdw.feishu.domain.service.BotMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.*;
 public class MessageTestController {
     
     @Autowired
-    private BotMessageService botMessageService;
+    private BotMessageAppService botMessageAppService;
     
     /**
      * 发送测试消息
@@ -62,7 +62,7 @@ public class MessageTestController {
             }
             
             // 2. 调用消息处理服务
-            botMessageService.handleMessage(message);
+            botMessageAppService.handleMessage(message);
             
             log.info("=== 测试消息处理完成 ===");
             return ResponseEntity.ok("✅ 消息已处理，请查看日志: tail -f /tmp/feishu-run.log");

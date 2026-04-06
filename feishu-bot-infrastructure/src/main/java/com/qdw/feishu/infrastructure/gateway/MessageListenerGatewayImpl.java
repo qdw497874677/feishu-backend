@@ -1,12 +1,16 @@
 package com.qdw.feishu.infrastructure.gateway;
 
 import com.lark.oapi.event.EventDispatcher;
+import com.lark.oapi.event.cardcallback.P2CardActionTriggerHandler;
+import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
+import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
 import com.lark.oapi.service.im.ImService;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.ws.Client;
 import com.qdw.feishu.domain.gateway.MessageEventParser;
 import com.qdw.feishu.domain.gateway.MessageListenerGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.processor.EventProcessor;
 import com.qdw.feishu.infrastructure.config.FeishuProperties;
 
@@ -14,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -49,6 +54,13 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
             @Override
             public void handle(P2MessageReceiveV1 event) throws Exception {
                 handleEvent(event);
+            }
+        })
+        .onP2CardActionTrigger(new P2CardActionTriggerHandler() {
+            @Override
+            public P2CardActionTriggerResponse handle(P2CardActionTrigger event) throws Exception {
+                handleCardAction(event);
+                return new P2CardActionTriggerResponse();
             }
         })
         .build();
@@ -123,5 +135,69 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
         } catch (Exception e) {
             log.error("Failed to handle message event", e);
         }
+    }
+
+    /**
+     * 处理卡片按钮点击事件
+     * 将按钮 action 值（如 "time"）转换为 "/time" 命令，通过现有消息处理流程执行
+     */
+    private void handleCardAction(P2CardActionTrigger event) {
+        try {
+            log.info("收到卡片按钮点击事件");
+
+            if (event.getEvent() == null || event.getEvent().getAction() == null) {
+                log.warn("卡片事件缺少 action 数据");
+                return;
+            }
+
+            Map<String, Object> actionValue = event.getEvent().getAction().getValue();
+            if (actionValue == null || !actionValue.containsKey("action")) {
+                log.warn("卡片按钮 value 中缺少 action 字段: {}", actionValue);
+                return;
+            }
+
+            String action = actionValue.get("action").toString();
+            log.info("卡片按钮点击: action={}", action);
+
+            // 获取平台事件 ID（用于去重）
+            String cardEventId = resolveCardEventId(event);
+            log.info("卡片事件 ID: {}", cardEventId);
+
+            // 构造伪 Message，将按钮点击转换为文字命令
+            Message message = new Message();
+            message.setContent("/" + action);
+            message.setEventId(cardEventId);
+
+            // 设置发送者
+            String openId = "";
+            if (event.getEvent().getOperator() != null) {
+                openId = event.getEvent().getOperator().getOpenId();
+            }
+            message.setSender(new Sender(openId, "card-user"));
+
+            // 从 context 获取 chatId
+            if (event.getEvent().getContext() != null) {
+                message.setChatId(event.getEvent().getContext().getOpenChatId());
+            }
+
+            if (messageHandler != null) {
+                messageHandler.accept(message);
+            }
+
+        } catch (Exception e) {
+            log.error("处理卡片按钮点击事件失败", e);
+        }
+    }
+
+    /**
+     * 从卡片事件中提取唯一事件 ID，用于去重
+     * 优先使用飞书平台的 eventId，兜底使用 UUID
+     */
+    private String resolveCardEventId(P2CardActionTrigger event) {
+        if (event.getHeader() != null && event.getHeader().getEventId() != null
+                && !event.getHeader().getEventId().isEmpty()) {
+            return "card-" + event.getHeader().getEventId();
+        }
+        return "card-" + UUID.randomUUID().toString();
     }
 }

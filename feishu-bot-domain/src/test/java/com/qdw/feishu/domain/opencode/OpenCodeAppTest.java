@@ -132,9 +132,10 @@ class OpenCodeAppTest {
 
         assertNotNull(whitelist);
         assertFalse(whitelist.isCommandAllowed("chat", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
-        assertFalse(whitelist.isCommandAllowed("new", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
         assertTrue(whitelist.isCommandAllowed("projects", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
         assertTrue(whitelist.isCommandAllowed("sessions", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
+        assertTrue(whitelist.isCommandAllowed("session", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
+        assertTrue(whitelist.isCommandAllowed("sc", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
     }
 
     @Test

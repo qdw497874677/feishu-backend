@@ -132,6 +132,36 @@ class OpenCodeSessionManagerTest {
     }
 
     @Test
+    @DisplayName("绑定到 OpenCode 但 sessionId 为空时，应返回 UNINITIALIZED")
+    void should_detectUninitialized_when_boundToOpenCodeWithoutSession() {
+        String topicId = "topic-null-session";
+        Message message = createTestMessage("test content", topicId);
+        ImContextRef contextRef = ImContextRef.feishuThread(topicId);
+        ImContextBinding binding = createBinding(contextRef, null);
+
+        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
+
+        TopicState result = sessionManager.detectTopicState(message);
+
+        assertEquals(TopicState.UNINITIALIZED, result);
+    }
+
+    @Test
+    @DisplayName("绑定到 OpenCode 且 sessionId 存在时，应返回 INITIALIZED")
+    void should_detectInitialized_when_boundToOpenCodeWithSession() {
+        String topicId = "topic-with-session";
+        Message message = createTestMessage("test content", topicId);
+        ImContextRef contextRef = ImContextRef.feishuThread(topicId);
+        ImContextBinding binding = createBinding(contextRef, "ses_123");
+
+        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
+
+        TopicState result = sessionManager.detectTopicState(message);
+
+        assertEquals(TopicState.INITIALIZED, result);
+    }
+
+    @Test
     @DisplayName("非话题环境（topicId 和 chatId 都为 null）时，应返回 NON_TOPIC")
     void detectTopicState_noContext_returnsNonTopic() {
         Message message = new Message();
@@ -182,6 +212,25 @@ class OpenCodeSessionManagerTest {
         assertTrue(result.contains("当前会话信息"));
         assertTrue(result.contains(appSessionId));
         assertTrue(result.contains("活跃"));
+    }
+
+    @Test
+    @DisplayName("dangling binding 时应返回 OpenCode 引导")
+    void should_returnOpenCodeGuidance_when_bindingSessionIsDangling() {
+        String topicId = "topic-dangling";
+        String appSessionId = "ses_missing";
+        Message message = createTestMessage("test", topicId);
+        ImContextRef contextRef = ImContextRef.feishuThread(topicId);
+        ImContextBinding binding = createBinding(contextRef, appSessionId);
+
+        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
+        when(appSessionGateway.getSession(eq("opencode"), eq(appSessionId), any(TypeToken.class)))
+            .thenReturn(Optional.empty());
+
+        String result = sessionManager.getCurrentSessionStatus(message);
+
+        assertTrue(result.contains("OpenCode 上下文"));
+        assertTrue(result.contains("还没有激活会话"));
     }
 
     @Test
@@ -328,6 +377,24 @@ class OpenCodeSessionManagerTest {
 
         verify(appSessionGateway).createSession(eq("opencode"), any(OpenCodeSessionData.class), any(TypeToken.class));
         verify(bindingGateway).bind(contextRef, "opencode", "app_ses_123");
+    }
+
+    @Test
+    @DisplayName("已有 null session binding 时，显式创建/选择会话应升级 binding")
+    void should_upgradeBinding_when_sessionIsExplicitlyCreatedOrSelected() {
+        ImContextRef contextRef = ImContextRef.feishuThread("topic-upgrade");
+        ImContextBinding existingBinding = createBinding(contextRef, null);
+
+        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(existingBinding));
+        when(appSessionGateway.createSession(eq("opencode"), any(OpenCodeSessionData.class), any(TypeToken.class)))
+            .thenReturn("app_ses_upgraded");
+        when(bindingGateway.bind(contextRef, "opencode", "app_ses_upgraded"))
+            .thenReturn(BindingResult.updated(ImContextBinding.create(contextRef, "opencode", "app_ses_upgraded")));
+
+        sessionManager.saveSession(contextRef, "oc_session_001");
+
+        verify(appSessionGateway).createSession(eq("opencode"), any(OpenCodeSessionData.class), any(TypeToken.class));
+        verify(bindingGateway).bind(contextRef, "opencode", "app_ses_upgraded");
     }
 
     @Test
@@ -623,147 +690,78 @@ class OpenCodeSessionManagerTest {
     // ========== Null SessionId Handling 测试 ==========
 
     @Test
-    @DisplayName("获取会话 ID - 绑定存在但 sessionId 为 null 时,应返回 empty 且不调用 session Gateway")
-    void getSessionId_nullSessionId_returnsEmpty() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
-        String topicId = "topic-null-getid";
+    @DisplayName("获取会话状态 - 绑定存在但 sessionId 为 null 时，显示未激活会话状态")
+    void getCurrentSessionStatus_nullSessionId_returnsAppContextMessage() {
+        String topicId = "topic-null-status";
+        Message message = createTestMessage("test", topicId);
         ImContextRef contextRef = ImContextRef.feishuThread(topicId);
         ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
+
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
 
-        // When
-        Optional<String> result = sessionManager.getSessionId(contextRef);
+        String result = sessionManager.getCurrentSessionStatus(message);
 
-        // Then: 应返回 empty且不调用 session Gateway
+        assertTrue(result.contains("还没有激活会话"));
+        assertTrue(result.contains("OpenCode 上下文"));
         verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
     }
-
-    @Test
-    @DisplayName("检查显式初始化 - 绑定存在但 sessionId 为 null 时应返回 false 且不调用 session Gateway")
-    void isExplicitlyInitialized_nullSessionId_returnsFalse() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
-        String topicId = "topic-null-isinit";
-        ImContextRef contextRef = ImContextRef.feishuThread(topicId);
-        ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
-        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
-
-        // When
-        boolean result = sessionManager.isExplicitlyInitialized(contextRef);
-
-        // Then: 应返回 false 且不调用 session Gateway
-        verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
-    }
-
-    @Test
-    @DisplayName("设置显式初始化标记 - 绑定存在但 sessionId 为 null 时应安全跳过")
-    void setExplicitlyInitialized_nullSessionId_noOps() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
-        String topicId = "topic-null-setinit";
-        ImContextRef contextRef = ImContextRef.feishuThread(topicId);
-        ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
-        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
-
-        // When
-        sessionManager.setExplicitlyInitialized(contextRef);
-
-        // Then: 不应调用任何 session Gateway 方法
-        verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
-        verify(appSessionGateway, never()).updateSession(anyString(), anyString(), anyLong());
-    }
-
-    @Test
-    @DisplayName("清除显式初始化标记 - 绑定存在但 sessionId 为 null 时应安全跳过")
-    void clearExplicitlyInitialized_nullSessionId_noOps() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
-        String topicId = "topic-null-clearInit";
-        ImContextRef contextRef = ImContextRef.feishuThread(topicId);
-        ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
-        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
-
-        // When
-        sessionManager.clearExplicitlyInitialized(contextRef);
-
-        // Then: 不应调用任何 session Gateway 方法
-        verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
-        verify(appSessionGateway, never()).updateSession(anyString(), anyString(), anyLong());
-    }
-}
 
     @Test
     @DisplayName("清除会话 - 绑定存在但 sessionId 为 null 时，只清除绑定，不调用 deleteSession")
     void clearSession_nullSessionId_onlyClearsBinding() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
         String topicId = "topic-null-clear";
         ImContextRef contextRef = ImContextRef.feishuThread(topicId);
         ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
+
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
 
-        // When
         sessionManager.clearSession(contextRef);
 
-        // Then: 应清除绑定
         verify(bindingGateway).clearBinding(contextRef);
-        // And: 不应调用 deleteSession (因为 sessionId 为 null)
         verify(appSessionGateway, never()).deleteSession(anyString(), any());
     }
 
     @Test
     @DisplayName("获取会话 ID - 绑定存在但 sessionId 为 null 时，返回 empty 且不调用 session gateway")
     void getSessionId_nullSessionId_returnsEmpty() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
         String topicId = "topic-null-getid";
         ImContextRef contextRef = ImContextRef.feishuThread(topicId);
         ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
+
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
 
-        // When
         Optional<String> result = sessionManager.getSessionId(contextRef);
 
-        // Then: 应返回 empty
         assertFalse(result.isPresent());
-        // And: 不应调用 session gateway
         verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
     }
 
     @Test
     @DisplayName("检查显式初始化 - 绑定存在但 sessionId 为 null 时，返回 false 且不调用 session gateway")
     void isExplicitlyInitialized_nullSessionId_returnsFalse() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
         String topicId = "topic-null-init";
         ImContextRef contextRef = ImContextRef.feishuThread(topicId);
         ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
+
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
 
-        // When
         boolean result = sessionManager.isExplicitlyInitialized(contextRef);
 
-        // Then: 应返回 false
         assertFalse(result);
-        // And: 不应调用 session gateway
         verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
     }
 
     @Test
     @DisplayName("设置显式初始化标记 - 绑定存在但 sessionId 为 null 时，应安全跳过")
     void setExplicitlyInitialized_nullSessionId_noOp() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
         String topicId = "topic-null-setinit";
         ImContextRef contextRef = ImContextRef.feishuThread(topicId);
         ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
+
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
 
-        // When
         sessionManager.setExplicitlyInitialized(contextRef);
 
-        // Then: 不应调用任何 session gateway 方法
         verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
         verify(appSessionGateway, never()).updateSession(anyString(), anyString(), any(), any(TypeToken.class), anyLong());
     }
@@ -771,17 +769,14 @@ class OpenCodeSessionManagerTest {
     @Test
     @DisplayName("清除显式初始化标记 - 绑定存在但 sessionId 为 null 时，应安全跳过")
     void clearExplicitlyInitialized_nullSessionId_noOp() {
-        // Given: 上下文已绑定到 opencode，但 sessionId 为 null
         String topicId = "topic-null-clearinit";
         ImContextRef contextRef = ImContextRef.feishuThread(topicId);
         ImContextBinding nullSessionBinding = ImContextBinding.create(contextRef, "opencode", null);
-        
+
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(nullSessionBinding));
 
-        // When
         sessionManager.clearExplicitlyInitialized(contextRef);
 
-        // Then: 不应调用任何 session gateway 方法
         verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
         verify(appSessionGateway, never()).updateSession(anyString(), anyString(), any(), any(TypeToken.class), anyLong());
     }
