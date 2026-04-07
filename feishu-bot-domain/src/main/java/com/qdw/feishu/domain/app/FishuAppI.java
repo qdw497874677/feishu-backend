@@ -23,19 +23,27 @@ public interface FishuAppI {
     }
 
     /**
-     * 旧版执行方法：接收 Message，返回字符串
-     * @deprecated 请使用 {@link #execute(UnifiedCommand)} 代替
+     * Execute the application with a message.
+     *
+     * @param message the incoming message
+     * @return structured execution result
      */
-    @Deprecated
-    String execute(Message message);
+    AppExecutionResult execute(Message message);
 
     /**
      * 新版执行方法：接收统一命令，返回业务结果
      */
     default BizResult execute(UnifiedCommand command) {
         Message message = createMessage(command);
-        String result = execute(message);
-        return result != null ? BizResult.of(result) : BizResult.failure("应用返回空结果");
+        AppExecutionResult result = execute(message);
+        if (result == null) {
+            return BizResult.failure("应用返回空结果");
+        }
+        if (result.getReplyContent() == null) {
+            // noReply() is a valid async response, not a failure.
+            return BizResult.builder().success(true).build();
+        }
+        return BizResult.of(result.getReplyContent());
     }
 
     /**

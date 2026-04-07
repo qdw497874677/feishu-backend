@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
@@ -172,7 +173,7 @@ class OpenCodeAppTest {
     void execute_emptyCommand_returnsStatus() {
         Message message = createTestMessage("/opencode", "test-topic");
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         // 空命令（有 topicId）返回会话状态，由 sessionManager.getCurrentSessionStatus 处理
         assertNotNull(result);
@@ -185,7 +186,7 @@ class OpenCodeAppTest {
     void execute_helpCommand_returnsHelp() {
         Message message = createTestMessage("/opencode help", "test-topic");
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertTrue(result.contains("OpenCode 助手"));
         verify(commandHandler, never()).handle(any(), anyString(), any(), any());
@@ -201,7 +202,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("sessions"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
         verify(commandHandler).handle(eq(message), eq("sessions"), any(), any());
@@ -217,7 +218,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
         verify(commandHandler).handle(eq(message), eq("projects"), any(), any());
@@ -233,7 +234,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("chat"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
     }
@@ -248,7 +249,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("new"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
     }
@@ -264,7 +265,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("sc"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
     }
@@ -278,7 +279,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(any(), anyString(), any(), any()))
             .thenReturn(null);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertTrue(result.contains("OpenCode 助手"));
     }
@@ -293,7 +294,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class)))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
         verify(commandHandler).handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class));
@@ -309,7 +310,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
     }
@@ -324,7 +325,7 @@ class OpenCodeAppTest {
         when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
             .thenReturn(expectedResponse);
 
-        String result = app.execute(message);
+        String result = app.execute(message).getReplyContent();
 
         assertEquals(expectedResponse, result);
     }

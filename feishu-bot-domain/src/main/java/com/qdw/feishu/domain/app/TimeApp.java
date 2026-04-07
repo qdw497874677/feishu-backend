@@ -56,7 +56,7 @@ public class TimeApp implements FishuAppI {
     }
 
     @Override
-    public String execute(Message message) {
+    public AppExecutionResult execute(Message message) {
         log.info("=== TimeApp.execute 开始 ===");
         log.info("应用 ID: {}", getAppId());
         log.info("输入消息: {}", message.getContent());
@@ -70,6 +70,6 @@ public class TimeApp implements FishuAppI {
         log.info("TimeApp.execute 完成，返回: {}", result);
         log.info("=== TimeApp.execute 结束 ===");
 
-        return result;
+        return AppExecutionResult.text(result);
     }
 }

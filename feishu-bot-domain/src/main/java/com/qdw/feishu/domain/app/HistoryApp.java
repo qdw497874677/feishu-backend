@@ -72,7 +72,7 @@ public class HistoryApp implements FishuAppI {
     }
 
     @Override
-    public String execute(Message message) {
+    public AppExecutionResult execute(Message message) {
         log.info("=== HistoryApp.execute 开始 ===");
         log.info("应用 ID: {}", getAppId());
         log.info("输入消息: {}", message.getContent());
@@ -86,7 +86,7 @@ public class HistoryApp implements FishuAppI {
 
         if (history.getMessages() == null || history.getMessages().isEmpty()) {
             log.info("历史消息为空");
-            return "暂无历史消息";
+            return AppExecutionResult.text("暂无历史消息");
         }
 
         StringBuilder sb = new StringBuilder();
@@ -105,6 +105,6 @@ public class HistoryApp implements FishuAppI {
         log.info("HistoryApp.execute 完成，返回历史消息: {} 条", history.getMessages().size());
         log.info("=== HistoryApp.execute 结束 ===\n");
 
-        return sb.toString();
+        return AppExecutionResult.text(sb.toString());
     }
 }

@@ -5,6 +5,7 @@ import com.qdw.feishu.domain.history.BashHistoryManager;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.command.CommandWhitelistValidator;
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -57,7 +58,7 @@ class BashAppTest {
     void testExecute_lsCommand_returnsFileListing() {
         Message message = createMessage("/bash ls");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertNotNull(result);
         assertFalse(result.contains("错误"));
@@ -67,7 +68,7 @@ class BashAppTest {
     void testExecute_invalidCommand_returnsErrorMessage() {
         Message message = createMessage("/bash rm -rf /");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertTrue(result.contains("不在白名单中") || result.contains("不允许"));
     }
@@ -102,7 +103,7 @@ class BashAppTest {
     void testExecute_emptyCommand_returnsHelp() {
         Message message = createMessage("/bash");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertTrue(result.contains("用法") || result.contains("help"));
     }
@@ -114,7 +115,7 @@ class BashAppTest {
 
         Message message = createMessage("/bash history");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertTrue(result.contains("ls") || result.contains("历史"));
     }
@@ -123,7 +124,7 @@ class BashAppTest {
     void testExecute_createsWorkspaceInCurrentDir() {
         Message message = createMessage("/bash ls");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertNotNull(result);
         assertFalse(result.contains("错误"));
@@ -136,7 +137,7 @@ class BashAppTest {
     void testExecute_commandWithNoArgs_executesSuccessfully() {
         Message message = createMessage("/bash ls");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertNotNull(result);
         assertFalse(result.contains("cannot access"));
@@ -146,7 +147,7 @@ class BashAppTest {
     void testExecute_commandWithMultipleArgs_executesSuccessfully() {
         Message message = createMessage("/bash ls -la");
 
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
 
         assertNotNull(result);
         assertFalse(result.contains("错误"));
@@ -157,7 +158,7 @@ class BashAppTest {
         Message message = createMessage("/bash pwd");
 
         long startTime = System.nanoTime();
-        String result = bashApp.execute(message);
+        String result = bashApp.execute(message).getReplyContent();
         long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
 
         assertNotNull(result);
@@ -170,9 +171,9 @@ class BashAppTest {
     void testExecute_slowCommand_sendsNotificationThenResult() throws InterruptedException {
         Message message = createMessage("/bash sleep 6");
 
-        String result = bashApp.execute(message);
+        AppExecutionResult execResult = bashApp.execute(message);
 
-        assertNull(result, "Long async command should return null immediately");
+        assertNull(execResult.getReplyContent(), "Long async command should return null content");
         Thread.sleep(100);
         verify(feishuGateway, atLeastOnce()).sendMessage(eq(message), contains("执行中"), anyString());
     }

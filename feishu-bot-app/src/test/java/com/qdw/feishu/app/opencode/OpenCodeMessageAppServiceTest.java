@@ -3,6 +3,7 @@ package com.qdw.feishu.app.opencode;
 import com.qdw.feishu.app.message.BotMessageAppService;
 import com.qdw.feishu.app.session.ContextSessionOrchestrator;
 import com.qdw.feishu.app.session.ContextSessionStatus;
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.HandledMessageResult;
 import com.qdw.feishu.domain.message.Message;
@@ -89,7 +90,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.unbound());
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("project list")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -120,7 +121,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.inAppNoSession(binding));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("project list")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -138,7 +139,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.inAppNoSession(binding));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "opencode", "Created\nSession ID: `oc_ses_123`"));
+                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("Created\nSession ID: `oc_ses_123`")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -156,7 +157,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.inAppNoSession(binding));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("project list")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -174,7 +175,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.inAppNoSession(binding));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(failed, "opencode", "Created\nSession ID: `oc_ses_123`"));
+                .thenReturn(new HandledMessageResult(failed, "opencode", AppExecutionResult.text("Created\nSession ID: `oc_ses_123`")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -192,7 +193,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.inAppNoSession(binding));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "help", "Created\nSession ID: `oc_ses_123`"));
+                .thenReturn(new HandledMessageResult(expected, "help", AppExecutionResult.text("Created\nSession ID: `oc_ses_123`")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -242,7 +243,7 @@ class OpenCodeMessageAppServiceTest {
         message.setContent("/opencode projects");
         message.setMessageId("msg-resolve");
         SendResult expected = SendResult.success("msg_6");
-        when(botMessageAppService.handleMessage(message)).thenReturn(new HandledMessageResult(expected, "opencode", "project list"));
+        when(botMessageAppService.handleMessage(message)).thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("project list")));
 
         SendResult result = appService.handleMessage(message);
 
@@ -280,7 +281,7 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), org.mockito.ArgumentMatchers.<TypeToken<OpenCodeSessionData>>any()))
                 .thenReturn(ContextSessionStatus.inAppWithSession(binding, session));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "opencode", "plain reply"));
+                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("plain reply")));
 
         assertEquals(true, appService.tryHandle(message));
         verify(contextSessionOrchestrator, times(1)).loadStatus(eq(contextRef), eq("opencode"), any());

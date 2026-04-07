@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.router;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.message.Message;
@@ -35,9 +36,9 @@ public class AppRouter {
         return appRegistry.getApp(appId)
             .map(app -> {
                 try {
-                    String result = app.execute(message);
+                    AppExecutionResult result = app.execute(message);
                     log.info("应用 {} 执行成功", appId);
-                    return result;
+                    return result != null ? result.getReplyContent() : null;
                 } catch (Exception e) {
                     log.error("应用 {} 执行失败", appId, e);
                     return "应用执行失败: " + e.getMessage();

@@ -54,7 +54,7 @@ public class HelpApp implements FishuAppI {
     }
 
     @Override
-    public String execute(Message message) {
+    public AppExecutionResult execute(Message message) {
         log.info("=== HelpApp.execute 开始 ===");
         log.info("应用 ID: {}", getAppId());
         log.info("输入消息: {}", message.getContent());
@@ -62,12 +62,12 @@ public class HelpApp implements FishuAppI {
         // 1. 尝试发送卡片帮助
         if (trySendCardHelp(message)) {
             log.info("卡片帮助发送成功: chatId={}", message.getChatId());
-            return null;  // 卡片发送成功，不需要返回文本
+            return AppExecutionResult.text(null);  // 卡片发送成功，不需要返回文本
         }
 
         // 2. 降级：返回文本帮助
         log.info("降级为文本帮助: chatId={}", message.getChatId());
-        return generateTextHelp();
+        return AppExecutionResult.text(generateTextHelp());
     }
 
     private boolean trySendCardHelp(Message message) {

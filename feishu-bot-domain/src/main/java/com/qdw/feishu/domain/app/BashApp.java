@@ -144,26 +144,26 @@ public class BashApp implements FishuAppI {
     }
 
     @Override
-    public String execute(Message message) {
+    public AppExecutionResult execute(Message message) {
         String content = message.getContent().trim();
         String[] parts = content.split("\\s+", 2);
 
         if (parts.length < 2) {
-            return getHelp();
+            return AppExecutionResult.text(getHelp());
         }
 
         String command = parts[1].trim();
 
         if (command.equals("help")) {
-            return getHelp();
+            return AppExecutionResult.text(getHelp());
         }
 
         if (command.equals("history")) {
-            return formatHistory();
+            return AppExecutionResult.text(formatHistory());
         }
 
         if (!validator.isValidCommand(command)) {
-            return "错误：命令不在白名单中或包含非法操作符";
+            return AppExecutionResult.text("错误：命令不在白名单中或包含非法操作符");
         }
 
         long startTime = System.nanoTime();
@@ -175,11 +175,11 @@ public class BashApp implements FishuAppI {
             feishuGateway.sendMessage(message, "命令正在执行中，结果将稍后返回...",
                                       message.getTopicId());
             executeCommandAsync(message, command);
-            return null;
+            return AppExecutionResult.text(null);
         } catch (Exception e) {
             log.error("Command execution failed", e);
             historyManager.recordExecution(command, "错误: " + e.getMessage(), false);
-            return "错误：" + e.getMessage();
+            return AppExecutionResult.text("错误：" + e.getMessage());
         }
 
         long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
@@ -189,7 +189,7 @@ public class BashApp implements FishuAppI {
                                       message.getTopicId());
         }
 
-        return result;
+        return AppExecutionResult.text(result);
     }
 
     @Async("bashExecutor")

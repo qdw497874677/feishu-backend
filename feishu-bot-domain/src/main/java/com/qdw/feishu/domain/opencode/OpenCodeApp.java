@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.core.ReplyMode;
@@ -167,7 +168,7 @@ public class OpenCodeApp implements FishuAppI {
     }
 
     @Override
-    public String execute(Message message) {
+    public AppExecutionResult execute(Message message) {
         String content = message.getContent().trim();
         String[] parts = content.split("\\s+", 3);
 
@@ -178,7 +179,7 @@ public class OpenCodeApp implements FishuAppI {
             String topicId = message.getTopicId();
             if (topicId == null || topicId.isEmpty()) {
                 // 话题外，返回简短引导
-                return """
+                return AppExecutionResult.text("""
                     🤖 **OpenCode 助手**
                     
                     已进入话题模式！
@@ -190,17 +191,17 @@ public class OpenCodeApp implements FishuAppI {
                     • `help` - 查看完整帮助
                     
                     💡 直接输入命令即可（无需 /opencode 前缀）
-                    """;
+                    """);
             }
             // 话题内，显示状态和引导
-            return sessionManager.getCurrentSessionStatus(message);
+            return AppExecutionResult.text(sessionManager.getCurrentSessionStatus(message));
         }
 
         String subCommand = parts[1].toLowerCase();
 
         // help 命令直接返回帮助信息
         if (subCommand.equals("help")) {
-            return getHelp();
+            return AppExecutionResult.text(getHelp());
         }
 
         // 委托给命令处理器（传递白名单确保一致性）
@@ -208,11 +209,11 @@ public class OpenCodeApp implements FishuAppI {
         CommandWhitelist whitelist = getCommandWhitelist(state);
         String result = commandHandler.handle(message, subCommand, parts, whitelist);
         if (result != null) {
-            return result;
+            return AppExecutionResult.text(result);
         }
 
         // 如果处理器返回 null，说明是需要进一步处理的情况
         log.warn("命令处理器返回 null: subCommand={}", subCommand);
-        return getHelp();
+        return AppExecutionResult.text(getHelp());
     }
 }

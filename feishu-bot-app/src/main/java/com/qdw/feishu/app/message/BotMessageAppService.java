@@ -1,5 +1,6 @@
 package com.qdw.feishu.app.message;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.feishu.FeishuContextResolver;
@@ -43,15 +44,16 @@ public class BotMessageAppService {
         }
 
         FishuAppI app = decision.getApp();
-        String replyContent = app.execute(message);
+        AppExecutionResult execResult = app.execute(message);
+        String replyContent = execResult != null ? execResult.getReplyContent() : null;
         SendResult sendResult = sendReply(message, app, replyContent);
         persistBindingIfNeeded(message, sendResult, decision);
-        return new HandledMessageResult(sendResult, decision.getAppId(), replyContent);
+        return new HandledMessageResult(sendResult, decision.getAppId(), execResult);
     }
 
     private SendResult sendReply(Message message, FishuAppI app, String replyContent) {
         if (replyContent == null) {
-            log.debug("App {} returned null, skipping reply (likely sent card directly)", app.getAppId());
+            log.debug("App {} returned null content, skipping reply (likely sent card directly or async)", app.getAppId());
             return SendResult.success(null);
         }
         ReplyMode replyMode = app.getReplyMode();

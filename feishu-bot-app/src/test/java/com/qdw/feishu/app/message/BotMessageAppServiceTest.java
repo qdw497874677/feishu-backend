@@ -1,5 +1,6 @@
 package com.qdw.feishu.app.message;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
@@ -75,7 +76,7 @@ class BotMessageAppServiceTest {
         SendResult expected = SendResult.success("msg_help");
 
         when(botMessageService.routeMessage(message)).thenReturn(new BotRoutingDecision("help", helpApp, false));
-        when(helpApp.execute(message)).thenReturn("help text");
+        when(helpApp.execute(message)).thenReturn(AppExecutionResult.text("help text"));
         when(helpApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "help text", null)).thenReturn(expected);
 
@@ -93,7 +94,7 @@ class BotMessageAppServiceTest {
         ImContextRef contextRef = ImContextRef.feishuThread("omt_actual");
 
         when(botMessageService.routeMessage(message)).thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
-        when(openCodeApp.execute(message)).thenReturn("project list");
+        when(openCodeApp.execute(message)).thenReturn(AppExecutionResult.text("project list"));
         when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "project list", "omt_route")).thenReturn(expected);
         when(bindingGateway.bind(contextRef, "opencode", null))
