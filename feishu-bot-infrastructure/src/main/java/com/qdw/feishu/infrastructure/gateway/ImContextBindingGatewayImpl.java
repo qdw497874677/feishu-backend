@@ -289,45 +289,30 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
 
         String contextKey = contextRef.toStorageKey();
 
-        // Check existing binding
+        // Check existing binding for no-change optimization and result classification
         Optional<ImContextBinding> existing = findBinding(contextRef);
 
         if (existing.isPresent()) {
             ImContextBinding current = existing.get();
-
             // If already bound to same app+session, no change needed
             if (current.matches(appId, sessionId)) {
                 log.debug("Binding already exists for context={}, appId={}, sessionId={}",
                     contextKey, appId, sessionId);
                 return BindingResult.noChange(current);
             }
-
-            // Update existing binding to new session
-            long now = System.currentTimeMillis();
-            String sql = """
-                UPDATE im_context_binding
-                SET app_id = ?, session_id = ?, last_active_at = ?
-                WHERE context_key = ?
-            """;
-
-            int updated = jdbcTemplate.update(sql, appId, sessionId, now, contextKey);
-
-            if (updated > 0) {
-                ImContextBinding newBinding = new ImContextBinding(
-                    contextRef, appId, sessionId, current.getCreatedAt(), now
-                );
-                log.info("Binding updated: context={}, oldSession={}, newSession={}",
-                    contextKey, current.getSessionId(), sessionId);
-                return BindingResult.updated(newBinding);
-            }
         }
 
-        // Create new binding
+        // Atomic upsert: INSERT ... ON CONFLICT DO UPDATE
+        // Preserves created_at on update (not overwritten), only updates mutable fields
         long now = System.currentTimeMillis();
         String sql = """
             INSERT INTO im_context_binding
             (context_key, platform, context_type, context_id, app_id, session_id, created_at, last_active_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(context_key) DO UPDATE SET
+                app_id = excluded.app_id,
+                session_id = excluded.session_id,
+                last_active_at = excluded.last_active_at
         """;
 
         jdbcTemplate.update(sql,
@@ -340,6 +325,16 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
             now,
             now
         );
+
+        if (existing.isPresent()) {
+            ImContextBinding current = existing.get();
+            ImContextBinding newBinding = new ImContextBinding(
+                contextRef, appId, sessionId, current.getCreatedAt(), now
+            );
+            log.info("Binding updated: context={}, oldSession={}, newSession={}",
+                contextKey, current.getSessionId(), sessionId);
+            return BindingResult.updated(newBinding);
+        }
 
         ImContextBinding newBinding = ImContextBinding.create(contextRef, appId, sessionId);
         log.info("Binding created: context={}, appId={}, sessionId={}", contextKey, appId, sessionId);

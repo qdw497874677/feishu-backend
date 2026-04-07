@@ -1,6 +1,7 @@
 package com.qdw.feishu;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.app.HelpApp;
 import com.qdw.feishu.domain.core.AppRegistry;
@@ -74,7 +75,7 @@ class HelpAppCardButtonJsonTest {
             @Override
             public String getHelp() { return help; }
             @Override
-            public String execute(com.qdw.feishu.domain.message.Message message) { return null; }
+            public AppExecutionResult execute(com.qdw.feishu.domain.message.Message message) { return AppExecutionResult.text(null); }
             @Override
             public List<String> getAppAliases() { return Arrays.asList(); }
         };
