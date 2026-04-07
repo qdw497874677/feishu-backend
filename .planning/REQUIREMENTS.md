@@ -76,29 +76,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CTX-01 | - | Pending |
-| CTX-02 | - | Pending |
-| CTX-03 | - | Pending |
-| CTX-04 | - | Pending |
-| CTX-05 | - | Pending |
-| UX-01 | - | Pending |
-| UX-02 | - | Pending |
-| UX-03 | - | Pending |
-| CMD-01 | - | Pending |
-| CMD-02 | - | Pending |
-| CMD-03 | - | Pending |
-| CMD-04 | - | Pending |
-| CARD-01 | - | Pending |
-| CARD-02 | - | Pending |
-| CARD-03 | - | Pending |
-| COMPAT-01 | - | Pending |
-| COMPAT-02 | - | Pending |
+| CTX-01 | Phase 1 | Pending |
+| CTX-02 | Phase 1 | Pending |
+| CTX-03 | Phase 1 | Pending |
+| CTX-04 | Phase 1 | Pending |
+| CTX-05 | Phase 1 | Pending |
+| UX-01 | Phase 2 | Pending |
+| UX-02 | Phase 2 | Pending |
+| UX-03 | Phase 2 | Pending |
+| CMD-01 | Phase 2 | Pending |
+| CMD-02 | Phase 2 | Pending |
+| CMD-03 | Phase 2 | Pending |
+| CMD-04 | Phase 2 | Pending |
+| CARD-01 | Phase 3 | Pending |
+| CARD-02 | Phase 3 | Pending |
+| CARD-03 | Phase 3 | Pending |
+| COMPAT-01 | Phase 1 | Pending |
+| COMPAT-02 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-07*
-*Last updated: 2026-04-07 after initial definition*
+*Last updated: 2026-04-07 after roadmap creation*
