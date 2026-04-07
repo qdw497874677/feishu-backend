@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
@@ -39,7 +40,7 @@ public class OpenCodeTaskExecutor {
         this.streamingHandler = streamingHandler;
     }
 
-    public String executeWithAutoSession(Message message, String prompt) {
+    public AppExecutionResult executeWithAutoSession(Message message, String prompt) {
         String topicId = message.getTopicId();
         log.info("自动选择会话执行: topicId={}, prompt='{}'", topicId, prompt);
 
@@ -59,11 +60,11 @@ public class OpenCodeTaskExecutor {
             });
     }
 
-    public String executeWithNewSession(Message message, String prompt) {
+    public AppExecutionResult executeWithNewSession(Message message, String prompt) {
         return executeWithNewSession(message, prompt, null);
     }
 
-    public String executeWithNewSession(Message message, String prompt, String project) {
+    public AppExecutionResult executeWithNewSession(Message message, String prompt, String project) {
         sessionManager.clearSession(message);
         String enhancedPrompt = enhancePromptWithWorkDirectory(prompt, project);
         return executeTask(message, enhancedPrompt, null);
@@ -81,7 +82,7 @@ public class OpenCodeTaskExecutor {
         return System.getProperty("user.dir", "/root/workspace/feishu-backend");
     }
 
-    public String executeWithSpecificSession(Message message, String prompt, String sessionId) {
+    public AppExecutionResult executeWithSpecificSession(Message message, String prompt, String sessionId) {
         log.info("使用指定会话执行: sessionId={}", sessionId);
         sessionManager.saveSession(message, sessionId);
         return executeTask(message, prompt, sessionId);
@@ -131,7 +132,7 @@ public class OpenCodeTaskExecutor {
         return response.toString();
     }
 
-    public String executeTask(Message message, String prompt, String sessionId) {
+    public AppExecutionResult executeTask(Message message, String prompt, String sessionId) {
         String messageId = message.getMessageId();
         log.info("提交异步任务: sessionId={}, prompt='{}'", sessionId, prompt);
         
@@ -144,7 +145,7 @@ public class OpenCodeTaskExecutor {
             log.debug("表情添加失败，但不影响主流程");
         }
         executeAsync(message, prompt, sessionId);
-        return "";
+        return AppExecutionResult.noReply();
     }
 
     @Async("opencodeExecutor")

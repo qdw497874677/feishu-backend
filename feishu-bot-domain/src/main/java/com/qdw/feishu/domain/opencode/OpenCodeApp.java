@@ -207,9 +207,9 @@ public class OpenCodeApp implements FishuAppI {
         // 委托给命令处理器（传递白名单确保一致性）
         TopicState state = sessionManager.detectTopicState(message);
         CommandWhitelist whitelist = getCommandWhitelist(state);
-        String result = commandHandler.handle(message, subCommand, parts, whitelist);
+        AppExecutionResult result = commandHandler.handle(message, subCommand, parts, whitelist);
         if (result != null) {
-            return AppExecutionResult.text(result);
+            return result;
         }
 
         // 如果处理器返回 null，说明是需要进一步处理的情况

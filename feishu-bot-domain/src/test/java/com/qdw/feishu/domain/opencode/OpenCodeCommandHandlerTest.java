@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
@@ -99,16 +100,18 @@ class OpenCodeCommandHandlerTest {
         when(openCodeGateway.listProjects())
             .thenReturn("项目列表");
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode connect", null),
             "connect",
             new String[]{"/opencode", "connect"},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("连接成功"));
-        assertTrue(result.contains("服务运行正常"));
-        assertTrue(result.contains("项目列表"));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("连接成功"));
+        assertTrue(text.contains("服务运行正常"));
+        assertTrue(text.contains("项目列表"));
         verify(openCodeGateway).getServerStatus();
         verify(openCodeGateway).listProjects();
     }
@@ -119,14 +122,16 @@ class OpenCodeCommandHandlerTest {
         when(openCodeGateway.getServerStatus())
             .thenThrow(new RuntimeException("服务不可用"));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode connect", null),
             "connect",
             new String[]{"/opencode", "connect"},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("连接成功") || result.contains("无法获取"));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("连接成功") || text.contains("无法获取"));
     }
 
     // ========== sessions 命令测试 ==========
@@ -138,7 +143,7 @@ class OpenCodeCommandHandlerTest {
         when(commandValidator.validateCommand(eq("sessions"), any(), any()))
             .thenReturn(ValidationResult.restricted("用法错误"));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode sessions", null),
             "sessions",
             new String[]{"/opencode", "sessions"},
@@ -146,7 +151,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 验证返回受限消息
-        assertEquals("用法错误", result);
+        assertNotNull(result);
+        assertEquals("用法错误", result.getReplyContent());
     }
 
     @Test
@@ -158,7 +164,7 @@ class OpenCodeCommandHandlerTest {
 
         String project = "feishu-backend";
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode sessions " + project, null),
             "sessions",
             new String[]{"/opencode", "sessions", project},
@@ -166,7 +172,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 验证返回受限消息
-        assertEquals("用法错误", result);
+        assertNotNull(result);
+        assertEquals("用法错误", result.getReplyContent());
     }
 
     // ========== projects 命令测试 ==========
@@ -178,7 +185,7 @@ class OpenCodeCommandHandlerTest {
         when(openCodeGateway.listProjects())
             .thenReturn(projectList);
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode p", null),
             "p",
             new String[]{"/opencode", "p"},
@@ -186,7 +193,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         // p 命令在非话题环境允许直接执行，应调用listProjects并返回结果
-        assertEquals(projectList, result);
+        assertNotNull(result);
+        assertEquals(projectList, result.getReplyContent());
         verify(openCodeGateway).listProjects();
     }
 
@@ -196,14 +204,15 @@ class OpenCodeCommandHandlerTest {
         when(openCodeGateway.listProjects())
             .thenReturn("项目列表");
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode projects", null),
             "projects",
             new String[]{"/opencode", "projects"},
             CommandWhitelist.builder().add("projects").build()
         );
 
-        assertEquals("项目列表", result);
+        assertNotNull(result);
+        assertEquals("项目列表", result.getReplyContent());
     }
 
     // ========== new 命令测试 ==========
@@ -216,7 +225,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of("ses_123"));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode new", topicId),
             "new",
             new String[]{"/opencode", "new"},
@@ -224,15 +233,17 @@ class OpenCodeCommandHandlerTest {
         );
 
         // new 命令参数不足时返回包含"用法"的错误提示
-        assertTrue(result.contains("❌") || result.contains("用法"));
-        assertTrue(result.contains("new"));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("❌") || text.contains("用法"));
+        assertTrue(text.contains("new"));
     }
 
     @Test
     @DisplayName("new 命令 - 成功创建新会话")
     void handleNew_success() {
         String prompt = "重构登录模块";
-        String expectedResponse = "会话已创建";
+        AppExecutionResult expectedResult = AppExecutionResult.noReply();
 
         // 模拟已初始化的话题
         String topicId = "init-topic";
@@ -241,17 +252,18 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.isTopicInitialized(any(Message.class))).thenReturn(true);
 
         when(taskExecutor.executeWithNewSession(any(Message.class), eq(prompt), isNull()))
-            .thenReturn(expectedResponse);
+            .thenReturn(expectedResult);
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode new " + prompt, topicId),
             "new",
             new String[]{"/opencode", "new", prompt},
             CommandWhitelist.all()
         );
 
-        // 验证返回了正确的结果并调用了正确的方法
-        assertEquals(expectedResponse, result);
+        // 验证返回了正确的结果并调用了正确的方法 (async = noReply)
+        assertNotNull(result);
+        assertNull(result.getReplyContent());
         verify(taskExecutor).executeWithNewSession(any(Message.class), eq(prompt), isNull());
     }
 
@@ -264,7 +276,7 @@ class OpenCodeCommandHandlerTest {
         when(commandValidator.validateCommand(eq("chat"), any(), any()))
             .thenReturn(ValidationResult.restricted("命令受限"));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat 帮我", null),
             "chat",
             new String[]{"/opencode", "chat", "帮我"},
@@ -272,7 +284,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 非话题环境，chat 不在白名单中，应返回连接引导
-        assertEquals("命令受限", result);
+        assertNotNull(result);
+        assertEquals("命令受限", result.getReplyContent());
     }
 
     @Test
@@ -289,7 +302,7 @@ class OpenCodeCommandHandlerTest {
         when(commandValidator.validateCommand(eq("cn"), any(), any()))
             .thenReturn(ValidationResult.allowed());
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode cn hello", topicId),
             "cn",
             new String[]{"/opencode", "cn", "hello"},
@@ -310,15 +323,17 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat", topicId),
             "chat",
             new String[]{"/opencode", "chat"},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("当前会话信息"));
-        assertTrue(result.contains(sessionId));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("当前会话信息"));
+        assertTrue(text.contains(sessionId));
     }
 
     @Test
@@ -329,16 +344,17 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.isTopicInitialized(any(Message.class)))
             .thenReturn(true);
         when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
-            .thenReturn("对话完成");
+            .thenReturn(AppExecutionResult.noReply());
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat " + prompt, topicId),
             "chat",
             new String[]{"/opencode", "chat", prompt},
             CommandWhitelist.all()
         );
 
-        assertEquals("对话完成", result);
+        assertNotNull(result);
+        assertNull(result.getReplyContent()); // async = noReply
         verify(taskExecutor).executeWithAutoSession(any(), eq(prompt));
     }
 
@@ -354,7 +370,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getCurrentSessionStatus(any()))
             .thenReturn("📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`\n  💬 话题 ID: `" + topicId + "`\n  ✅ 状态: 活跃\n\n💡 继续对话会自动使用此会话");
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
             "session",
             new String[]{"/opencode", "session", "status"},
@@ -362,7 +378,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertNotNull(result, "session status 命令不应返回 null");
-        assertTrue(result.contains("会话") || result.contains(sessionId));
+        String text = result.getReplyContent();
+        assertTrue(text.contains("会话") || text.contains(sessionId));
     }
 
     @Test
@@ -374,7 +391,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getCurrentSessionStatus(any()))
             .thenReturn("📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话");
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
             "session",
             new String[]{"/opencode", "session", "status"},
@@ -382,7 +399,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertNotNull(result, "session status 命令不应返回 null");
-        assertTrue(result.contains("话题") || result.contains("会话"));
+        String text = result.getReplyContent();
+        assertTrue(text.contains("话题") || text.contains("会话"));
     }
 
     @Test
@@ -392,7 +410,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.handleListSessions())
             .thenReturn(sessionsList);
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session list", "test-topic"),
             "session",
             new String[]{"/opencode", "session", "list"},
@@ -400,7 +418,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 验证返回了正确的会话列表
-        assertEquals(sessionsList, result);
+        assertNotNull(result);
+        assertEquals(sessionsList, result.getReplyContent());
         verify(sessionManager).handleListSessions();
     }
 
@@ -410,31 +429,34 @@ class OpenCodeCommandHandlerTest {
         String topicId = "sc-topic";
         String sessionId = "ses_sc_123";
         when(taskExecutor.executeWithSpecificSession(any(), isNull(), eq(sessionId)))
-            .thenReturn("✅ 会话已绑定");
+            .thenReturn(AppExecutionResult.withSession("✅ 会话已绑定", sessionId, false));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode sc " + sessionId, topicId),
             "sc",
             new String[]{"/opencode", "sc", sessionId},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("会话已绑定"));
+        assertNotNull(result);
+        assertTrue(result.getReplyContent().contains("会话已绑定"));
         verify(taskExecutor).executeWithSpecificSession(any(), isNull(), eq(sessionId));
     }
 
     @Test
     @DisplayName("sc 别名命令 - 参数不足")
     void handleScAlias_missingSessionId() {
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode sc", "test-topic"),
             "sc",
             new String[]{"/opencode", "sc"},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("用法"));
-        assertTrue(result.contains("/opencode sc <session_id>"));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("用法"));
+        assertTrue(text.contains("/opencode sc <session_id>"));
     }
 
     // ========== reset 命令测试 ==========
@@ -442,14 +464,15 @@ class OpenCodeCommandHandlerTest {
     @Test
     @DisplayName("reset 命令 - 非话题环境")
     void handleReset_nonTopic() {
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode reset", null),
             "reset",
             new String[]{"/opencode", "reset"},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("只能在话题中使用"));
+        assertNotNull(result);
+        assertTrue(result.getReplyContent().contains("只能在话题中使用"));
         verify(sessionManager, never()).clearSession(any(Message.class));
     }
 
@@ -461,15 +484,17 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode reset", topicId),
             "reset",
             new String[]{"/opencode", "reset"},
             CommandWhitelist.all()
         );
 
-        assertTrue(result.contains("话题已重置"));
-        assertTrue(result.contains(sessionId));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("话题已重置"));
+        assertTrue(text.contains(sessionId));
         verify(sessionManager).clearSession(any(Message.class));
         verify(sessionManager).clearExplicitlyInitialized(any(Message.class));
     }
@@ -479,7 +504,7 @@ class OpenCodeCommandHandlerTest {
     @Test
     @DisplayName("未知命令应返回帮助消息")
     void handleUnknownCommand_returnsHelp() {
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode unknown", "test-topic"),
             "unknown",
             new String[]{"/opencode", "unknown"},
@@ -487,7 +512,9 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 实现返回未知命令提示
-        assertTrue(result.contains("未知") || result.contains("命令"));
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains("未知") || text.contains("命令"));
     }
 
     // ========== 状态检测测试 ==========
@@ -499,14 +526,15 @@ class OpenCodeCommandHandlerTest {
         when(commandValidator.validateCommand(eq("chat"), any(), any()))
             .thenReturn(ValidationResult.restricted("命令受限"));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat help", null),
             "chat",
             new String[]{"/opencode", "chat", "help"},
             CommandWhitelist.builder().add("chat").build()
         );
 
-        assertEquals("命令受限", result);
+        assertNotNull(result);
+        assertEquals("命令受限", result.getReplyContent());
     }
 
     @Test
@@ -516,13 +544,13 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.empty());
         when(taskExecutor.executeWithNewSession(any(Message.class), eq("help")))
-            .thenReturn("✅ 会话已创建");
+            .thenReturn(AppExecutionResult.noReply());
         
         // UNINITIALIZED 模式下，"chat" 命令不在白名单中
         when(commandValidator.validateCommand(eq("chat"), any(), any()))
             .thenReturn(ValidationResult.restricted("命令受限"));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat help", topicId),
             "chat",
             new String[]{"/opencode", "chat", "help"},
@@ -530,7 +558,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 未初始化话题的 chat 命令应返回受限消息
-        assertTrue(result.contains("受限"));
+        assertNotNull(result);
+        assertTrue(result.getReplyContent().contains("受限"));
         verify(taskExecutor, never()).executeWithNewSession(any(Message.class), eq("help"));
     }
 
@@ -549,7 +578,7 @@ class OpenCodeCommandHandlerTest {
         when(commandValidator.validateCommand(anyString(), any(), any()))
             .thenReturn(ValidationResult.restricted(restrictionMessage));
 
-        String result = commandHandler.handle(
+        AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat help", topicId),
             "chat",
             new String[]{"/opencode", "chat", "help"},
@@ -557,6 +586,7 @@ class OpenCodeCommandHandlerTest {
         );
 
         // 验证返回了验证失败的消息
-        assertEquals(restrictionMessage, result);
+        assertNotNull(result);
+        assertEquals(restrictionMessage, result.getReplyContent());
     }
 }

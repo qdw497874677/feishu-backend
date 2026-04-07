@@ -200,7 +200,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode sessions feishu-backend", topicId);
 
         when(commandHandler.handle(eq(message), eq("sessions"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 
@@ -216,7 +216,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode projects", topicId);
 
         when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 
@@ -232,7 +232,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode chat 帮我写代码", topicId);
 
         when(commandHandler.handle(eq(message), eq("chat"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 
@@ -247,7 +247,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode new 重构模块", topicId);
 
         when(commandHandler.handle(eq(message), eq("new"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 
@@ -263,7 +263,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode sc " + sessionId, topicId);
 
         when(commandHandler.handle(eq(message), eq("sc"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.withSession(expectedResponse, sessionId, false));
 
         String result = app.execute(message).getReplyContent();
 
@@ -292,7 +292,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode PROJECTS", topicId);
 
         when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class)))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 
@@ -308,7 +308,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("/opencode   projects   ", topicId);
 
         when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 
@@ -323,7 +323,7 @@ class OpenCodeAppTest {
         Message message = createTestMessage("  /opencode projects  ", topicId);
 
         when(commandHandler.handle(eq(message), eq("projects"), any(), any()))
-            .thenReturn(expectedResponse);
+            .thenReturn(AppExecutionResult.text(expectedResponse));
 
         String result = app.execute(message).getReplyContent();
 

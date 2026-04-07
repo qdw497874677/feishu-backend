@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
@@ -46,7 +47,7 @@ public class OpenCodeCommandHandler {
      * @param whitelist 命令白名单（由 OpenCodeApp 提供，确保一致性）
      * @return 命令响应
      */
-    public String handle(Message message, String subCommand, String[] parts, CommandWhitelist whitelist) {
+    public AppExecutionResult handle(Message message, String subCommand, String[] parts, CommandWhitelist whitelist) {
         log.info("准备验证命令: subCommand={}", subCommand);
 
         TopicState state = sessionManager.detectTopicState(message);
@@ -57,22 +58,22 @@ public class OpenCodeCommandHandler {
             ValidationResult result = commandValidator.validateCommand(subCommand, state, whitelist);
             if (!result.isAllowed()) {
                 log.info("命令受限: command={}, state={}", subCommand, state);
-                return result.getMessage();
+                return AppExecutionResult.text(result.getMessage());
             }
         }
 
         // 路由到具体处理逻辑
         return switch (subCommand) {
-            case "help" -> null;
-            case "connect" -> handleConnect();
+            case "help" -> null; // caller handles
+            case "connect" -> AppExecutionResult.text(handleConnect());
             case "new" -> handleNewCommand(parts, message);
-            case "chat", "chatnow", "cn" -> handleChatCommand(parts, message);  // chatnow = chat now, cn = chat now 的简写
-            case "sessions", "s" -> sessionManager.handleSessionsCommand(parts);
+            case "chat", "chatnow", "cn" -> handleChatCommand(parts, message);
+            case "sessions", "s" -> AppExecutionResult.text(sessionManager.handleSessionsCommand(parts));
             case "session", "sc" -> handleSessionCommand(parts, message);
-            case "projects", "p" -> openCodeGateway.listProjects();
-            case "commands" -> openCodeGateway.listCommands();
-            case "reset" -> handleResetCommand(message);
-            default -> handleUnknownCommand(message, subCommand, parts);
+            case "projects", "p" -> AppExecutionResult.text(openCodeGateway.listProjects());
+            case "commands" -> AppExecutionResult.text(openCodeGateway.listCommands());
+            case "reset" -> AppExecutionResult.text(handleResetCommand(message));
+            default -> AppExecutionResult.text(handleUnknownCommand(message, subCommand, parts));
         };
     }
 
@@ -174,13 +175,13 @@ public class OpenCodeCommandHandler {
       * - 话题已绑定（INITIALIZED）：在当前项目创建新会话，更换话题绑定
       * - 话题未绑定（UNINITIALIZED/NON_TOPIC）：必须指定项目
       */
-     private String handleNewCommand(String[] parts, Message message) {
+     private AppExecutionResult handleNewCommand(String[] parts, Message message) {
         String topicId = message.getTopicId();
         boolean inTopic = topicId != null && !topicId.isEmpty();
         boolean isInitialized = inTopic && sessionManager.isTopicInitialized(message);
 
         if (parts.length < 3) {
-            return buildNewCommandUsage(isInitialized);
+            return AppExecutionResult.text(buildNewCommandUsage(isInitialized));
         }
 
         // 判断格式：/opencode new <prompt> 还是 /opencode new <project> <prompt>
@@ -202,7 +203,7 @@ public class OpenCodeCommandHandler {
             } else {
                 // 话题未绑定：必须指定项目
                 log.warn("话题未绑定，必须指定项目名称");
-                return buildNewCommandUsage(false);
+                return AppExecutionResult.text(buildNewCommandUsage(false));
             }
         }
 
@@ -249,7 +250,7 @@ public class OpenCodeCommandHandler {
       * - 话题已初始化 + chatnow → 自动创建新会话并绑定
       * - 话题已初始化 + chat → 使用现有会话继续对话
       */
-      private String handleChatCommand(String[] parts, Message message) {
+      private AppExecutionResult handleChatCommand(String[] parts, Message message) {
          String topicId = message.getTopicId();
          boolean inTopic = topicId != null && !topicId.isEmpty();
          String subCommand = parts.length > 1 ? parts[1].toLowerCase() : "chat";
@@ -262,11 +263,13 @@ public class OpenCodeCommandHandler {
 
          if (parts.length < 3) {
              if (inTopic) {
-                 return sessionManager.getSessionId(message)
-                     .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
-                     .orElse(buildChatQuickStart());
+                 return AppExecutionResult.text(
+                     sessionManager.getSessionId(message)
+                         .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
+                         .orElse(buildChatQuickStart())
+                 );
              }
-             return buildChatQuickStart();
+             return AppExecutionResult.text(buildChatQuickStart());
          }
 
          String prompt = extractChatContent(parts, message);
@@ -279,14 +282,14 @@ public class OpenCodeCommandHandler {
          return taskExecutor.executeWithAutoSession(message, prompt);
      }
 
-     private String handleChatNowCommand(Message message) {
+     private AppExecutionResult handleChatNowCommand(Message message) {
          String topicId = message.getTopicId();
          boolean inTopic = topicId != null && !topicId.isEmpty();
 
          if (inTopic && sessionManager.isTopicInitialized(message)) {
              Optional<String> currentSessionId = sessionManager.getSessionId(message);
              if (currentSessionId.isPresent()) {
-                 return buildSessionInitializedInfo(topicId, currentSessionId.get());
+                 return AppExecutionResult.text(buildSessionInitializedInfo(topicId, currentSessionId.get()));
              }
          }
 
@@ -297,12 +300,16 @@ public class OpenCodeCommandHandler {
              String result = taskExecutor.createSessionOnly(message);
              Optional<String> newSessionId = sessionManager.getSessionId(message);
              if (newSessionId.isPresent()) {
-                 return buildSessionInitializedInfo(message.getTopicId(), newSessionId.get());
+                 return AppExecutionResult.withSession(
+                     buildSessionInitializedInfo(message.getTopicId(), newSessionId.get()),
+                     newSessionId.get(),
+                     true
+                 );
              }
-             return result;
+             return AppExecutionResult.text(result);
          } catch (Exception e) {
              log.error("创建会话失败", e);
-             return "❌ 创建会话失败: " + e.getMessage();
+             return AppExecutionResult.text("❌ 创建会话失败: " + e.getMessage());
          }
      }
 
@@ -400,35 +407,35 @@ public class OpenCodeCommandHandler {
         return remaining;
     }
 
-    private String handleSessionCommand(String[] parts, Message message) {
+    private AppExecutionResult handleSessionCommand(String[] parts, Message message) {
         String subCommand = parts[1].toLowerCase();
 
         if (subCommand.equals("sc")) {
             if (parts.length < 3) {
-                return "❌ 用法：`/opencode sc <session_id>`\n\n示例：`/opencode sc ses_abc123`";
+                return AppExecutionResult.text("❌ 用法：`/opencode sc <session_id>`\n\n示例：`/opencode sc ses_abc123`");
             }
             String sessionId = parts[2].trim();
             return taskExecutor.executeWithSpecificSession(message, null, sessionId);
         }
 
         if (parts.length < 3) {
-            return "❌ 用法：`/opencode session <status|list|continue> [args]`";
+            return AppExecutionResult.text("❌ 用法：`/opencode session <status|list|continue> [args]`");
         }
 
         String action = parts[2].toLowerCase();
 
         return switch (action) {
-            case "status" -> sessionManager.getCurrentSessionStatus(message);
-            case "list" -> sessionManager.handleListSessions();
+            case "status" -> AppExecutionResult.text(sessionManager.getCurrentSessionStatus(message));
+            case "list" -> AppExecutionResult.text(sessionManager.handleListSessions());
             case "continue" -> handleSessionContinue(parts, message);
-            default -> "❌ 未知的 session 命令: `" + action + "`\n\n" +
-                       "可用命令：`status`, `list`, `continue` 或简写 `sc <id>`";
+            default -> AppExecutionResult.text("❌ 未知的 session 命令: `" + action + "`\n\n" +
+                       "可用命令：`status`, `list`, `continue` 或简写 `sc <id>`");
         };
     }
 
-    private String handleSessionContinue(String[] parts, Message message) {
+    private AppExecutionResult handleSessionContinue(String[] parts, Message message) {
         if (parts.length < 4) {
-            return "❌ 用法：`/opencode session continue <session_id>`\n\n或使用简写：`/opencode sc <session_id>`";
+            return AppExecutionResult.text("❌ 用法：`/opencode session continue <session_id>`\n\n或使用简写：`/opencode sc <session_id>`");
         }
         String sessionId = parts[3].trim();
         return taskExecutor.executeWithSpecificSession(message, null, sessionId);

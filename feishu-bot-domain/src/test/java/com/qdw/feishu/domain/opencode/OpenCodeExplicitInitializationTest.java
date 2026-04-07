@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
+import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.gateway.AppSessionGateway;
 import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
@@ -102,11 +103,12 @@ class OpenCodeExplicitInitializationTest {
 
         // chat 命令在 UNINITIALIZED 状态下允许，会自动创建会话
         when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
-            .thenReturn("对话完成");
+            .thenReturn(AppExecutionResult.noReply());
 
-        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
+        AppExecutionResult response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
 
-        assertTrue(response.contains("对话完成"));
+        assertNotNull(response);
+        assertNull(response.getReplyContent()); // async = noReply
         verify(taskExecutor).executeWithNewSession(any(Message.class), eq("hello"), isNull());
     }
     
@@ -128,12 +130,13 @@ class OpenCodeExplicitInitializationTest {
         
         // chat 命令在 INITIALIZED 状态下允许，使用现有会话
         when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
-            .thenReturn("对话完成");
+            .thenReturn(AppExecutionResult.noReply());
 
-        String response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
+        AppExecutionResult response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
 
-        // 验证使用了现有会话
-        assertTrue(response.contains("对话完成"));
+        // 验证使用了现有会话 (async = noReply)
+        assertNotNull(response);
+        assertNull(response.getReplyContent());
         verify(taskExecutor).executeWithAutoSession(any(Message.class), eq("hello"));
     }
     
@@ -146,11 +149,12 @@ class OpenCodeExplicitInitializationTest {
         ImContextRef contextRef = createContextRef(topicId);
 
         when(taskExecutor.executeWithSpecificSession(eq(message), isNull(), eq(sessionId)))
-            .thenReturn("✅ **会话已绑定**\n\nSession ID: " + sessionId);
+            .thenReturn(AppExecutionResult.withSession("✅ **会话已绑定**\n\nSession ID: " + sessionId, sessionId, false));
 
-        String response = commandHandler.handle(message, "sc", new String[]{"/opencode", "sc", sessionId}, CommandWhitelist.all());
+        AppExecutionResult response = commandHandler.handle(message, "sc", new String[]{"/opencode", "sc", sessionId}, CommandWhitelist.all());
 
         verify(taskExecutor).executeWithSpecificSession(eq(message), isNull(), eq(sessionId));
-        assertTrue(response.contains("会话已绑定"));
+        assertNotNull(response);
+        assertTrue(response.getReplyContent().contains("会话已绑定"));
     }
 }
