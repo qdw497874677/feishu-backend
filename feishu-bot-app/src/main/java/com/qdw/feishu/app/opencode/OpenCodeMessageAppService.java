@@ -141,6 +141,13 @@ public class OpenCodeMessageAppService {
         }
 
         if (status.getState() == ContextSessionState.UNBOUND) {
+            // Graceful degradation for unbound threads (old topics with no binding)
+            if (messageContext != null && messageContext.isThreadContext() && !isExplicitOpenCodeCommand(message)) {
+                log.debug("Graceful degradation for unbound topic {}: no binding found",
+                        contextRef.toStorageKey());
+                return sendGuidance(message,
+                        "该话题未绑定 OpenCode 会话。请在群聊中使用 /oc projects 开始绑定。");
+            }
             contextSessionOrchestrator.enterAppContext(contextRef, APP_ID);
             return handleOpenCodeResult(message, messageContext);
         }
