@@ -9,11 +9,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 上下文与绑定 (Context & Binding)
 
-- [ ] **CTX-01**: 回复创建话题时，系统自动将 IM 绑定从 chatId 传播到新的 threadId，用户在话题内继续操作无需重新绑定
-- [ ] **CTX-02**: sessionId 通过方法返回值/字段传递，不再从格式化的 markdown 文本中解析提取
-- [ ] **CTX-03**: 每条消息只查询一次绑定数据库，通过 MessageContext 参数在管道中传递，消除冗余查询
-- [ ] **CTX-04**: IM 绑定层（ImContextBinding）和应用会话层（AppSession）保持独立存储和管理，支持未来替换 IM 平台
-- [ ] **CTX-05**: 旧话题/未绑定话题访问时，静默降级为帮助引导，不报错不崩溃
+- [x] **CTX-01**: 回复创建话题时，系统自动将 IM 绑定从 chatId 传播到新的 threadId，用户在话题内继续操作无需重新绑定
+- [x] **CTX-02**: sessionId 通过方法返回值/字段传递，不再从格式化的 markdown 文本中解析提取
+- [x] **CTX-03**: 每条消息只查询一次绑定数据库，通过 MessageContext 参数在管道中传递，消除冗余查询
+- [x] **CTX-04**: IM 绑定层（ImContextBinding）和应用会话层（AppSession）保持独立存储和管理，支持未来替换 IM 平台
+- [x] **CTX-05**: 旧话题/未绑定话题访问时，静默降级为帮助引导，不报错不崩溃
 
 ### 对话体验 (Conversation UX)
 
@@ -36,7 +36,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 兼容性 (Compatibility)
 
-- [ ] **COMPAT-01**: 现有261个测试全部通过，无状态应用（Help/Time/Bash/History）行为不变
+- [x] **COMPAT-01**: 现有261个测试全部通过，无状态应用（Help/Time/Bash/History）行为不变
 - [ ] **COMPAT-02**: 群聊中进行项目/会话选择，话题内进行对话（group→topic 模型）
 
 ## v2 Requirements
@@ -76,11 +76,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CTX-01 | Phase 1 | Pending |
-| CTX-02 | Phase 1 | Pending |
-| CTX-03 | Phase 1 | Pending |
-| CTX-04 | Phase 1 | Pending |
-| CTX-05 | Phase 1 | Pending |
+| CTX-01 | Phase 1 | **Complete** |
+| CTX-02 | Phase 1 | **Complete** |
+| CTX-03 | Phase 1 | **Complete** |
+| CTX-04 | Phase 1 | **Complete** |
+| CTX-05 | Phase 1 | **Complete** |
 | UX-01 | Phase 2 | Pending |
 | UX-02 | Phase 2 | Pending |
 | UX-03 | Phase 2 | Pending |
@@ -91,7 +91,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CARD-01 | Phase 3 | Pending |
 | CARD-02 | Phase 3 | Pending |
 | CARD-03 | Phase 3 | Pending |
-| COMPAT-01 | Phase 1 | Pending |
+| COMPAT-01 | Phase 1 | **Complete** |
 | COMPAT-02 | Phase 2 | Pending |
 
 **Coverage:**
@@ -101,4 +101,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-07*
-*Last updated: 2026-04-07 after roadmap creation*
+*Last updated: 2026-04-07 — Phase 1 requirements complete (CTX-01 through CTX-05, COMPAT-01)*
