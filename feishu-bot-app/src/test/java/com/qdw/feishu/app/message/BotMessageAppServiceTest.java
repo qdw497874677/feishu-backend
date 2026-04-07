@@ -110,6 +110,43 @@ class BotMessageAppServiceTest {
         verify(bindingGateway).bind(contextRef, "opencode", null);
     }
 
+    /**
+     * Test C — Thread propagation for newly created topic.
+     *
+     * Verifies that when a reply creates a new thread (SendResult contains threadId),
+     * the binding is propagated to the new thread context, and the original
+     * chat binding is not deleted.
+     */
+    @Test
+    void should_bindToNewThread_when_replyCreatesNewTopic() {
+        // Message from chat context (no topicId)
+        Message message = createMessage("/opencode projects", null, "chat_propagate");
+        // SendResult indicates a new thread was created
+        SendResult expected = SendResult.success("msg_prop", "omt_new_thread");
+        ImContextRef newThreadRef = ImContextRef.feishuThread("omt_new_thread");
+
+        // Pre-resolved context: chat context with existing opencode binding
+        ImContextRef chatRef = ImContextRef.feishuChat("chat_propagate");
+        ImContextBinding chatBinding = ImContextBinding.create(chatRef, "opencode", "internal_ses_123");
+        MessageContext messageContext = MessageContext.of(chatRef, chatBinding);
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
+        when(openCodeApp.execute(message)).thenReturn(AppExecutionResult.text("project list"));
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        when(feishuGateway.sendMessage(message, "project list", null)).thenReturn(expected);
+        when(bindingGateway.bind(newThreadRef, "opencode", "internal_ses_123"))
+                .thenReturn(BindingResult.created(ImContextBinding.create(newThreadRef, "opencode", "internal_ses_123")));
+
+        HandledMessageResult result = appService.handleMessage(message, messageContext);
+
+        assertEquals(expected, result.getSendResult());
+        // Verify binding was propagated to the NEW thread with full session ID
+        verify(bindingGateway).bind(newThreadRef, "opencode", "internal_ses_123");
+        // Original chat binding is NOT deleted (duplicate, not migrate)
+        verify(bindingGateway, never()).clearBinding(chatRef);
+    }
+
     private Message createMessage(String content, String topicId, String chatId) {
         Message message = new Message();
         message.setContent(content);

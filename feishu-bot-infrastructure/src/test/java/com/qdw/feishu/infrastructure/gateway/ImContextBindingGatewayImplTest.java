@@ -629,4 +629,42 @@ class ImContextBindingGatewayImplTest {
 
         recoveredGateway.cleanup();
     }
+
+    // ========== Behavioral Invariant Test E: Concurrent upsert safety ==========
+
+    /**
+     * Test E — Concurrent bind/upsert safety.
+     *
+     * Verifies that two threads calling bind() on the same ImContextRef
+     * simultaneously do not throw exceptions. The INSERT ON CONFLICT DO UPDATE
+     * ensures atomic upsert semantics.
+     */
+    @Test
+    void should_notThrowOnConcurrentBind_when_twoThreadsBindSameContext() throws Exception {
+        ImContextRef sharedRef = ImContextRef.feishuThread("concurrent_thread");
+
+        // Run two binds concurrently
+        Thread thread1 = new Thread(() -> {
+            BindingResult result = gateway.bind(sharedRef, "opencode", "ses_1");
+            assertNotNull(result);
+        });
+        Thread thread2 = new Thread(() -> {
+            BindingResult result = gateway.bind(sharedRef, "opencode", "ses_2");
+            assertNotNull(result);
+        });
+
+        thread1.start();
+        thread2.start();
+        thread1.join(5000);
+        thread2.join(5000);
+
+        // After both complete, there should be exactly one binding
+        Optional<ImContextBinding> binding = gateway.findBinding(sharedRef);
+        assertTrue(binding.isPresent(), "Binding should exist after concurrent writes");
+        assertEquals("opencode", binding.get().getAppId());
+        // Session ID should be one of the two (whichever wrote last)
+        String sessionId = binding.get().getSessionId();
+        assertTrue("ses_1".equals(sessionId) || "ses_2".equals(sessionId),
+                "Session ID should be one of the two concurrent values, got: " + sessionId);
+    }
 }

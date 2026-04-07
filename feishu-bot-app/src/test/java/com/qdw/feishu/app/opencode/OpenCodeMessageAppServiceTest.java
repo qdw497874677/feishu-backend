@@ -11,6 +11,7 @@ import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.opencode.OpenCodeApp;
 import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
@@ -287,6 +288,61 @@ class OpenCodeMessageAppServiceTest {
         assertEquals(true, appService.tryHandle(message));
         verify(contextSessionOrchestrator, times(1)).loadStatus(eq(contextRef), eq("opencode"), any());
         verify(botMessageAppService).handleMessage(message);
+    }
+
+    /**
+     * Test B — External vs internal session ID boundary.
+     *
+     * Verifies that progressSessionIfNeeded uses the structured openCodeSessionId
+     * from AppExecutionResult (external ID like ses_xxx), not text parsing.
+     * The internal UUID is managed by saveSession(), not exposed here.
+     */
+    @Test
+    void should_exposeExternalSessionId_when_appExecutionResultContainsSession() {
+        Message message = createTopicMessage("/opencode cn", "omt_session_boundary");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_session_boundary");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        SendResult expected = SendResult.success("msg_boundary", "omt_session_boundary");
+
+        when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
+                .thenReturn(ContextSessionStatus.inAppNoSession(binding));
+        // AppExecutionResult carries the external session ID structurally
+        when(botMessageAppService.handleMessage(message))
+                .thenReturn(new HandledMessageResult(expected, "opencode",
+                        AppExecutionResult.withSession("Session created", "ses_external_001", true)));
+
+        SendResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result);
+        // saveSession is called with the EXTERNAL openCode session ID
+        verify(openCodeSessionManager).saveSession(
+                ImContextRef.feishuThread("omt_session_boundary"), "ses_external_001");
+    }
+
+    /**
+     * Graceful degradation: unbound thread with implicit message shows guidance.
+     */
+    @Test
+    void should_showGuidance_when_unboundThreadReceivesImplicitMessage() {
+        Message message = createTopicMessage("继续处理", "omt_old_unbound");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_old_unbound");
+        SendResult expected = SendResult.success("msg_guidance", "omt_old_unbound");
+
+        // No loadStatus stub needed — buildStatusFromContext() returns unbound() directly
+        // since messageContext has no binding
+        when(feishuGateway.sendMessage(eq(message),
+                eq("该话题未绑定 OpenCode 会话。请在群聊中使用 /oc projects 开始绑定。"),
+                eq("omt_old_unbound")))
+                .thenReturn(expected);
+
+        MessageContext messageContext = MessageContext.of(contextRef, null);
+        SendResult result = appService.handleMessage(message, messageContext);
+
+        assertEquals(expected, result);
+        verify(botMessageAppService, never()).handleMessage(any(Message.class));
+        verify(contextSessionOrchestrator, never()).enterAppContext(any(), any());
+        // loadStatus should NOT be called since buildStatusFromContext handles it locally
+        verify(contextSessionOrchestrator, never()).loadStatus(any(), any(), any());
     }
 
     private Message createTopicMessage(String content, String topicId) {
