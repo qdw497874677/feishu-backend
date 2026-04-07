@@ -3,7 +3,6 @@ package com.qdw.feishu.app.message;
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.core.ReplyMode;
-import com.qdw.feishu.domain.feishu.FeishuContextResolver;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
 import com.qdw.feishu.domain.message.BotRoutingDecision;
@@ -12,6 +11,7 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.model.BindingResult;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.service.BotMessageService;
@@ -38,7 +38,11 @@ public class BotMessageAppService {
     }
 
     public HandledMessageResult handleMessage(Message message) {
-        BotRoutingDecision decision = botMessageService.routeMessage(message);
+        return handleMessage(message, MessageContext.unresolved());
+    }
+
+    public HandledMessageResult handleMessage(Message message, MessageContext messageContext) {
+        BotRoutingDecision decision = botMessageService.routeMessage(message, messageContext);
         if (decision == null || decision.getApp() == null) {
             return new HandledMessageResult(SendResult.failure("应用不存在"), null, null);
         }
@@ -47,7 +51,7 @@ public class BotMessageAppService {
         AppExecutionResult execResult = app.execute(message);
         String replyContent = execResult != null ? execResult.getReplyContent() : null;
         SendResult sendResult = sendReply(message, app, replyContent);
-        persistBindingIfNeeded(message, sendResult, decision);
+        persistBindingIfNeeded(message, sendResult, decision, messageContext);
         return new HandledMessageResult(sendResult, decision.getAppId(), execResult);
     }
 
@@ -64,7 +68,8 @@ public class BotMessageAppService {
         return strategy.reply(message, replyContent, message.getTopicId());
     }
 
-    private void persistBindingIfNeeded(Message message, SendResult sendResult, BotRoutingDecision decision) {
+    private void persistBindingIfNeeded(Message message, SendResult sendResult,
+                                         BotRoutingDecision decision, MessageContext messageContext) {
         if (decision == null || !decision.shouldPersistBinding() || sendResult == null || !sendResult.isSuccess()) {
             return;
         }
@@ -74,8 +79,18 @@ public class BotMessageAppService {
             return;
         }
 
-        ImContextRef contextRef = ImContextRef.feishuThread(persistedThreadId);
-        BindingResult bindingResult = bindingGateway.bind(contextRef, decision.getAppId(), null);
-        log.debug("Persisted context binding: {}", bindingResult);
+        // Copy the existing binding (appId + internal sessionId) to the new thread context
+        String appId = decision.getAppId();
+        String internalSessionId = null;
+
+        if (messageContext != null && messageContext.getBinding() != null
+                && messageContext.getBinding().isForApp(appId)) {
+            internalSessionId = messageContext.getBinding().getSessionId();
+        }
+
+        ImContextRef threadRef = ImContextRef.feishuThread(persistedThreadId);
+        BindingResult bindingResult = bindingGateway.bind(threadRef, appId, internalSessionId);
+        log.info("Propagated binding to new thread: {} -> (app={}, session={}), result={}",
+                persistedThreadId, appId, internalSessionId, bindingResult);
     }
 }

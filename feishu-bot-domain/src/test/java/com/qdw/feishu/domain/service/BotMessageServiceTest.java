@@ -9,6 +9,7 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,12 +52,12 @@ class BotMessageServiceTest {
     void should_routePlainTextToHelp_when_contextIsUnbound() {
         Message message = createTopicMessage("继续这个问题", "omt_help_fallback");
         ImContextRef contextRef = ImContextRef.feishuThread("omt_help_fallback");
+        MessageContext messageContext = MessageContext.of(contextRef, null);
 
-        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.empty());
         when(appRegistry.getApp("help")).thenReturn(Optional.of(helpApp));
         when(helpApp.getAppId()).thenReturn("help");
 
-        BotRoutingDecision decision = botMessageService.routeMessage(message);
+        BotRoutingDecision decision = botMessageService.routeMessage(message, messageContext);
 
         assertEquals("help", decision.getAppId());
         assertFalse(decision.shouldPersistBinding());
@@ -82,15 +83,14 @@ class BotMessageServiceTest {
         Message message = createTopicMessage("继续", "omt_opencode");
         ImContextRef contextRef = ImContextRef.feishuThread("omt_opencode");
         ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
 
-        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
         when(appRegistry.getApp("opencode")).thenReturn(Optional.of(openCodeApp));
 
-        BotRoutingDecision decision = botMessageService.routeMessage(message);
+        BotRoutingDecision decision = botMessageService.routeMessage(message, messageContext);
 
         assertEquals("opencode", decision.getAppId());
         assertFalse(decision.shouldPersistBinding());
-        verify(bindingGateway, never()).touchBinding(contextRef);
     }
 
     @Test
@@ -98,12 +98,12 @@ class BotMessageServiceTest {
         Message message = createTopicMessage("/help", "omt_reject_other_app");
         ImContextRef contextRef = ImContextRef.feishuThread("omt_reject_other_app");
         ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
 
-        when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
         when(appRegistry.getAllApps()).thenReturn(List.of(helpApp, openCodeApp));
         when(helpApp.getAppId()).thenReturn("help");
 
-        assertThrows(MessageBizException.class, () -> botMessageService.routeMessage(message));
+        assertThrows(MessageBizException.class, () -> botMessageService.routeMessage(message, messageContext));
         verify(bindingGateway, never()).bind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
     }
 

@@ -13,6 +13,7 @@ import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.BindingResult;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.service.BotMessageService;
@@ -25,6 +26,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,7 +78,7 @@ class BotMessageAppServiceTest {
         Message message = createMessage("/help", null, "chat_help");
         SendResult expected = SendResult.success("msg_help");
 
-        when(botMessageService.routeMessage(message)).thenReturn(new BotRoutingDecision("help", helpApp, false));
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("help", helpApp, false));
         when(helpApp.execute(message)).thenReturn(AppExecutionResult.text("help text"));
         when(helpApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "help text", null)).thenReturn(expected);
@@ -84,7 +87,7 @@ class BotMessageAppServiceTest {
 
         assertEquals(expected, result.getSendResult());
         assertEquals("help", result.getAppId());
-        verify(bindingGateway, never()).bind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        verify(bindingGateway, never()).bind(any(), org.mockito.ArgumentMatchers.anyString(), any());
     }
 
     @Test
@@ -93,7 +96,7 @@ class BotMessageAppServiceTest {
         SendResult expected = SendResult.success("msg_open", "omt_actual");
         ImContextRef contextRef = ImContextRef.feishuThread("omt_actual");
 
-        when(botMessageService.routeMessage(message)).thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
         when(openCodeApp.execute(message)).thenReturn(AppExecutionResult.text("project list"));
         when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "project list", "omt_route")).thenReturn(expected);

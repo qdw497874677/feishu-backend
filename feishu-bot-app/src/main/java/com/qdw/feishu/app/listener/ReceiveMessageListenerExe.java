@@ -1,11 +1,13 @@
 package com.qdw.feishu.app.listener;
 
+import com.qdw.feishu.app.context.MessageContextResolver;
 import com.qdw.feishu.app.message.BotMessageAppService;
 import com.qdw.feishu.app.opencode.OpenCodeMessageAppService;
 import com.qdw.feishu.domain.exception.MessageBizException;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.SendResult;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.service.MessageDeduplicator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -23,15 +25,18 @@ public class ReceiveMessageListenerExe {
     private final OpenCodeMessageAppService openCodeMessageAppService;
     private final MessageDeduplicator messageDeduplicator;
     private final FeishuGateway feishuGateway;
+    private final MessageContextResolver messageContextResolver;
 
     public ReceiveMessageListenerExe(BotMessageAppService botMessageAppService,
                                      OpenCodeMessageAppService openCodeMessageAppService,
                                      MessageDeduplicator messageDeduplicator,
-                                     FeishuGateway feishuGateway) {
+                                     FeishuGateway feishuGateway,
+                                     MessageContextResolver messageContextResolver) {
         this.botMessageAppService = botMessageAppService;
         this.openCodeMessageAppService = openCodeMessageAppService;
         this.messageDeduplicator = messageDeduplicator;
         this.feishuGateway = feishuGateway;
+        this.messageContextResolver = messageContextResolver;
     }
 
     /**
@@ -54,8 +59,9 @@ public class ReceiveMessageListenerExe {
 
         try {
             log.info("开始处理消息...");
-            if (!openCodeMessageAppService.tryHandle(message)) {
-                botMessageAppService.handleMessage(message);
+            MessageContext messageContext = messageContextResolver.resolve(message);
+            if (!openCodeMessageAppService.tryHandle(message, messageContext)) {
+                botMessageAppService.handleMessage(message, messageContext);
             }
             log.info("消息处理成功");
         } catch (MessageBizException e) {

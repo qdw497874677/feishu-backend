@@ -1,5 +1,6 @@
 package com.qdw.feishu.app.listener;
 
+import com.qdw.feishu.app.context.MessageContextResolver;
 import com.qdw.feishu.app.message.BotMessageAppService;
 import com.qdw.feishu.app.opencode.OpenCodeMessageAppService;
 import com.qdw.feishu.domain.exception.MessageBizException;
@@ -7,6 +8,7 @@ import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.service.MessageDeduplicator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class ReceiveMessageListenerExeTest {
@@ -37,6 +40,9 @@ class ReceiveMessageListenerExeTest {
     @Mock
     private FeishuGateway feishuGateway;
 
+    @Mock
+    private MessageContextResolver messageContextResolver;
+
     private ReceiveMessageListenerExe listenerExe;
 
     @BeforeEach
@@ -45,32 +51,37 @@ class ReceiveMessageListenerExeTest {
                 botMessageAppService,
                 openCodeMessageAppService,
                 messageDeduplicator,
-                feishuGateway
+                feishuGateway,
+                messageContextResolver
         );
+
+        // Default: return unresolved context (lenient since skipped-message tests don't reach resolve)
+        lenient().when(messageContextResolver.resolve(any(Message.class)))
+                .thenReturn(MessageContext.unresolved());
     }
 
     @Test
     void should_routeThroughAppLayerOrchestrator_inRealOpenCodeFlow() {
         Message message = createMessage("/opencode projects", "evt-1");
         when(messageDeduplicator.isProcessed("evt-1")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenReturn(true);
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenReturn(true);
 
         listenerExe.execute(message);
 
-        verify(openCodeMessageAppService).tryHandle(message);
-        verify(botMessageAppService, never()).handleMessage(message);
+        verify(openCodeMessageAppService).tryHandle(eq(message), any(MessageContext.class));
+        verify(botMessageAppService, never()).handleMessage(eq(message), any(MessageContext.class));
     }
 
     @Test
     void should_fallbackToBotMessageService_when_notOpenCode() {
         Message message = createMessage("/help", "evt-2");
         when(messageDeduplicator.isProcessed("evt-2")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenReturn(false);
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenReturn(false);
 
         listenerExe.execute(message);
 
-        verify(botMessageAppService).handleMessage(message);
-        verify(openCodeMessageAppService).tryHandle(message);
+        verify(botMessageAppService).handleMessage(eq(message), any(MessageContext.class));
+        verify(openCodeMessageAppService).tryHandle(eq(message), any(MessageContext.class));
     }
 
     @Test
@@ -80,8 +91,8 @@ class ReceiveMessageListenerExeTest {
 
         listenerExe.execute(message);
 
-        verify(openCodeMessageAppService, never()).tryHandle(message);
-        verify(botMessageAppService, never()).handleMessage(message);
+        verify(openCodeMessageAppService, never()).tryHandle(any(), any());
+        verify(botMessageAppService, never()).handleMessage(any(), any(MessageContext.class));
     }
 
     @Test
@@ -90,8 +101,8 @@ class ReceiveMessageListenerExeTest {
         Message message = createMessage("/help", "evt-biz-1");
         String errorMessage = "跨应用命令被拒绝";
         when(messageDeduplicator.isProcessed("evt-biz-1")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenReturn(false);
-        when(botMessageAppService.handleMessage(message)).thenThrow(new MessageBizException(errorMessage));
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenReturn(false);
+        when(botMessageAppService.handleMessage(eq(message), any(MessageContext.class))).thenThrow(new MessageBizException(errorMessage));
         when(feishuGateway.sendMessage(any(Message.class), eq(errorMessage), isNull())).thenReturn(SendResult.success("msg-reply-1"));
 
         // when
@@ -108,7 +119,7 @@ class ReceiveMessageListenerExeTest {
         message.setTopicId("topic-123");
         String errorMessage = "会话未初始化";
         when(messageDeduplicator.isProcessed("evt-biz-2")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenThrow(new MessageBizException(errorMessage));
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenThrow(new MessageBizException(errorMessage));
         when(feishuGateway.sendMessage(any(Message.class), eq(errorMessage), eq("topic-123"))).thenReturn(SendResult.success("msg-reply-2"));
 
         // when
@@ -123,8 +134,8 @@ class ReceiveMessageListenerExeTest {
         // given
         Message message = createMessage("/help", "evt-biz-3");
         when(messageDeduplicator.isProcessed("evt-biz-3")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenReturn(false);
-        when(botMessageAppService.handleMessage(message)).thenThrow(new MessageBizException((String) null));
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenReturn(false);
+        when(botMessageAppService.handleMessage(eq(message), any(MessageContext.class))).thenThrow(new MessageBizException((String) null));
         when(feishuGateway.sendMessage(any(Message.class), eq("操作失败，请稍后重试"), isNull())).thenReturn(SendResult.success("msg-reply-3"));
 
         // when
@@ -139,8 +150,8 @@ class ReceiveMessageListenerExeTest {
         // given
         Message message = createMessage("/help", "evt-biz-4");
         when(messageDeduplicator.isProcessed("evt-biz-4")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenReturn(false);
-        when(botMessageAppService.handleMessage(message)).thenThrow(new MessageBizException(""));
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenReturn(false);
+        when(botMessageAppService.handleMessage(eq(message), any(MessageContext.class))).thenThrow(new MessageBizException(""));
         when(feishuGateway.sendMessage(any(Message.class), eq("操作失败，请稍后重试"), isNull())).thenReturn(SendResult.success("msg-reply-4"));
 
         // when
@@ -156,8 +167,8 @@ class ReceiveMessageListenerExeTest {
         Message message = createMessage("/help", "evt-biz-5");
         String errorMessage = "业务错误";
         when(messageDeduplicator.isProcessed("evt-biz-5")).thenReturn(false);
-        when(openCodeMessageAppService.tryHandle(message)).thenReturn(false);
-        when(botMessageAppService.handleMessage(message)).thenThrow(new MessageBizException(errorMessage));
+        when(openCodeMessageAppService.tryHandle(eq(message), any(MessageContext.class))).thenReturn(false);
+        when(botMessageAppService.handleMessage(eq(message), any(MessageContext.class))).thenThrow(new MessageBizException(errorMessage));
         when(feishuGateway.sendMessage(any(Message.class), eq(errorMessage), isNull())).thenReturn(SendResult.failure("网络错误"));
 
         // when

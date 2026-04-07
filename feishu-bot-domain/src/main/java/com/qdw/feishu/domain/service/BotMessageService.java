@@ -9,6 +9,7 @@ import com.qdw.feishu.domain.message.BotRoutingDecision;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -28,46 +29,55 @@ public class BotMessageService {
     }
 
     public BotRoutingDecision routeMessage(Message message) {
-        message.validate();
-
-        Optional<ImContextRef> contextRefOpt = resolveContextRef(message);
-        if (isExplicitCommand(message)) {
-            return routeExplicitCommand(message, contextRefOpt);
-        }
-
-        return routeImplicitMessage(contextRefOpt);
+        return routeMessage(message, MessageContext.unresolved());
     }
 
-    private BotRoutingDecision routeExplicitCommand(Message message, Optional<ImContextRef> contextRefOpt) {
+    public BotRoutingDecision routeMessage(Message message, MessageContext messageContext) {
+        message.validate();
+
+        if (isExplicitCommand(message)) {
+            return routeExplicitCommand(message, messageContext);
+        }
+
+        return routeImplicitMessage(messageContext);
+    }
+
+    private BotRoutingDecision routeExplicitCommand(Message message, MessageContext messageContext) {
         FishuAppI commandApp = resolveAppFromCommandOnly(message);
         if (commandApp == null) {
             return new BotRoutingDecision(null, null, false);
         }
 
-        if (contextRefOpt.isPresent()) {
-            Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRefOpt.get());
-            if (bindingOpt.isPresent()) {
-                ImContextBinding binding = bindingOpt.get();
-                if (isCrossAppCommand(binding, commandApp)) {
-                    throwCrossAppCommandRejected(commandApp, binding);
-                }
+        // Use pre-resolved binding from MessageContext when available
+        Optional<ImContextBinding> bindingOpt;
+        if (messageContext.isResolved()) {
+            bindingOpt = Optional.ofNullable(messageContext.getBinding());
+        } else {
+            Optional<ImContextRef> contextRefOpt = resolveContextRef(message);
+            bindingOpt = contextRefOpt.flatMap(bindingGateway::findBinding);
+        }
+
+        if (bindingOpt.isPresent()) {
+            ImContextBinding binding = bindingOpt.get();
+            if (isCrossAppCommand(binding, commandApp)) {
+                throwCrossAppCommandRejected(commandApp, binding);
             }
         }
 
         return new BotRoutingDecision(commandApp.getAppId(), commandApp, isSessionAwareApp(commandApp));
     }
 
-    private BotRoutingDecision routeImplicitMessage(Optional<ImContextRef> contextRefOpt) {
-        if (contextRefOpt.isEmpty()) {
+    private BotRoutingDecision routeImplicitMessage(MessageContext messageContext) {
+        if (!messageContext.isResolved()) {
+            // Fallback: try resolving from scratch (unresolved context)
             return routeToHelp();
         }
 
-        Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRefOpt.get());
-        if (bindingOpt.isEmpty()) {
+        if (!messageContext.isBound()) {
             return routeToHelp();
         }
 
-        String appId = bindingOpt.get().getAppId();
+        String appId = messageContext.getBinding().getAppId();
         Optional<FishuAppI> appOpt = appRegistry.getApp(appId);
         if (appOpt.isEmpty()) {
             return routeToHelp();

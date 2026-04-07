@@ -139,12 +139,13 @@ class OpenCodeMessageAppServiceTest {
         when(contextSessionOrchestrator.loadStatus(any(), eq("opencode"), any()))
                 .thenReturn(ContextSessionStatus.inAppNoSession(binding));
         when(botMessageAppService.handleMessage(message))
-                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.text("Created\nSession ID: `oc_ses_123`")));
+                .thenReturn(new HandledMessageResult(expected, "opencode", AppExecutionResult.withSession("Created session", "oc_ses_123", true)));
 
         SendResult result = appService.handleMessage(message);
 
         assertEquals(expected, result);
-        verify(openCodeSessionManager).saveSession(message, "oc_ses_123");
+        // progressSessionIfNeeded uses sendResult.getThreadId() to construct ImContextRef
+        verify(openCodeSessionManager).saveSession(ImContextRef.feishuThread("omt_activate"), "oc_ses_123");
     }
 
     @Test

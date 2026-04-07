@@ -10,6 +10,7 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.opencode.OpenCodeApp;
 import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
@@ -45,6 +46,10 @@ public class OpenCodeMessageAppService {
         this.openCodeApp = openCodeApp;
     }
 
+    /**
+     * @deprecated Use {@link #tryHandle(Message, MessageContext)} instead.
+     */
+    @Deprecated
     public boolean supports(Message message) {
         if (isExplicitOpenCodeCommand(message)) {
             return true;
@@ -57,6 +62,10 @@ public class OpenCodeMessageAppService {
                 .orElse(false);
     }
 
+    /**
+     * @deprecated Use {@link #tryHandle(Message, MessageContext)} instead.
+     */
+    @Deprecated
     public boolean tryHandle(Message message) {
         Optional<ImContextRef> contextRefOpt = resolveContext(message);
         Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt = loadStatus(contextRefOpt);
@@ -68,6 +77,39 @@ public class OpenCodeMessageAppService {
         return true;
     }
 
+    public boolean tryHandle(Message message, MessageContext messageContext) {
+        if (!messageContext.isResolved()) {
+            // Cannot resolve IM context — use pre-resolved binding from messageContext
+            Optional<ImContextRef> contextRefOpt = Optional.empty();
+            Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt = Optional.empty();
+            if (!shouldHandle(message, statusOpt)) {
+                return false;
+            }
+            handleMessageInternal(message, messageContext, contextRefOpt, statusOpt);
+            return true;
+        }
+
+        ImContextRef contextRef = messageContext.getContextRef();
+        // Use pre-resolved binding from MessageContext to build status without re-querying
+        Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt =
+                Optional.of(buildStatusFromContext(messageContext));
+        if (!shouldHandle(message, statusOpt)) {
+            return false;
+        }
+
+        handleMessageInternal(message, messageContext, Optional.of(contextRef), statusOpt);
+        return true;
+    }
+
+    public SendResult handleMessage(Message message, MessageContext messageContext) {
+        if (!messageContext.isResolved()) {
+            return botMessageAppService.handleMessage(message, messageContext).getSendResult();
+        }
+        ImContextRef contextRef = messageContext.getContextRef();
+        ContextSessionStatus<OpenCodeSessionData> status = buildStatusFromContext(messageContext);
+        return handleMessageInternal(message, messageContext, Optional.of(contextRef), Optional.of(status));
+    }
+
     public SendResult handleMessage(Message message) {
         Optional<ImContextRef> contextRefOpt = resolveContext(message);
         return handleMessageInternal(message, contextRefOpt, loadStatus(contextRefOpt));
@@ -76,7 +118,17 @@ public class OpenCodeMessageAppService {
     private SendResult handleMessageInternal(Message message,
                                              Optional<ImContextRef> contextRefOpt,
                                              Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt) {
+        return handleMessageInternal(message, null, contextRefOpt, statusOpt);
+    }
+
+    private SendResult handleMessageInternal(Message message,
+                                             MessageContext messageContext,
+                                             Optional<ImContextRef> contextRefOpt,
+                                             Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt) {
         if (contextRefOpt.isEmpty()) {
+            if (messageContext != null) {
+                return botMessageAppService.handleMessage(message, messageContext).getSendResult();
+            }
             return botMessageAppService.handleMessage(message).getSendResult();
         }
 
@@ -90,7 +142,7 @@ public class OpenCodeMessageAppService {
 
         if (status.getState() == ContextSessionState.UNBOUND) {
             contextSessionOrchestrator.enterAppContext(contextRef, APP_ID);
-            return handleOpenCodeResult(message);
+            return handleOpenCodeResult(message, messageContext);
         }
 
         if (status.getState() == ContextSessionState.BOUND_TO_OTHER_APP) {
@@ -102,7 +154,30 @@ public class OpenCodeMessageAppService {
             return sendGuidance(message, openCodeSessionManager.getCurrentSessionStatus(message));
         }
 
-        return handleOpenCodeResult(message);
+        return handleOpenCodeResult(message, messageContext);
+    }
+
+    /**
+     * Build ContextSessionStatus from pre-resolved MessageContext binding.
+     * Avoids a second findBinding() call by using the binding from MessageContext.
+     */
+    private ContextSessionStatus<OpenCodeSessionData> buildStatusFromContext(MessageContext messageContext) {
+        if (!messageContext.isBound()) {
+            return ContextSessionStatus.unbound();
+        }
+
+        ImContextBinding binding = messageContext.getBinding();
+        if (!binding.isForApp(APP_ID)) {
+            return ContextSessionStatus.boundToOtherApp(binding);
+        }
+
+        if (binding.getSessionId() == null) {
+            return ContextSessionStatus.inAppNoSession(binding);
+        }
+
+        // Has sessionId — need to verify session exists (requires gateway call)
+        return contextSessionOrchestrator.loadStatus(
+                messageContext.getContextRef(), APP_ID, TYPE_TOKEN);
     }
 
     private boolean shouldHandle(Message message, Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt) {
@@ -163,8 +238,13 @@ public class OpenCodeMessageAppService {
         return openCodeApp.getAppAliases().stream().anyMatch(alias -> alias.equalsIgnoreCase(command));
     }
 
-    private SendResult handleOpenCodeResult(Message message) {
-        HandledMessageResult result = botMessageAppService.handleMessage(message);
+    private SendResult handleOpenCodeResult(Message message, MessageContext messageContext) {
+        HandledMessageResult result;
+        if (messageContext != null) {
+            result = botMessageAppService.handleMessage(message, messageContext);
+        } else {
+            result = botMessageAppService.handleMessage(message);
+        }
         progressSessionIfNeeded(message, result);
         return result.getSendResult();
     }
@@ -177,27 +257,24 @@ public class OpenCodeMessageAppService {
             return;
         }
 
-        extractSessionId(result.getReplyContent())
-                .ifPresent(sessionId -> openCodeSessionManager.saveSession(message, sessionId));
-    }
-
-    private Optional<String> extractSessionId(String replyContent) {
-        if (replyContent == null) {
-            return Optional.empty();
+        // Use structured openCodeSessionId from AppExecutionResult (Task 1B)
+        // instead of fragile text parsing
+        com.qdw.feishu.domain.app.AppExecutionResult execResult = result.getExecutionResult();
+        if (execResult == null || execResult.getOpenCodeSessionId() == null) {
+            return;
         }
 
-        int startIndex = replyContent.indexOf("Session ID: `");
-        if (startIndex == -1) {
-            return Optional.empty();
-        }
+        String openCodeSessionId = execResult.getOpenCodeSessionId();
 
-        startIndex += "Session ID: `".length();
-        int endIndex = replyContent.indexOf("`", startIndex);
-        if (endIndex == -1) {
-            return Optional.empty();
+        // Determine the correct context to bind the session to:
+        // If the reply created a new thread, bind to that thread
+        SendResult sendResult = result.getSendResult();
+        if (sendResult.getThreadId() != null && !sendResult.getThreadId().isEmpty()) {
+            ImContextRef targetContext = ImContextRef.feishuThread(sendResult.getThreadId());
+            openCodeSessionManager.saveSession(targetContext, openCodeSessionId);
+        } else {
+            openCodeSessionManager.saveSession(message, openCodeSessionId);
         }
-
-        return Optional.of(replyContent.substring(startIndex, endIndex));
     }
 
     private SendResult sendGuidance(Message message, String content) {
