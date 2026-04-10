@@ -345,6 +345,108 @@ class OpenCodeMessageAppServiceTest {
         verify(contextSessionOrchestrator, never()).loadStatus(any(), any(), any());
     }
 
+    // ========== Task 1: 纯文本合成 chat 命令测试 (UX-01) ==========
+
+    @Test
+    void should_synthesizeChatCommand_when_plainTextInInitializedTopic() {
+        // Given: initialized topic + plain text (no / prefix)
+        Message message = createTopicMessage("帮我写代码", "omt_synth");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_synth");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_internal");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+        SendResult expected = SendResult.success("msg_synth", "omt_synth");
+
+        when(openCodeSessionManager.detectTopicState(any(MessageContext.class)))
+                .thenReturn(com.qdw.feishu.domain.topic.TopicState.INITIALIZED);
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.getAppAliases()).thenReturn(java.util.List.of("oc", "code"));
+        // After synthesis: "/opencode chat 帮我写代码" → routes through normal command path
+        when(botMessageAppService.handleMessage(any(Message.class), any(MessageContext.class)))
+                .thenReturn(new HandledMessageResult(expected, "opencode",
+                        AppExecutionResult.text("AI response here")));
+
+        SendResult result = appService.handleMessage(message, messageContext);
+
+        assertEquals(expected, result);
+        // Verify botMessageAppService was called (means synthesis routed through)
+        verify(botMessageAppService).handleMessage(any(Message.class), any(MessageContext.class));
+    }
+
+    @Test
+    void should_notSynthesize_when_plainTextInUninitializedTopic() {
+        // Given: uninitialized topic + plain text
+        Message message = createTopicMessage("帮我写代码", "omt_uninit_synth");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_uninit_synth");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        when(openCodeSessionManager.detectTopicState(any(MessageContext.class)))
+                .thenReturn(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.getAppAliases()).thenReturn(java.util.List.of("oc", "code"));
+
+        // Should NOT synthesize — uninitialized topic plain text should go through
+        // existing IN_APP_NO_SESSION path and show guidance
+        SendResult expected = SendResult.success("msg_uninit_synth", "omt_uninit_synth");
+        when(openCodeSessionManager.getCurrentSessionStatus(message))
+                .thenReturn("initialization guidance");
+        when(feishuGateway.sendMessage(eq(message), eq("initialization guidance"), eq("omt_uninit_synth")))
+                .thenReturn(expected);
+
+        SendResult result = appService.handleMessage(message, messageContext);
+
+        // Plain text in uninitialized topic should show guidance, not be synthesized to chat
+        assertEquals(expected, result);
+    }
+
+    @Test
+    void should_notSynthesize_when_plainTextInNonTopic() {
+        // Given: non-topic (no topicId) + plain text
+        Message message = new Message();
+        message.setContent("帮我写代码");
+        message.setChatId("chat_non_topic");
+        message.setMessageId("msg_non_topic");
+        message.setSender(new Sender("ou_test", "tester"));
+
+        ImContextRef contextRef = ImContextRef.feishuChat("chat_non_topic");
+        MessageContext messageContext = MessageContext.of(contextRef, null);
+
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.getAppAliases()).thenReturn(java.util.List.of("oc", "code"));
+
+        // Non-topic plain text should not be synthesized — no OpenCode handling
+        SendResult expected = SendResult.success("msg_non_topic");
+        when(botMessageAppService.handleMessage(any(Message.class), any(MessageContext.class)))
+                .thenReturn(new HandledMessageResult(expected, null, null));
+
+        SendResult result = appService.handleMessage(message, messageContext);
+
+        // Should delegate to bot service without synthesis
+        assertEquals(expected, result);
+    }
+
+    @Test
+    void should_notSynthesize_when_explicitCommandInInitializedTopic() {
+        // Given: initialized topic + explicit /oc command
+        Message message = createTopicMessage("/oc chat test", "omt_explicit");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_explicit");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_internal");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+        SendResult expected = SendResult.success("msg_explicit", "omt_explicit");
+
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.getAppAliases()).thenReturn(java.util.List.of("oc", "code"));
+        when(botMessageAppService.handleMessage(any(Message.class), any(MessageContext.class)))
+                .thenReturn(new HandledMessageResult(expected, "opencode",
+                        AppExecutionResult.noReply()));
+
+        SendResult result = appService.handleMessage(message, messageContext);
+
+        // Explicit command should NOT be synthesized, normal routing
+        assertEquals(expected, result);
+        verify(botMessageAppService).handleMessage(any(Message.class), any(MessageContext.class));
+    }
+
     private Message createTopicMessage(String content, String topicId) {
         Message message = new Message();
         message.setContent(content);
