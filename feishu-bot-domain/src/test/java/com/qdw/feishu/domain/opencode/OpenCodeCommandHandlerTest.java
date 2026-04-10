@@ -559,6 +559,57 @@ class OpenCodeCommandHandlerTest {
         assertTrue(text.contains("未知") || text.contains("命令"));
     }
 
+    // ========== status 快捷命令测试 ==========
+
+    @Test
+    @DisplayName("status 命令 - INITIALIZED 状态返回会话信息")
+    void should_returnSessionStatus_when_statusCommandInInitializedTopic() {
+        String topicId = "status-init-topic";
+        String sessionId = "ses_status_456";
+        String statusText = "📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`";
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
+        when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
+            .thenReturn(statusText);
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode status", topicId),
+            "status",
+            new String[]{"/opencode", "status"},
+            CommandWhitelist.all(),
+            unresolvedContext()
+        );
+
+        assertNotNull(result, "status 命令不应返回 null");
+        assertEquals(statusText, result.getReplyContent());
+        verify(sessionManager).getCurrentSessionStatus(any(MessageContext.class));
+    }
+
+    @Test
+    @DisplayName("status 命令 - UNINITIALIZED 状态返回未绑定引导")
+    void should_returnUnboundHint_when_statusCommandInUninitializedTopic() {
+        String topicId = "status-uninit-topic";
+        String statusText = "📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话";
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
+        when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
+            .thenReturn(statusText);
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode status", topicId),
+            "status",
+            new String[]{"/opencode", "status"},
+            CommandWhitelist.builder().add("status").build(),
+            unresolvedContext()
+        );
+
+        assertNotNull(result, "status 命令不应返回 null");
+        assertEquals(statusText, result.getReplyContent());
+        verify(sessionManager).getCurrentSessionStatus(any(MessageContext.class));
+    }
+
     // ========== 状态检测测试 ==========
 
     @Test

@@ -132,8 +132,36 @@ class OpenCodeAppTest {
     }
 
     @Test
-    @DisplayName("UNINITIALIZED 状态的白名单应排除 chat 和 new")
-    void getCommandWhitelist_uninitialized_excludesChatAndNew() {
+    @DisplayName("NON_TOPIC 状态白名单应包含 new 命令")
+    void getCommandWhitelist_nonTopic_includesNew() {
+        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.NON_TOPIC);
+
+        assertNotNull(whitelist);
+        assertTrue(whitelist.isCommandAllowed("new", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC),
+                "NON_TOPIC 白名单应包含 new 命令");
+        assertTrue(whitelist.isCommandAllowed("chatnow", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC),
+                "NON_TOPIC 白名单应包含 chatnow 命令");
+        assertTrue(whitelist.isCommandAllowed("cn", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC),
+                "NON_TOPIC 白名单应包含 cn 别名");
+    }
+
+    @Test
+    @DisplayName("UNINITIALIZED 状态白名单应包含 status 和 new")
+    void getCommandWhitelist_uninitialized_includesStatusAndNew() {
+        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+
+        assertNotNull(whitelist);
+        assertTrue(whitelist.isCommandAllowed("status", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+                "UNINITIALIZED 白名单应包含 status 命令");
+        assertTrue(whitelist.isCommandAllowed("new", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+                "UNINITIALIZED 白名单应包含 new 命令");
+        assertFalse(whitelist.isCommandAllowed("chat", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+                "UNINITIALIZED 白名单不应包含 chat 命令");
+    }
+
+    @Test
+    @DisplayName("UNINITIALIZED 状态的白名单应排除 chat")
+    void getCommandWhitelist_uninitialized_excludesChat() {
         CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
 
         assertNotNull(whitelist);
