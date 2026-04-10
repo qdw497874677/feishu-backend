@@ -8,6 +8,7 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
@@ -98,14 +99,18 @@ class OpenCodeExplicitInitializationTest {
         Message message = createTestMessage("/opencode chat hello", topicId);
         ImContextRef contextRef = createContextRef(topicId);
 
-        // 设置：话题无绑定
+        // 设置：话题无绑定 (for the legacy Message-based path if still invoked)
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.empty());
+
+        // Pre-resolved MessageContext: resolved but no binding → UNINITIALIZED
+        MessageContext messageContext = MessageContext.of(contextRef, null);
 
         // chat 命令在 UNINITIALIZED 状态下允许，会自动创建会话
         when(taskExecutor.executeWithNewSession(any(Message.class), eq("hello"), isNull()))
             .thenReturn(AppExecutionResult.noReply());
 
-        AppExecutionResult response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
+        AppExecutionResult response = commandHandler.handle(message, "chat",
+            new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all(), messageContext);
 
         assertNotNull(response);
         assertNull(response.getReplyContent()); // async = noReply
@@ -127,12 +132,16 @@ class OpenCodeExplicitInitializationTest {
         AppSession<OpenCodeSessionData> session = createMockSession("opencode_ses_old", false);
         when(appSessionGateway.getSession(eq("opencode"), eq(appSessionId), any(TypeToken.class)))
             .thenReturn(Optional.of(session));
+
+        // Pre-resolved MessageContext: resolved with binding → INITIALIZED
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
         
         // chat 命令在 INITIALIZED 状态下允许，使用现有会话
         when(taskExecutor.executeWithAutoSession(any(Message.class), eq("hello")))
             .thenReturn(AppExecutionResult.noReply());
 
-        AppExecutionResult response = commandHandler.handle(message, "chat", new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all());
+        AppExecutionResult response = commandHandler.handle(message, "chat",
+            new String[]{"/opencode", "chat", "hello"}, CommandWhitelist.all(), messageContext);
 
         // 验证使用了现有会话 (async = noReply)
         assertNotNull(response);
@@ -148,10 +157,14 @@ class OpenCodeExplicitInitializationTest {
         Message message = createTestMessage("/opencode sc " + sessionId, topicId);
         ImContextRef contextRef = createContextRef(topicId);
 
+        // Pre-resolved MessageContext: resolved but no binding → UNINITIALIZED (sc is allowed)
+        MessageContext messageContext = MessageContext.of(contextRef, null);
+
         when(taskExecutor.executeWithSpecificSession(eq(message), isNull(), eq(sessionId)))
             .thenReturn(AppExecutionResult.withSession("✅ **会话已绑定**\n\nSession ID: " + sessionId, sessionId, false));
 
-        AppExecutionResult response = commandHandler.handle(message, "sc", new String[]{"/opencode", "sc", sessionId}, CommandWhitelist.all());
+        AppExecutionResult response = commandHandler.handle(message, "sc",
+            new String[]{"/opencode", "sc", sessionId}, CommandWhitelist.all(), messageContext);
 
         verify(taskExecutor).executeWithSpecificSession(eq(message), isNull(), eq(sessionId));
         assertNotNull(response);

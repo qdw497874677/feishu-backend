@@ -7,6 +7,7 @@ import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,12 +70,23 @@ class OpenCodeCommandHandlerTest {
                     : TopicState.UNINITIALIZED;
             });
 
+        // MessageContext overload — mirrors Message-based behavior
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
+
         // 默认 mock 设置 - 话题未初始化（无sessionId）
         when(sessionManager.getSessionId(any(Message.class)))
+            .thenReturn(Optional.empty());
+        when(sessionManager.getSessionId(any(MessageContext.class)))
             .thenReturn(Optional.empty());
 
         // 默认 mock 设置 - 话题未显式初始化
         when(sessionManager.isExplicitlyInitialized(any(Message.class)))
+            .thenReturn(false);
+        when(sessionManager.isExplicitlyInitialized(any(MessageContext.class)))
+            .thenReturn(false);
+
+        when(sessionManager.isTopicInitialized(any(MessageContext.class)))
             .thenReturn(false);
     }
 
@@ -88,6 +100,11 @@ class OpenCodeCommandHandlerTest {
         message.setChatId("chat-test");
         message.setSender(new Sender("test-openid", "Test User"));
         return message;
+    }
+
+    /** Create an unresolved MessageContext for tests that don't need binding. */
+    private MessageContext unresolvedContext() {
+        return MessageContext.unresolved();
     }
 
     // ========== connect 命令测试 ==========
@@ -250,6 +267,8 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of("ses_123"));
         when(sessionManager.isTopicInitialized(any(Message.class))).thenReturn(true);
+        when(sessionManager.isTopicInitialized(any(MessageContext.class))).thenReturn(true);
+        when(sessionManager.detectTopicState(any(MessageContext.class))).thenReturn(TopicState.INITIALIZED);
 
         when(taskExecutor.executeWithNewSession(any(Message.class), eq(prompt), isNull()))
             .thenReturn(expectedResult);
@@ -258,7 +277,8 @@ class OpenCodeCommandHandlerTest {
             createTestMessage("/opencode new " + prompt, topicId),
             "new",
             new String[]{"/opencode", "new", prompt},
-            CommandWhitelist.all()
+            CommandWhitelist.all(),
+            unresolvedContext()
         );
 
         // 验证返回了正确的结果并调用了正确的方法 (async = noReply)
@@ -322,12 +342,17 @@ class OpenCodeCommandHandlerTest {
             .thenReturn(true);
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
+        when(sessionManager.getSessionId(any(MessageContext.class)))
+            .thenReturn(Optional.of(sessionId));
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat", topicId),
             "chat",
             new String[]{"/opencode", "chat"},
-            CommandWhitelist.all()
+            CommandWhitelist.all(),
+            unresolvedContext()
         );
 
         assertNotNull(result);
@@ -343,6 +368,10 @@ class OpenCodeCommandHandlerTest {
         String prompt = "帮我写个排序函数";
         when(sessionManager.isTopicInitialized(any(Message.class)))
             .thenReturn(true);
+        when(sessionManager.isTopicInitialized(any(MessageContext.class)))
+            .thenReturn(true);
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
         when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
             .thenReturn(AppExecutionResult.noReply());
 
@@ -350,7 +379,8 @@ class OpenCodeCommandHandlerTest {
             createTestMessage("/opencode chat " + prompt, topicId),
             "chat",
             new String[]{"/opencode", "chat", prompt},
-            CommandWhitelist.all()
+            CommandWhitelist.all(),
+            unresolvedContext()
         );
 
         assertNotNull(result);
@@ -365,16 +395,22 @@ class OpenCodeCommandHandlerTest {
     void handleSessionStatus_withActiveSession() {
         String topicId = "status-topic";
         String sessionId = "ses_status_123";
+        String statusText = "📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`\n  💬 话题 ID: `" + topicId + "`\n  ✅ 状态: 活跃\n\n💡 继续对话会自动使用此会话";
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
         when(sessionManager.getCurrentSessionStatus(any(Message.class)))
-            .thenReturn("📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`\n  💬 话题 ID: `" + topicId + "`\n  ✅ 状态: 活跃\n\n💡 继续对话会自动使用此会话");
+            .thenReturn(statusText);
+        when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
+            .thenReturn(statusText);
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
             "session",
             new String[]{"/opencode", "session", "status"},
-            CommandWhitelist.all()
+            CommandWhitelist.all(),
+            unresolvedContext()
         );
 
         assertNotNull(result, "session status 命令不应返回 null");
@@ -386,16 +422,22 @@ class OpenCodeCommandHandlerTest {
     @DisplayName("session status 命令 - 无会话")
     void handleSessionStatus_noSession() {
         String topicId = "no-session-topic";
+        String statusText = "📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话";
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.empty());
         when(sessionManager.getCurrentSessionStatus(any(Message.class)))
-            .thenReturn("📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话");
+            .thenReturn(statusText);
+        when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
+            .thenReturn(statusText);
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
             "session",
             new String[]{"/opencode", "session", "status"},
-            CommandWhitelist.all()
+            CommandWhitelist.all(),
+            unresolvedContext()
         );
 
         assertNotNull(result, "session status 命令不应返回 null");

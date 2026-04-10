@@ -79,7 +79,7 @@ class BotMessageAppServiceTest {
         SendResult expected = SendResult.success("msg_help");
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("help", helpApp, false));
-        when(helpApp.execute(message)).thenReturn(AppExecutionResult.text("help text"));
+        when(helpApp.execute(any(Message.class), any(MessageContext.class))).thenReturn(AppExecutionResult.text("help text"));
         when(helpApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "help text", null)).thenReturn(expected);
 
@@ -97,7 +97,7 @@ class BotMessageAppServiceTest {
         ImContextRef contextRef = ImContextRef.feishuThread("omt_actual");
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
-        when(openCodeApp.execute(message)).thenReturn(AppExecutionResult.text("project list"));
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class))).thenReturn(AppExecutionResult.text("project list"));
         when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "project list", "omt_route")).thenReturn(expected);
         when(bindingGateway.bind(contextRef, "opencode", null))
@@ -132,7 +132,7 @@ class BotMessageAppServiceTest {
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
                 .thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
-        when(openCodeApp.execute(message)).thenReturn(AppExecutionResult.text("project list"));
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class))).thenReturn(AppExecutionResult.text("project list"));
         when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "project list", null)).thenReturn(expected);
         when(bindingGateway.bind(newThreadRef, "opencode", "internal_ses_123"))

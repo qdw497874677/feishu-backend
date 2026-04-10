@@ -48,7 +48,7 @@ public class BotMessageAppService {
         }
 
         FishuAppI app = decision.getApp();
-        AppExecutionResult execResult = app.execute(message);
+        AppExecutionResult execResult = app.execute(message, messageContext);
         String replyContent = execResult != null ? execResult.getReplyContent() : null;
         SendResult sendResult = sendReply(message, app, replyContent);
         persistBindingIfNeeded(message, sendResult, decision, messageContext);

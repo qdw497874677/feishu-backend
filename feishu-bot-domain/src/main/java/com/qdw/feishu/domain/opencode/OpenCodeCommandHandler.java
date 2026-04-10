@@ -6,6 +6,7 @@ import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
@@ -46,11 +47,28 @@ public class OpenCodeCommandHandler {
      * @param parts 解析后的命令部分
      * @param whitelist 命令白名单（由 OpenCodeApp 提供，确保一致性）
      * @return 命令响应
+     * @deprecated Use {@link #handle(Message, String, String[], CommandWhitelist, MessageContext)} instead.
      */
+    @Deprecated
     public AppExecutionResult handle(Message message, String subCommand, String[] parts, CommandWhitelist whitelist) {
+        return handle(message, subCommand, parts, whitelist, MessageContext.unresolved());
+    }
+
+    /**
+     * 处理命令（使用 MessageContext 避免重复 findBinding 调用）
+     *
+     * @param message 消息对象
+     * @param subCommand 子命令
+     * @param parts 解析后的命令部分
+     * @param whitelist 命令白名单（由 OpenCodeApp 提供，确保一致性）
+     * @param messageContext 预解析的消息上下文
+     * @return 命令响应
+     */
+    public AppExecutionResult handle(Message message, String subCommand, String[] parts,
+                                      CommandWhitelist whitelist, MessageContext messageContext) {
         log.info("准备验证命令: subCommand={}", subCommand);
 
-        TopicState state = sessionManager.detectTopicState(message);
+        TopicState state = sessionManager.detectTopicState(messageContext);
         log.info("话题状态: {}, subCommand={}", state.getDescription(), subCommand);
 
         // 验证命令是否允许（通过 CommandWhitelist）
@@ -66,10 +84,10 @@ public class OpenCodeCommandHandler {
         return switch (subCommand) {
             case "help" -> null; // caller handles
             case "connect" -> AppExecutionResult.text(handleConnect());
-            case "new" -> handleNewCommand(parts, message);
-            case "chat", "chatnow", "cn" -> handleChatCommand(parts, message);
+            case "new" -> handleNewCommand(parts, message, messageContext);
+            case "chat", "chatnow", "cn" -> handleChatCommand(parts, message, messageContext);
             case "sessions", "s" -> AppExecutionResult.text(sessionManager.handleSessionsCommand(parts));
-            case "session", "sc" -> handleSessionCommand(parts, message);
+            case "session", "sc" -> handleSessionCommand(parts, message, messageContext);
             case "projects", "p" -> AppExecutionResult.text(openCodeGateway.listProjects());
             case "commands" -> AppExecutionResult.text(openCodeGateway.listCommands());
             case "reset" -> AppExecutionResult.text(handleResetCommand(message));
@@ -175,10 +193,15 @@ public class OpenCodeCommandHandler {
       * - 话题已绑定（INITIALIZED）：在当前项目创建新会话，更换话题绑定
       * - 话题未绑定（UNINITIALIZED/NON_TOPIC）：必须指定项目
       */
+     @Deprecated
      private AppExecutionResult handleNewCommand(String[] parts, Message message) {
+        return handleNewCommand(parts, message, MessageContext.unresolved());
+     }
+
+     private AppExecutionResult handleNewCommand(String[] parts, Message message, MessageContext messageContext) {
         String topicId = message.getTopicId();
         boolean inTopic = topicId != null && !topicId.isEmpty();
-        boolean isInitialized = inTopic && sessionManager.isTopicInitialized(message);
+        boolean isInitialized = inTopic && sessionManager.isTopicInitialized(messageContext);
 
         if (parts.length < 3) {
             return AppExecutionResult.text(buildNewCommandUsage(isInitialized));
@@ -250,7 +273,12 @@ public class OpenCodeCommandHandler {
       * - 话题已初始化 + chatnow → 自动创建新会话并绑定
       * - 话题已初始化 + chat → 使用现有会话继续对话
       */
+      @Deprecated
       private AppExecutionResult handleChatCommand(String[] parts, Message message) {
+          return handleChatCommand(parts, message, MessageContext.unresolved());
+      }
+
+      private AppExecutionResult handleChatCommand(String[] parts, Message message, MessageContext messageContext) {
          String topicId = message.getTopicId();
          boolean inTopic = topicId != null && !topicId.isEmpty();
          String subCommand = parts.length > 1 ? parts[1].toLowerCase() : "chat";
@@ -258,13 +286,13 @@ public class OpenCodeCommandHandler {
          boolean isChatNow = "chatnow".equals(subCommand) || "cn".equals(subCommand);
 
          if (isChatNow) {
-             return handleChatNowCommand(message);
+             return handleChatNowCommand(message, messageContext);
          }
 
          if (parts.length < 3) {
              if (inTopic) {
                  return AppExecutionResult.text(
-                     sessionManager.getSessionId(message)
+                     sessionManager.getSessionId(messageContext)
                          .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
                          .orElse(buildChatQuickStart())
                  );
@@ -274,7 +302,7 @@ public class OpenCodeCommandHandler {
 
          String prompt = extractChatContent(parts, message);
 
-         if (inTopic && !sessionManager.isTopicInitialized(message)) {
+         if (inTopic && !sessionManager.isTopicInitialized(messageContext)) {
                 log.info("话题未初始化，自动创建新会话");
                 return taskExecutor.executeWithNewSession(message, prompt, null);
          }
@@ -282,12 +310,17 @@ public class OpenCodeCommandHandler {
          return taskExecutor.executeWithAutoSession(message, prompt);
      }
 
+     @Deprecated
      private AppExecutionResult handleChatNowCommand(Message message) {
+         return handleChatNowCommand(message, MessageContext.unresolved());
+     }
+
+     private AppExecutionResult handleChatNowCommand(Message message, MessageContext messageContext) {
          String topicId = message.getTopicId();
          boolean inTopic = topicId != null && !topicId.isEmpty();
 
-         if (inTopic && sessionManager.isTopicInitialized(message)) {
-             Optional<String> currentSessionId = sessionManager.getSessionId(message);
+         if (inTopic && sessionManager.isTopicInitialized(messageContext)) {
+             Optional<String> currentSessionId = sessionManager.getSessionId(messageContext);
              if (currentSessionId.isPresent()) {
                  return AppExecutionResult.text(buildSessionInitializedInfo(topicId, currentSessionId.get()));
              }
@@ -298,6 +331,8 @@ public class OpenCodeCommandHandler {
 
          try {
              String result = taskExecutor.createSessionOnly(message);
+             // After creating session, must use Message-based getSessionId since
+             // the binding was just written and messageContext is stale
              Optional<String> newSessionId = sessionManager.getSessionId(message);
              if (newSessionId.isPresent()) {
                  return AppExecutionResult.withSession(
@@ -407,7 +442,12 @@ public class OpenCodeCommandHandler {
         return remaining;
     }
 
+    @Deprecated
     private AppExecutionResult handleSessionCommand(String[] parts, Message message) {
+        return handleSessionCommand(parts, message, MessageContext.unresolved());
+    }
+
+    private AppExecutionResult handleSessionCommand(String[] parts, Message message, MessageContext messageContext) {
         String subCommand = parts[1].toLowerCase();
 
         if (subCommand.equals("sc")) {
@@ -425,7 +465,7 @@ public class OpenCodeCommandHandler {
         String action = parts[2].toLowerCase();
 
         return switch (action) {
-            case "status" -> AppExecutionResult.text(sessionManager.getCurrentSessionStatus(message));
+            case "status" -> AppExecutionResult.text(sessionManager.getCurrentSessionStatus(messageContext));
             case "list" -> AppExecutionResult.text(sessionManager.handleListSessions());
             case "continue" -> handleSessionContinue(parts, message);
             default -> AppExecutionResult.text("❌ 未知的 session 命令: `" + action + "`\n\n" +

@@ -5,6 +5,7 @@ import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.result.BizResult;
 import com.qdw.feishu.domain.topic.TopicState;
 import java.util.Collections;
@@ -27,8 +28,23 @@ public interface FishuAppI {
      *
      * @param message the incoming message
      * @return structured execution result
+     * @deprecated Use {@link #execute(Message, MessageContext)} instead.
      */
+    @Deprecated
     AppExecutionResult execute(Message message);
+
+    /**
+     * Execute with MessageContext for apps that benefit from pre-resolved binding.
+     * Default implementation delegates to execute(Message), ignoring context.
+     * Override in session-aware apps (e.g., OpenCodeApp) to use MessageContext.
+     *
+     * @param message the incoming message
+     * @param messageContext the pre-resolved context (never null)
+     * @return structured execution result
+     */
+    default AppExecutionResult execute(Message message, MessageContext messageContext) {
+        return execute(message);
+    }
 
     /**
      * 新版执行方法：接收统一命令，返回业务结果

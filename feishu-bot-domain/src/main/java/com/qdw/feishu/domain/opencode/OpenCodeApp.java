@@ -7,6 +7,7 @@ import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
@@ -167,8 +168,17 @@ public class OpenCodeApp implements FishuAppI {
         return sessionManager.isTopicInitialized(message);
     }
 
+    /**
+     * @deprecated Use {@link #execute(Message, MessageContext)} instead.
+     */
+    @Deprecated
     @Override
     public AppExecutionResult execute(Message message) {
+        return execute(message, MessageContext.unresolved());
+    }
+
+    @Override
+    public AppExecutionResult execute(Message message, MessageContext messageContext) {
         String content = message.getContent().trim();
         String[] parts = content.split("\\s+", 3);
 
@@ -193,8 +203,8 @@ public class OpenCodeApp implements FishuAppI {
                     💡 直接输入命令即可（无需 /opencode 前缀）
                     """);
             }
-            // 话题内，显示状态和引导
-            return AppExecutionResult.text(sessionManager.getCurrentSessionStatus(message));
+            // 话题内，显示状态和引导 — use MessageContext overload
+            return AppExecutionResult.text(sessionManager.getCurrentSessionStatus(messageContext));
         }
 
         String subCommand = parts[1].toLowerCase();
@@ -204,10 +214,10 @@ public class OpenCodeApp implements FishuAppI {
             return AppExecutionResult.text(getHelp());
         }
 
-        // 委托给命令处理器（传递白名单确保一致性）
-        TopicState state = sessionManager.detectTopicState(message);
+        // 委托给命令处理器（传递白名单确保一致性）— use MessageContext overloads
+        TopicState state = sessionManager.detectTopicState(messageContext);
         CommandWhitelist whitelist = getCommandWhitelist(state);
-        AppExecutionResult result = commandHandler.handle(message, subCommand, parts, whitelist);
+        AppExecutionResult result = commandHandler.handle(message, subCommand, parts, whitelist, messageContext);
         if (result != null) {
             return result;
         }
