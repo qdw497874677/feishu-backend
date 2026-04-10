@@ -28,7 +28,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 ### Active
 
 - [ ] **R1: Unified state model** — Consolidate TopicState + ContextSessionState into a single state detection mechanism; eliminate redundant DB queries
-- [ ] **R2: Context-aware binding** — When session is bound on chatId and reply creates a new topic, automatically migrate/propagate binding to the new threadId context
+- [x] **R2: Context-aware binding** — When session is bound on chatId and reply creates a new topic, automatically migrate/propagate binding to the new threadId context — *Validated in Phase 1: Context Foundation (CTX-01)*
 - [ ] **R3: Direct typing in bound topics** — Plain text (no `/oc` prefix) in an initialized topic is treated as a chat prompt and forwarded to OpenCode
 - [ ] **R4: Suppress empty replies** — Async task paths return null (not "") so no ghost bubble appears before streaming card
 - [ ] **R5: chatnow executes prompt** — `/oc cn <prompt>` creates session AND forwards the prompt in one step
@@ -36,7 +36,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 - [ ] **R7: Card + command dual entry** — Both interactive card buttons and typed commands work as entry points for project/session selection
 - [ ] **R8: Group→Topic conversation model** — Project/session selection happens in group main chat; conversation happens in topic threads
 - [ ] **R9: Clean command set** — Redesigned commands reflecting the new flow (connect/bind/unbind/status/chat etc.)
-- [ ] **R10: Robust session ID passing** — Pass session IDs as structured data (method return values, fields) instead of parsing from formatted reply text
+- [x] **R10: Robust session ID passing** — Pass session IDs as structured data (method return values, fields) instead of parsing from formatted reply text — *Validated in Phase 1: Context Foundation (CTX-02)*
 
 ### Out of Scope
 
@@ -55,7 +55,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 - Feishu SDK 2.5.2 for messaging, cards, WebSocket
 - OpenCode server at localhost:4098 (health check: v1.2.27)
 - SQLite for persistence (context bindings + app sessions)
-- 261 tests passing (163 domain + 37 app + 58 infra + 3 start)
+- 280 tests passing (174 domain + 44 app + 59 infra + 3 start) — after Phase 1 completion
 
 **Prior work:**
 - IM context binding system already built (ImContextRef, ImContextBinding, two-phase binding model)
@@ -65,12 +65,12 @@ A user in a bound topic can type plain text and get an AI response — no comman
 - Comprehensive flow audit identified all 6 broken points documented in CONCERNS.md
 
 **Known issues to address:**
-- Session bound to chatId but topic reply creates new threadId → binding lost
+- ~~Session bound to chatId but topic reply creates new threadId → binding lost~~ — Fixed in Phase 1 (CTX-01)
 - Plain text in bound topic shows status instead of chatting
 - Empty string return creates ghost reply bubbles
 - chatnow creates session but ignores prompt content
 - Dual state detection (TopicState vs ContextSessionState) causes confusion and redundant queries
-- Session ID extracted by parsing formatted markdown text — fragile
+- ~~Session ID extracted by parsing formatted markdown text — fragile~~ — Fixed in Phase 1 (CTX-02)
 
 **Codebase health:**
 - 80 domain files, 21 infrastructure files — domain is large
@@ -99,8 +99,8 @@ A user in a bound topic can type plain text and get an AI response — no comman
 | Card + command dual entry points | Cards for discoverability, commands for power users | — Pending |
 | No cross-project in one topic | Keeps context clean — new topic for new project | — Pending |
 | Consolidate to single state model | Eliminate TopicState vs ContextSessionState confusion | — Pending |
-| Structured session ID passing | Eliminate fragile text parsing of session IDs | — Pending |
-| Old contexts degrade to help | No migration complexity — clean break | — Pending |
+| Structured session ID passing | Eliminate fragile text parsing of session IDs | ✓ Phase 1 |
+| Old contexts degrade to help | No migration complexity — clean break | ✓ Phase 1 |
 
 ## Evolution
 
@@ -119,5 +119,7 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+**Phase 1 complete** — Context foundation built. AppExecutionResult DTO, MessageContext resolve-once pipeline, chatId→threadId binding propagation, graceful degradation for unbound topics. 280 tests passing.
+
 ---
-*Last updated: 2026-04-06 after initialization*
+*Last updated: 2026-04-10 after Phase 1 completion*
