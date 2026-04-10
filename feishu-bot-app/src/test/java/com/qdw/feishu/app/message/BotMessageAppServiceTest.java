@@ -147,6 +147,40 @@ class BotMessageAppServiceTest {
         verify(bindingGateway, never()).clearBinding(chatRef);
     }
 
+    @Test
+    void should_skipReply_when_contentIsEmptyString() {
+        Message message = createMessage("/opencode chat test", "omt_empty", "chat_empty");
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.text(""));
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+
+        HandledMessageResult result = appService.handleMessage(message);
+
+        // Empty string should be treated like null — no reply sent
+        assertEquals(true, result.getSendResult().isSuccess());
+        verify(feishuGateway, never()).sendMessage(any(Message.class), any(String.class), any());
+    }
+
+    @Test
+    void should_skipReply_when_contentIsBlankString() {
+        Message message = createMessage("/opencode chat test", "omt_blank", "chat_blank");
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.text("   "));
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+
+        HandledMessageResult result = appService.handleMessage(message);
+
+        // Blank string (whitespace only) should be treated like null — no reply sent
+        assertEquals(true, result.getSendResult().isSuccess());
+        verify(feishuGateway, never()).sendMessage(any(Message.class), any(String.class), any());
+    }
+
     private Message createMessage(String content, String topicId, String chatId) {
         Message message = new Message();
         message.setContent(content);
