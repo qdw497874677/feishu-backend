@@ -71,10 +71,14 @@ Plans:
 
 **Dependency:** Phase 1 (correct context binding required for routing decisions).
 
-**Plans:** 2 plans
+**Status:** **COMPLETE** (2026-04-10) — 5 tasks (2+3), 309 tests, 10 commits.
+Summary Plan 01: `.planning/phases/02-command-router-conversation-ux/02-01-SUMMARY.md`
+Summary Plan 02: `.planning/phases/02-command-router-conversation-ux/02-02-SUMMARY.md`
+
+**Plans:** 2 plans (2 complete)
 Plans:
 - [x] 02-01-PLAN.md — 命令路由基础：空气泡消除 + status 命令 + 白名单完善 + 群聊引导 (UX-02, CMD-01, CMD-02, COMPAT-02)
-- [ ] 02-02-PLAN.md — 对话 UX：直接输入路由 + NextStepSuggester + 状态指示器 (UX-01, CMD-04, CMD-03, UX-03)
+- [x] 02-02-PLAN.md — 对话 UX：直接输入路由 + NextStepSuggester + 状态指示器 (UX-01, CMD-04, CMD-03, UX-03)
 
 **UI hint:** no
 
@@ -133,4 +137,4 @@ Phase 3: Cards & Guided Flows
 
 ---
 *Roadmap created: 2026-04-07*
-*Last updated: 2026-04-10 — Phase 1 Plan 02 complete (CTX-03 gap closure)*
+*Last updated: 2026-04-10 — Phase 2 complete (all 8 requirements: CMD-01..04, UX-01..03, COMPAT-02)*
