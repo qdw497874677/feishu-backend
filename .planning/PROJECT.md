@@ -29,13 +29,13 @@ A user in a bound topic can type plain text and get an AI response — no comman
 
 - [ ] **R1: Unified state model** — Consolidate TopicState + ContextSessionState into a single state detection mechanism; eliminate redundant DB queries
 - [x] **R2: Context-aware binding** — When session is bound on chatId and reply creates a new topic, automatically migrate/propagate binding to the new threadId context — *Validated in Phase 1: Context Foundation (CTX-01)*
-- [ ] **R3: Direct typing in bound topics** — Plain text (no `/oc` prefix) in an initialized topic is treated as a chat prompt and forwarded to OpenCode
-- [ ] **R4: Suppress empty replies** — Async task paths return null (not "") so no ghost bubble appears before streaming card
+- [x] **R3: Direct typing in bound topics** — Plain text (no `/oc` prefix) in an initialized topic is treated as a chat prompt and forwarded to OpenCode — *Validated in Phase 2: Command Router & Conversation UX (UX-01)*
+- [x] **R4: Suppress empty replies** — Async task paths return null (not "") so no ghost bubble appears before streaming card — *Validated in Phase 2: Command Router & Conversation UX (UX-02)*
 - [ ] **R5: chatnow executes prompt** — `/oc cn <prompt>` creates session AND forwards the prompt in one step
-- [ ] **R6: Manual control flow** — User manually: picks project → picks/creates session → binds to topic → converses. No auto-magic.
+- [x] **R6: Manual control flow** — User manually: picks project → picks/creates session → binds to topic → converses. No auto-magic. — *Validated in Phase 2: status command, next-step suggestions, and actionable error messages complete the manual flow (CMD-01, CMD-04, CMD-03)*
 - [ ] **R7: Card + command dual entry** — Both interactive card buttons and typed commands work as entry points for project/session selection
-- [ ] **R8: Group→Topic conversation model** — Project/session selection happens in group main chat; conversation happens in topic threads
-- [ ] **R9: Clean command set** — Redesigned commands reflecting the new flow (connect/bind/unbind/status/chat etc.)
+- [x] **R8: Group→Topic conversation model** — Project/session selection happens in group main chat; conversation happens in topic threads — *Validated in Phase 2: COMPAT-02 group chat guidance directs users to topics (CMD-02)*
+- [x] **R9: Clean command set** — Redesigned commands reflecting the new flow (connect/bind/unbind/status/chat etc.) — *Validated in Phase 2: status shortcut, complete alias whitelist, next-step suggestions (CMD-01, CMD-02, CMD-04)*
 - [x] **R10: Robust session ID passing** — Pass session IDs as structured data (method return values, fields) instead of parsing from formatted reply text — *Validated in Phase 1: Context Foundation (CTX-02)*
 
 ### Out of Scope
@@ -55,7 +55,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 - Feishu SDK 2.5.2 for messaging, cards, WebSocket
 - OpenCode server at localhost:4098 (health check: v1.2.27)
 - SQLite for persistence (context bindings + app sessions)
-- 280 tests passing (174 domain + 44 app + 59 infra + 3 start) — after Phase 1 completion
+- 309 tests passing (192 domain + 55 app + 59 infra + 3 start) — after Phase 2 completion
 
 **Prior work:**
 - IM context binding system already built (ImContextRef, ImContextBinding, two-phase binding model)
@@ -66,8 +66,8 @@ A user in a bound topic can type plain text and get an AI response — no comman
 
 **Known issues to address:**
 - ~~Session bound to chatId but topic reply creates new threadId → binding lost~~ — Fixed in Phase 1 (CTX-01)
-- Plain text in bound topic shows status instead of chatting
-- Empty string return creates ghost reply bubbles
+- ~~Plain text in bound topic shows status instead of chatting~~ — Fixed in Phase 2 (UX-01: synthesizeCommandIfNeeded)
+- ~~Empty string return creates ghost reply bubbles~~ — Fixed in Phase 2 (UX-02: noReply + empty guard)
 - chatnow creates session but ignores prompt content
 - Dual state detection (TopicState vs ContextSessionState) causes confusion and redundant queries
 - ~~Session ID extracted by parsing formatted markdown text — fragile~~ — Fixed in Phase 1 (CTX-02)
@@ -94,11 +94,13 @@ A user in a bound topic can type plain text and get an AI response — no comman
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Manual control (not auto-magic) | User explicitly picks project/session — predictable, debuggable | — Pending |
-| Direct typing in bound topics | Once bound, no prefix needed — natural conversation UX | — Pending |
-| Group chat for selection, topic for conversation | Separation of concerns: setup vs. conversation | — Pending |
-| Card + command dual entry points | Cards for discoverability, commands for power users | — Pending |
+| Direct typing in bound topics | Once bound, no prefix needed — natural conversation UX | ✓ Phase 2 |
+| Group chat for selection, topic for conversation | Separation of concerns: setup vs. conversation | ✓ Phase 2 |
+| Card + command dual entry points | Cards for discoverability, commands for power users | — Pending (Phase 3) |
 | No cross-project in one topic | Keeps context clean — new topic for new project | — Pending |
 | Consolidate to single state model | Eliminate TopicState vs ContextSessionState confusion | — Pending |
+| Centralized next-step suggestions | NextStepSuggester service provides contextual guidance after each command | ✓ Phase 2 |
+| Status indicator in reply header | 📎 opencode \| ses_xxx shows binding state in every reply | ✓ Phase 2 |
 | Structured session ID passing | Eliminate fragile text parsing of session IDs | ✓ Phase 1 |
 | Old contexts degrade to help | No migration complexity — clean break | ✓ Phase 1 |
 
@@ -121,5 +123,7 @@ This document evolves at phase transitions and milestone boundaries.
 
 **Phase 1 complete** — Context foundation built. AppExecutionResult DTO, MessageContext resolve-once pipeline, chatId→threadId binding propagation, graceful degradation for unbound topics. 280 tests passing.
 
+**Phase 2 complete** — Command router & conversation UX. Direct typing in bound topics (synthesizeCommandIfNeeded), ghost bubble suppression (noReply + empty guard), status shortcut command, complete alias whitelist, NextStepSuggester service, status indicator (📎 opencode | ses_xxx), actionable error messages with group chat guidance. 309 tests passing.
+
 ---
-*Last updated: 2026-04-10 after Phase 1 completion*
+*Last updated: 2026-04-10 after Phase 2 completion*
