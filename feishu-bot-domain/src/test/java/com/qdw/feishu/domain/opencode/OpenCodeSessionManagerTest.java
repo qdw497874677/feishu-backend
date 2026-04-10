@@ -8,6 +8,7 @@ import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.BindingResult;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
@@ -779,5 +780,161 @@ class OpenCodeSessionManagerTest {
 
         verify(appSessionGateway, never()).getSession(anyString(), any(), any(TypeToken.class));
         verify(appSessionGateway, never()).updateSession(anyString(), anyString(), any(), any(TypeToken.class), anyLong());
+    }
+
+    // ========== MessageContext overload 测试 ==========
+
+    @Test
+    @DisplayName("detectTopicState(MessageContext) - 已解析且绑定到 opencode 有 sessionId 时返回 INITIALIZED，不调用 findBinding")
+    void should_returnInitialized_when_messageContextHasBoundSession() {
+        ImContextRef contextRef = ImContextRef.feishuThread("ctx-topic-1");
+        ImContextBinding binding = createBinding(contextRef, "ses_ctx_1");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        TopicState result = sessionManager.detectTopicState(messageContext);
+
+        assertEquals(TopicState.INITIALIZED, result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("detectTopicState(MessageContext) - 已解析绑定到 opencode 无 sessionId 时返回 UNINITIALIZED，不调用 findBinding")
+    void should_returnUninitialized_when_messageContextBoundWithoutSession() {
+        ImContextRef contextRef = ImContextRef.feishuThread("ctx-topic-2");
+        ImContextBinding binding = createBinding(contextRef, null);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        TopicState result = sessionManager.detectTopicState(messageContext);
+
+        assertEquals(TopicState.UNINITIALIZED, result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("detectTopicState(MessageContext) - 未解析上下文时返回 NON_TOPIC")
+    void should_returnNonTopic_when_messageContextUnresolved() {
+        MessageContext messageContext = MessageContext.unresolved();
+
+        TopicState result = sessionManager.detectTopicState(messageContext);
+
+        assertEquals(TopicState.NON_TOPIC, result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("isTopicInitialized(MessageContext) - 已绑定有 sessionId 时返回 true，不调用 findBinding")
+    void should_returnTrue_when_messageContextInitialized() {
+        ImContextRef contextRef = ImContextRef.feishuThread("ctx-topic-init");
+        ImContextBinding binding = createBinding(contextRef, "ses_ctx_init");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        boolean result = sessionManager.isTopicInitialized(messageContext);
+
+        assertTrue(result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("isTopicInitialized(MessageContext) - 未解析时返回 false，不调用 findBinding")
+    void should_returnFalse_when_messageContextUnresolvedForInit() {
+        MessageContext messageContext = MessageContext.unresolved();
+
+        boolean result = sessionManager.isTopicInitialized(messageContext);
+
+        assertFalse(result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("getSessionId(MessageContext) - 已绑定有 sessionId 时返回 openCode sessionId，不调用 findBinding")
+    @SuppressWarnings("unchecked")
+    void should_returnSessionId_when_messageContextBound() {
+        ImContextRef contextRef = ImContextRef.feishuThread("ctx-topic-sid");
+        String appSessionId = "ses_ctx_sid";
+        String openCodeSessionId = "oc_ses_ctx_1";
+        ImContextBinding binding = createBinding(contextRef, appSessionId);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+        AppSession<OpenCodeSessionData> session = createMockSession(appSessionId, openCodeSessionId);
+
+        when(appSessionGateway.getSession(eq("opencode"), eq(appSessionId), any(TypeToken.class)))
+            .thenReturn(Optional.of(session));
+
+        Optional<String> result = sessionManager.getSessionId(messageContext);
+
+        assertTrue(result.isPresent());
+        assertEquals(openCodeSessionId, result.get());
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("getSessionId(MessageContext) - 未解析时返回 empty，不调用 findBinding")
+    void should_returnEmpty_when_messageContextUnresolvedForSessionId() {
+        MessageContext messageContext = MessageContext.unresolved();
+
+        Optional<String> result = sessionManager.getSessionId(messageContext);
+
+        assertFalse(result.isPresent());
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("isExplicitlyInitialized(MessageContext) - 已绑定有 sessionId 时返回 true/false 根据 session 数据，不调用 findBinding")
+    @SuppressWarnings("unchecked")
+    void should_returnExplicitInit_when_messageContextBound() {
+        ImContextRef contextRef = ImContextRef.feishuThread("ctx-topic-ei");
+        String appSessionId = "ses_ctx_ei";
+        ImContextBinding binding = createBinding(contextRef, appSessionId);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+        AppSession<OpenCodeSessionData> session = createMockSession(appSessionId, "oc_ses", true);
+
+        when(appSessionGateway.getSession(eq("opencode"), eq(appSessionId), any(TypeToken.class)))
+            .thenReturn(Optional.of(session));
+
+        boolean result = sessionManager.isExplicitlyInitialized(messageContext);
+
+        assertTrue(result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("isExplicitlyInitialized(MessageContext) - 未解析时返回 false，不调用 findBinding")
+    void should_returnFalse_when_messageContextUnresolvedForExplicitInit() {
+        MessageContext messageContext = MessageContext.unresolved();
+
+        boolean result = sessionManager.isExplicitlyInitialized(messageContext);
+
+        assertFalse(result);
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("getCurrentSessionStatus(MessageContext) - 已解析有会话时返回状态信息，不调用 findBinding")
+    @SuppressWarnings("unchecked")
+    void should_returnStatus_when_messageContextHasSession() {
+        ImContextRef contextRef = ImContextRef.feishuThread("ctx-topic-status");
+        String appSessionId = "ses_ctx_status";
+        ImContextBinding binding = createBinding(contextRef, appSessionId);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+        AppSession<OpenCodeSessionData> session = createMockSession(appSessionId, "oc_ses_status");
+
+        when(appSessionGateway.getSession(eq("opencode"), eq(appSessionId), any(TypeToken.class)))
+            .thenReturn(Optional.of(session));
+
+        String result = sessionManager.getCurrentSessionStatus(messageContext);
+
+        assertTrue(result.contains("当前会话信息"));
+        assertTrue(result.contains(appSessionId));
+        verify(bindingGateway, never()).findBinding(any());
+    }
+
+    @Test
+    @DisplayName("getCurrentSessionStatus(MessageContext) - 未解析时返回错误信息，不调用 findBinding")
+    void should_returnErrorMsg_when_messageContextUnresolvedForStatus() {
+        MessageContext messageContext = MessageContext.unresolved();
+
+        String result = sessionManager.getCurrentSessionStatus(messageContext);
+
+        assertTrue(result.contains("不在话题中"));
+        verify(bindingGateway, never()).findBinding(any());
     }
 }
