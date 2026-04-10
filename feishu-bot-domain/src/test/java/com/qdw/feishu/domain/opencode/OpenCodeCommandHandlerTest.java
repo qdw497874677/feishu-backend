@@ -367,7 +367,7 @@ class OpenCodeCommandHandlerTest {
         String sessionId = "ses_status_123";
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.of(sessionId));
-        when(sessionManager.getCurrentSessionStatus(any()))
+        when(sessionManager.getCurrentSessionStatus(any(Message.class)))
             .thenReturn("📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`\n  💬 话题 ID: `" + topicId + "`\n  ✅ 状态: 活跃\n\n💡 继续对话会自动使用此会话");
 
         AppExecutionResult result = commandHandler.handle(
@@ -388,7 +388,7 @@ class OpenCodeCommandHandlerTest {
         String topicId = "no-session-topic";
         when(sessionManager.getSessionId(any(Message.class)))
             .thenReturn(Optional.empty());
-        when(sessionManager.getCurrentSessionStatus(any()))
+        when(sessionManager.getCurrentSessionStatus(any(Message.class)))
             .thenReturn("📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话");
 
         AppExecutionResult result = commandHandler.handle(

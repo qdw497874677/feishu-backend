@@ -8,6 +8,7 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.BindingResult;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
+import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
@@ -57,6 +58,10 @@ public class OpenCodeSessionManager {
         }
     }
 
+    /**
+     * @deprecated Use {@link #isTopicInitialized(MessageContext)} instead.
+     */
+    @Deprecated
     public boolean isTopicInitialized(Message message) {
         return resolveContext(message)
             .flatMap(bindingGateway::findBinding)
@@ -65,6 +70,22 @@ public class OpenCodeSessionManager {
             .isPresent();
     }
 
+    /**
+     * Check if topic is initialized using pre-resolved MessageContext.
+     * Skips findBinding() — uses binding from MessageContext directly.
+     */
+    public boolean isTopicInitialized(MessageContext messageContext) {
+        if (messageContext == null || !messageContext.isResolved()) {
+            return false;
+        }
+        return messageContext.isBoundToApp(APP_ID)
+            && messageContext.getBinding().getSessionId() != null;
+    }
+
+    /**
+     * @deprecated Use {@link #detectTopicState(MessageContext)} instead.
+     */
+    @Deprecated
     public TopicState detectTopicState(Message message) {
         return resolveContext(message)
             .map(contextRef -> bindingGateway.findBinding(contextRef)
@@ -74,6 +95,25 @@ public class OpenCodeSessionManager {
             .orElse(TopicState.NON_TOPIC);
     }
 
+    /**
+     * Detect topic state using pre-resolved MessageContext.
+     * Skips findBinding() — uses binding from MessageContext directly.
+     */
+    public TopicState detectTopicState(MessageContext messageContext) {
+        if (messageContext == null || !messageContext.isResolved()) {
+            return TopicState.NON_TOPIC;
+        }
+        if (!messageContext.isBoundToApp(APP_ID)) {
+            return TopicState.UNINITIALIZED;
+        }
+        ImContextBinding binding = messageContext.getBinding();
+        return binding.getSessionId() == null ? TopicState.UNINITIALIZED : TopicState.INITIALIZED;
+    }
+
+    /**
+     * @deprecated Use {@link #getCurrentSessionStatus(MessageContext)} instead.
+     */
+    @Deprecated
     public String getCurrentSessionStatus(Message message) {
         Optional<ImContextRef> contextOpt = resolveContext(message);
         if (contextOpt.isEmpty()) {
@@ -83,6 +123,46 @@ public class OpenCodeSessionManager {
         ImContextRef contextRef = contextOpt.get();
         Optional<ImContextBinding> bindingOpt = bindingGateway.findBinding(contextRef)
             .filter(binding -> binding.isForApp(APP_ID));
+
+        if (bindingOpt.isEmpty()) {
+            return "📭 当前话题还没有 OpenCode 会话\n\n" +
+                "💡 发送 `/opencode <提示词>` 创建新会话";
+        }
+
+        ImContextBinding binding = bindingOpt.get();
+        if (binding.getSessionId() == null) {
+            return "📭 当前话题已进入 OpenCode 上下文，但还没有激活会话\n\n" +
+                "  📍 Context: `" + contextRef.toStorageKey() + "`\n\n" +
+                "💡 发送 `/opencode <提示词>` 创建新会话";
+        }
+
+        Optional<AppSession<OpenCodeSessionData>> sessionOpt =
+            appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN);
+        if (sessionOpt.isEmpty()) {
+            return "📭 当前话题已进入 OpenCode 上下文，但还没有激活会话\n\n" +
+                "  📍 Context: `" + contextRef.toStorageKey() + "`\n\n" +
+                "💡 当前绑定的会话已失效，请重新选择会话或发送 `/opencode <提示词>` 创建新会话";
+        }
+
+        return "📋 **当前会话信息**\n\n" +
+            "  🆔 Session ID: `" + binding.getSessionId() + "`\n" +
+            "  📍 Context: `" + contextRef.toStorageKey() + "`\n" +
+            "  ✅ 状态: 活跃\n\n" +
+            "💡 继续对话会自动使用此会话";
+    }
+
+    /**
+     * Get current session status using pre-resolved MessageContext.
+     * Skips findBinding() — uses binding from MessageContext directly.
+     */
+    public String getCurrentSessionStatus(MessageContext messageContext) {
+        if (messageContext == null || !messageContext.isResolved()) {
+            return "❌ 当前不在话题中，无法查看会话状态";
+        }
+
+        ImContextRef contextRef = messageContext.getContextRef();
+        Optional<ImContextBinding> bindingOpt = Optional.ofNullable(messageContext.getBinding())
+            .filter(b -> b.isForApp(APP_ID));
 
         if (bindingOpt.isEmpty()) {
             return "📭 当前话题还没有 OpenCode 会话\n\n" +
@@ -206,8 +286,28 @@ public class OpenCodeSessionManager {
             });
     }
 
+    /**
+     * @deprecated Use {@link #getSessionId(MessageContext)} instead.
+     */
+    @Deprecated
     public Optional<String> getSessionId(Message message) {
         return resolveContext(message).flatMap(this::getSessionId);
+    }
+
+    /**
+     * Get session ID using pre-resolved MessageContext.
+     * Skips findBinding() — uses binding from MessageContext directly.
+     */
+    public Optional<String> getSessionId(MessageContext messageContext) {
+        if (messageContext == null || !messageContext.isResolved() || !messageContext.isBoundToApp(APP_ID)) {
+            return Optional.empty();
+        }
+        ImContextBinding binding = messageContext.getBinding();
+        if (binding.getSessionId() == null) {
+            return Optional.empty();
+        }
+        return appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN)
+            .map(session -> session.getData().getOpenCodeSessionId());
     }
 
     public Optional<String> getSessionId(ImContextRef contextRef) {
@@ -222,9 +322,30 @@ public class OpenCodeSessionManager {
             });
     }
 
+    /**
+     * @deprecated Use {@link #isExplicitlyInitialized(MessageContext)} instead.
+     */
+    @Deprecated
     public boolean isExplicitlyInitialized(Message message) {
         return resolveContext(message)
             .flatMap(this::isExplicitlyInitializedOpt)
+            .orElse(false);
+    }
+
+    /**
+     * Check if explicitly initialized using pre-resolved MessageContext.
+     * Skips findBinding() — uses binding from MessageContext directly.
+     */
+    public boolean isExplicitlyInitialized(MessageContext messageContext) {
+        if (messageContext == null || !messageContext.isResolved() || !messageContext.isBoundToApp(APP_ID)) {
+            return false;
+        }
+        ImContextBinding binding = messageContext.getBinding();
+        if (binding.getSessionId() == null) {
+            return false;
+        }
+        return appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN)
+            .map(session -> session.getData().isExplicitlyInitialized())
             .orElse(false);
     }
 

@@ -1,5 +1,6 @@
 package com.qdw.feishu.app.session;
 
+import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.session.TypeToken;
 
@@ -30,7 +31,22 @@ public interface ContextSessionOrchestrator {
      * @return the current status with binding and session data (if available)
      */
     <T> ContextSessionStatus<T> loadStatus(ImContextRef contextRef, String appId, TypeToken<T> typeToken);
-    
+
+    /**
+     * Load status using a pre-resolved binding, skipping findBinding() call.
+     * Falls back to {@link #loadStatus(ImContextRef, String, TypeToken)} when preResolvedBinding is null.
+     *
+     * @param contextRef the IM context to check
+     * @param appId the application ID
+     * @param typeToken the session data type
+     * @param preResolvedBinding the pre-resolved binding, or null to fall back
+     * @return the current status with binding and session data (if available)
+     */
+    default <T> ContextSessionStatus<T> loadStatus(ImContextRef contextRef, String appId,
+                                                     TypeToken<T> typeToken, ImContextBinding preResolvedBinding) {
+        return loadStatus(contextRef, appId, typeToken);
+    }
+
     /**
      * Enter app context without an active session.
      * 

@@ -81,6 +81,31 @@ public class ContextSessionOrchestratorImpl implements ContextSessionOrchestrato
     }
 
     @Override
+    public <T> ContextSessionStatus<T> loadStatus(ImContextRef contextRef, String appId,
+                                                    TypeToken<T> typeToken, ImContextBinding preResolvedBinding) {
+        if (preResolvedBinding != null) {
+            // Use pre-resolved binding, skip findBinding() call
+            if (!preResolvedBinding.isForApp(appId)) {
+                return ContextSessionStatus.boundToOtherApp(preResolvedBinding);
+            }
+            if (preResolvedBinding.getSessionId() == null) {
+                return ContextSessionStatus.inAppNoSession(preResolvedBinding);
+            }
+            String sessionId = preResolvedBinding.getSessionId();
+            Optional<AppSession<T>> sessionOpt = sessionGateway.getSession(appId, sessionId, typeToken);
+            if (sessionOpt.isPresent()) {
+                return ContextSessionStatus.inAppWithSession(preResolvedBinding, sessionOpt.get());
+            } else {
+                log.warn("Dangling binding detected: context={}, sessionId={} not found",
+                        contextRef.toStorageKey(), sessionId);
+                return ContextSessionStatus.dangling(preResolvedBinding);
+            }
+        }
+        // Fallback to original
+        return loadStatus(contextRef, appId, typeToken);
+    }
+
+    @Override
     public void enterAppContext(ImContextRef contextRef, String appId) {
         assertWritableForApp(contextRef, appId);
         log.info("Entering app context: context={}, app={}", contextRef.toStorageKey(), appId);
