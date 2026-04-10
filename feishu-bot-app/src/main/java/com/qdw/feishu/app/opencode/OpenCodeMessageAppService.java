@@ -16,6 +16,7 @@ import com.qdw.feishu.domain.opencode.OpenCodeApp;
 import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
 import com.qdw.feishu.domain.session.ContextSessionState;
 import com.qdw.feishu.domain.session.TypeToken;
+import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -78,6 +79,9 @@ public class OpenCodeMessageAppService {
     }
 
     public boolean tryHandle(Message message, MessageContext messageContext) {
+        // UX-01: Synthesize plain text as /opencode chat command in initialized topics
+        message = synthesizeCommandIfNeeded(message, messageContext);
+
         if (!messageContext.isResolved()) {
             // Cannot resolve IM context — use pre-resolved binding from messageContext
             Optional<ImContextRef> contextRefOpt = Optional.empty();
@@ -102,6 +106,9 @@ public class OpenCodeMessageAppService {
     }
 
     public SendResult handleMessage(Message message, MessageContext messageContext) {
+        // UX-01: Synthesize plain text as /opencode chat command in initialized topics
+        message = synthesizeCommandIfNeeded(message, messageContext);
+
         if (!messageContext.isResolved()) {
             return botMessageAppService.handleMessage(message, messageContext).getSendResult();
         }
@@ -185,6 +192,46 @@ public class OpenCodeMessageAppService {
         // Has sessionId — need to verify session exists (requires gateway call)
         return contextSessionOrchestrator.loadStatus(
                 messageContext.getContextRef(), APP_ID, TYPE_TOKEN);
+    }
+
+    /**
+     * 在已初始化的话题中，将非命令纯文本合成为 /opencode chat 命令。
+     * 合成后通过正常命令路由处理，领域层无需感知"隐式聊天"。
+     *
+     * <p>合成条件：
+     * <ul>
+     *   <li>消息内容不以 / 开头（非命令）</li>
+     *   <li>消息来自已解析的话题上下文（isResolved + isThreadContext）</li>
+     *   <li>话题处于 INITIALIZED 状态（已绑定会话）</li>
+     * </ul>
+     */
+    private Message synthesizeCommandIfNeeded(Message message, MessageContext messageContext) {
+        String content = message.getContent();
+        if (content == null || content.trim().isEmpty()) {
+            return message;
+        }
+        String trimmed = content.trim();
+
+        // Already a command — no synthesis
+        if (trimmed.startsWith("/")) {
+            return message;
+        }
+
+        // Must be in a resolved thread context
+        if (!messageContext.isResolved() || !messageContext.isThreadContext()) {
+            return message;
+        }
+
+        // Must be INITIALIZED state
+        TopicState state = openCodeSessionManager.detectTopicState(messageContext);
+        if (state != TopicState.INITIALIZED) {
+            return message;
+        }
+
+        // Synthesize: plain text → /opencode chat <original text>
+        log.info("合成纯文本为 chat 命令: content='{}'",
+                trimmed.substring(0, Math.min(50, trimmed.length())));
+        return message.withContent("/opencode chat " + trimmed);
     }
 
     private boolean shouldHandle(Message message, Optional<ContextSessionStatus<OpenCodeSessionData>> statusOpt) {
