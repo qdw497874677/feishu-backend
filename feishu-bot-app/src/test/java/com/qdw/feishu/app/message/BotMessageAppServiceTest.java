@@ -73,7 +73,8 @@ class BotMessageAppServiceTest {
                 botMessageService,
                 feishuGateway,
                 bindingGateway,
-                new ReplyStrategyFactory(List.of(replyStrategy))
+                new ReplyStrategyFactory(List.of(replyStrategy)),
+                openCodeSessionManager
         );
     }
 
