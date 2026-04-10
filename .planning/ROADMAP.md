@@ -71,6 +71,11 @@ Plans:
 
 **Dependency:** Phase 1 (correct context binding required for routing decisions).
 
+**Plans:** 2 plans
+Plans:
+- [ ] 02-01-PLAN.md — 命令路由基础：空气泡消除 + status 命令 + 白名单完善 + 群聊引导 (UX-02, CMD-01, CMD-02, COMPAT-02)
+- [ ] 02-02-PLAN.md — 对话 UX：直接输入路由 + NextStepSuggester + 状态指示器 (UX-01, CMD-04, CMD-03, UX-03)
+
 **UI hint:** no
 
 ---
