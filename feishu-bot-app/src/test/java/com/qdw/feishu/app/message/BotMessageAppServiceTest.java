@@ -155,7 +155,6 @@ class BotMessageAppServiceTest {
                 .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text(""));
-        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
 
         HandledMessageResult result = appService.handleMessage(message);
 
@@ -172,7 +171,6 @@ class BotMessageAppServiceTest {
                 .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text("   "));
-        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
 
         HandledMessageResult result = appService.handleMessage(message);
 

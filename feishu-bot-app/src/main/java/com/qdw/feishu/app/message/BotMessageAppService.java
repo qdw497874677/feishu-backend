@@ -56,8 +56,8 @@ public class BotMessageAppService {
     }
 
     private SendResult sendReply(Message message, FishuAppI app, String replyContent) {
-        if (replyContent == null) {
-            log.debug("App {} returned null content, skipping reply (likely sent card directly or async)", app.getAppId());
+        if (replyContent == null || replyContent.trim().isEmpty()) {
+            log.debug("App {} returned empty content, skipping reply (likely async or no-op)", app.getAppId());
             return SendResult.success(null);
         }
         ReplyMode replyMode = app.getReplyMode();
