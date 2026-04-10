@@ -86,6 +86,7 @@ public class OpenCodeApp implements FishuAppI {
               `/opencode sessions <项目名>`   - 查看项目的最近会话
 
             🔧 **会话管理**
+              `/opencode status`             - 快速查看当前绑定状态
               `/opencode session status`     - 查看当前会话信息
               `/opencode session list`       - 查看所有会话
               `/opencode sc <会话ID>`        - 绑定会话到话题（简写）
@@ -151,13 +152,14 @@ public class OpenCodeApp implements FishuAppI {
                 // 话题外允许的命令：基础命令 + 初始化命令 + 快速对话
                 .add("help", "connect", "projects", "p",           // 基础命令
                      "sessions", "s", "session", "sc",            // 会话管理（初始化命令）
-                     "chatnow", "cn")                              // chatnow = chat now（话题外快速对话）
+                     "chatnow", "cn", "new")                       // 快速对话 + 指定项目创建
                 .build();
             case UNINITIALIZED -> CommandWhitelist.builder()
                 // 话题未初始化：允许初始化相关命令
                 .add("help", "connect", "projects", "p",           // 基础命令
                      "sessions", "s", "session", "sc",            // 会话管理
-                     "reset", "commands", "chatnow", "cn")       // 重置、命令列表、快速对话
+                     "reset", "commands", "chatnow", "cn",        // 重置、命令列表、快速对话
+                     "new", "status")                              // 新会话创建 + 快速状态查看
                 .build();
             case INITIALIZED -> CommandWhitelist.all();  // 话题已初始化：允许所有命令
         };

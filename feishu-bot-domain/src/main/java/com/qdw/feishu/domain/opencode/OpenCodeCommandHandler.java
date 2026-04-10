@@ -84,6 +84,7 @@ public class OpenCodeCommandHandler {
         return switch (subCommand) {
             case "help" -> null; // caller handles
             case "connect" -> AppExecutionResult.text(handleConnect());
+            case "status" -> AppExecutionResult.text(sessionManager.getCurrentSessionStatus(messageContext));
             case "new" -> handleNewCommand(parts, message, messageContext);
             case "chat", "chatnow", "cn" -> handleChatCommand(parts, message, messageContext);
             case "sessions", "s" -> AppExecutionResult.text(sessionManager.handleSessionsCommand(parts));

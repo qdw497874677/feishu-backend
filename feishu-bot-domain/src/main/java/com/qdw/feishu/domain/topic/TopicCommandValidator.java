@@ -77,26 +77,30 @@ public class TopicCommandValidator {
     private String buildRestrictedMessage(TopicState state, String command) {
         return switch (state) {
             case NON_TOPIC -> String.format(
-                "⚠️ 命令 `/%s` 只能在话题中使用\n\n" +
-                "💡 在非话题中，你可以：\n" +
-                " - 使用 `/%s connect` 查看健康信息、帮助和项目列表\n" +
-                " - 使用 `/%s help` 查看完整帮助\n" +
-                " - 使用 `/%s projects` 查看近期项目\n\n" +
-                "💡 如需使用此命令，请先发送 `/%s <内容>` 创建话题",
-                command, "opencode", "opencode", "opencode", "opencode"
+                "⚠️ 命令 `%s` 需要在话题中操作\n\n" +
+                "💡 在群聊中，你可以：\n" +
+                " - 使用 `/oc cn <问题>` 快速创建话题并对话（推荐）\n" +
+                " - 使用 `/oc new <项目> <问题>` 在指定项目创建话题\n" +
+                " - 或进入已有话题后直接输入问题\n\n" +
+                "📋 其他可用命令：\n" +
+                " - `/oc connect` 查看连接状态\n" +
+                " - `/oc projects` 查看项目列表\n" +
+                " - `/oc help` 查看完整帮助",
+                command
             );
 
             case UNINITIALIZED -> String.format(
-                "⚠️ 命令 `/%s` 需要话题已初始化\n\n" +
+                "⚠️ 命令 `%s` 需要话题已初始化\n\n" +
                 "💡 请先初始化话题：\n" +
-                " - `/%s session list` - 查看所有可用的 session\n" +
-                " - `/%s session continue <id>` - 绑定指定 session\n\n" +
+                " - `/oc sc <会话ID>` - 绑定已有会话\n" +
+                " - `/oc session list` - 查看所有可用的 session\n" +
+                " - `/oc cn <问题>` - 快速创建新会话并对话\n\n" +
                 "💡 初始化后即可使用此命令",
-                command, "opencode", "opencode"
+                command
             );
 
             case INITIALIZED -> String.format(
-                "⚠️ 命令 `/%s` 不可用",
+                "⚠️ 命令 `%s` 不可用",
                 command
             );
         };

@@ -274,13 +274,14 @@ drwxr-xr-x  20 root root 4096...
 | `/opencode chatnow` | ✅ | ✅ | ✅ | 立即对话（所有场景） |
 | `/opencode cn` | ✅ | ✅ | ✅ | 立即对话简写 |
 | `/opencode chat` | ❌ | ❌ | ✅ | 话题内对话 |
-| `/opencode new` | ❌ | ✅ | ✅ | 创建新会话 |
+| `/opencode new` | ✅ | ✅ | ✅ | 创建新会话（话题外需指定项目） |
+| `/opencode status` | ❌ | ✅ | ✅ | 快速查看绑定状态 |
 | `/opencode help` | ✅ | ✅ | ✅ | 帮助信息 |
 | `/opencode connect` | ✅ | ✅ | ✅ | 连接服务 |
 | `/opencode projects` | ✅ | ✅ | ✅ | 查看项目 |
-| `/opencode sessions` | ❌ | ✅ | ✅ | 查看会话 |
-| `/opencode session` | ❌ | ✅ | ✅ | 会话管理 |
-| `/opencode sc` | ❌ | ✅ | ✅ | 绑定会话 |
+| `/opencode sessions` | ✅ | ✅ | ✅ | 查看会话 |
+| `/opencode session` | ✅ | ✅ | ✅ | 会话管理 |
+| `/opencode sc` | ✅ | ✅ | ✅ | 绑定会话 |
 | `/opencode reset` | ❌ | ✅ | ✅ | 重置话题 |
 | `/opencode commands` | ❌ | ✅ | ✅ | 命令列表 |
 
@@ -405,6 +406,12 @@ drwxr-xr-x  20 root root 4096...
 
 #### 5.4 会话管理
 
+**快速查看绑定状态**
+```
+/opencode status
+```
+快捷方式，等价于 `/opencode session status`。
+
 **查看当前会话信息**
 ```
 /opencode session status
@@ -512,8 +519,8 @@ OpenCode 支持三种话题状态：
 
 | 状态 | 条件 | 允许的命令 |
 |------|------|-----------|
-| **NON_TOPIC** | 非话题环境 | `connect`, `help`, `projects`, `p`, `reset` |
-| **UNINITIALIZED** | 话题未绑定会话 | `projects`, `p`, `sessions`, `s`, `session`, `sc`, `reset` |
+| **NON_TOPIC** | 非话题环境 | `help`, `connect`, `projects/p`, `sessions/s`, `session/sc`, `chatnow/cn`, `new` |
+| **UNINITIALIZED** | 话题未绑定会话 | 上述全部 + `reset`, `commands`, `status` |
 | **INITIALIZED** | 话题已绑定会话 | 所有命令 |
 
 ### 💡 使用技巧
@@ -521,7 +528,7 @@ OpenCode 支持三种话题状态：
 1. **直接对话**：在已初始化的话题中，无需 `/opencode chat` 前缀
 2. **会话保持**：话题会保持与 OpenCode 会话的绑定
 3. **重置话题**：使用 `/opencode reset` 可以解除绑定，重新初始化
-4. **查看状态**：随时使用 `/opencode session status` 查看当前会话
+4. **查看状态**：使用 `/opencode status` 快速查看绑定状态（等价于 `/opencode session status`）
 
 ---
 
@@ -598,5 +605,5 @@ A: 使用 /opencode reset 命令可以重置话题，重新初始化
 
 ---
 
-**最后更新**: 2026-02-07
+**最后更新**: 2026-04-10
 **相关文档**: [AGENTS.md](./AGENTS.md) | [APP_GUIDE.md](./APP_GUIDE.md)
