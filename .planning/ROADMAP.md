@@ -38,6 +38,11 @@
 **Status:** **COMPLETE** (2026-04-07) — 7 tasks, 269 tests, 6 commits.
 Summary: `.planning/phases/01-context-foundation/01-plan-SUMMARY.md`
 
+**Plans:** 2 plans
+Plans:
+- [x] PLAN.md — Context foundation (AppExecutionResult, MessageContext pipeline, binding propagation, graceful degradation)
+- [ ] 01-02-PLAN.md — Gap closure: Thread MessageContext through OpenCode domain chain (CTX-03 partial)
+
 **UI hint:** no
 
 ---
