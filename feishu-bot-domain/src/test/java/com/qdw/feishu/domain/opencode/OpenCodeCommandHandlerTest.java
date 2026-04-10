@@ -42,15 +42,19 @@ class OpenCodeCommandHandlerTest {
     @Mock
     private TopicCommandValidator commandValidator;
 
+    private NextStepSuggester nextStepSuggester;
+
     private OpenCodeCommandHandler commandHandler;
 
     @BeforeEach
     void setUp() {
+        nextStepSuggester = new NextStepSuggester();
         commandHandler = new OpenCodeCommandHandler(
             openCodeGateway,
             taskExecutor,
             sessionManager,
-            commandValidator
+            commandValidator,
+            nextStepSuggester
         );
 
         // 默认 mock 设置 - 命令验证通过
@@ -211,7 +215,7 @@ class OpenCodeCommandHandlerTest {
 
         // p 命令在非话题环境允许直接执行，应调用listProjects并返回结果
         assertNotNull(result);
-        assertEquals(projectList, result.getReplyContent());
+        assertTrue(result.getReplyContent().startsWith(projectList), "应以项目列表开头");
         verify(openCodeGateway).listProjects();
     }
 
@@ -229,7 +233,7 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertNotNull(result);
-        assertEquals("项目列表", result.getReplyContent());
+        assertTrue(result.getReplyContent().startsWith("项目列表"), "应以项目列表开头");
     }
 
     // ========== new 命令测试 ==========
@@ -459,9 +463,9 @@ class OpenCodeCommandHandlerTest {
             CommandWhitelist.all()
         );
 
-        // 验证返回了正确的会话列表
+        // 验证返回了正确的会话列表 (session command appends next-step suggestion)
         assertNotNull(result);
-        assertEquals(sessionsList, result.getReplyContent());
+        assertTrue(result.getReplyContent().startsWith(sessionsList), "应以会话列表开头");
         verify(sessionManager).handleListSessions();
     }
 
@@ -582,7 +586,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertNotNull(result, "status 命令不应返回 null");
-        assertEquals(statusText, result.getReplyContent());
+        assertTrue(result.getReplyContent().startsWith(statusText), "应以状态文本开头");
+        assertTrue(result.getReplyContent().contains("下一步"), "应包含下一步建议");
         verify(sessionManager).getCurrentSessionStatus(any(MessageContext.class));
     }
 
@@ -593,9 +598,9 @@ class OpenCodeCommandHandlerTest {
         String statusText = "📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话";
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+                .thenReturn(TopicState.UNINITIALIZED);
         when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
-            .thenReturn(statusText);
+                .thenReturn(statusText);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode status", topicId),
@@ -606,7 +611,8 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertNotNull(result, "status 命令不应返回 null");
-        assertEquals(statusText, result.getReplyContent());
+        assertTrue(result.getReplyContent().startsWith(statusText), "应以状态文本开头");
+        assertTrue(result.getReplyContent().contains("下一步"), "应包含下一步建议");
         verify(sessionManager).getCurrentSessionStatus(any(MessageContext.class));
     }
 
@@ -681,5 +687,51 @@ class OpenCodeCommandHandlerTest {
         // 验证返回了验证失败的消息
         assertNotNull(result);
         assertEquals(restrictionMessage, result.getReplyContent());
+    }
+
+    // ========== NextStepSuggester 集成测试 ==========
+
+    @Test
+    @DisplayName("projects 命令执行后回复包含下一步建议")
+    void should_appendNextStepSuggestion_after_projects() {
+        String projectList = "项目列表：feishu-backend";
+        when(openCodeGateway.listProjects()).thenReturn(projectList);
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode projects", null),
+            "projects",
+            new String[]{"/opencode", "projects"},
+            CommandWhitelist.builder().add("projects").build(),
+            unresolvedContext()
+        );
+
+        assertNotNull(result);
+        String text = result.getReplyContent();
+        assertTrue(text.contains(projectList), "应包含项目列表");
+        assertTrue(text.contains("下一步"), "应包含下一步建议");
+        assertTrue(text.contains("sessions"), "建议应提到 sessions");
+    }
+
+    @Test
+    @DisplayName("chat 命令执行后回复不包含下一步建议")
+    void should_notAppendNextStepSuggestion_after_chat() {
+        String topicId = "init-topic";
+        String prompt = "帮我写代码";
+        when(sessionManager.isTopicInitialized(any(MessageContext.class))).thenReturn(true);
+        when(sessionManager.detectTopicState(any(MessageContext.class))).thenReturn(TopicState.INITIALIZED);
+        when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
+            .thenReturn(AppExecutionResult.noReply());
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode chat " + prompt, topicId),
+            "chat",
+            new String[]{"/opencode", "chat", prompt},
+            CommandWhitelist.all(),
+            unresolvedContext()
+        );
+
+        // chat returns noReply (async), so no suggestion either
+        assertNotNull(result);
+        assertNull(result.getReplyContent());
     }
 }

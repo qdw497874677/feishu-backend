@@ -28,15 +28,18 @@ public class OpenCodeCommandHandler {
     private final OpenCodeTaskExecutor taskExecutor;
     private final OpenCodeSessionManager sessionManager;
     private final TopicCommandValidator commandValidator;
+    private final NextStepSuggester nextStepSuggester;
 
     public OpenCodeCommandHandler(OpenCodeGateway openCodeGateway,
                                    OpenCodeTaskExecutor taskExecutor,
                                    OpenCodeSessionManager sessionManager,
-                                   TopicCommandValidator commandValidator) {
+                                   TopicCommandValidator commandValidator,
+                                   NextStepSuggester nextStepSuggester) {
         this.openCodeGateway = openCodeGateway;
         this.taskExecutor = taskExecutor;
         this.sessionManager = sessionManager;
         this.commandValidator = commandValidator;
+        this.nextStepSuggester = nextStepSuggester;
     }
 
     /**
@@ -81,7 +84,7 @@ public class OpenCodeCommandHandler {
         }
 
         // 路由到具体处理逻辑
-        return switch (subCommand) {
+        AppExecutionResult result = switch (subCommand) {
             case "help" -> null; // caller handles
             case "connect" -> AppExecutionResult.text(handleConnect());
             case "status" -> AppExecutionResult.text(sessionManager.getCurrentSessionStatus(messageContext));
@@ -94,6 +97,30 @@ public class OpenCodeCommandHandler {
             case "reset" -> AppExecutionResult.text(handleResetCommand(message));
             default -> AppExecutionResult.text(handleUnknownCommand(message, subCommand, parts));
         };
+
+        // CMD-04: 附加下一步建议（chat/chatnow/help/commands 不附加）
+        return appendNextStepSuggestion(result, subCommand, state, messageContext);
+    }
+
+    /**
+     * 在命令执行结果后附加下一步操作建议。
+     * 仅对有文本回复的结果附加，noReply 和 null 结果不受影响。
+     */
+    private AppExecutionResult appendNextStepSuggestion(AppExecutionResult result,
+                                                         String subCommand, TopicState state,
+                                                         MessageContext messageContext) {
+        if (result == null || result.getReplyContent() == null) {
+            return result;
+        }
+        String suggestion = nextStepSuggester.suggest(subCommand, state, messageContext);
+        if (suggestion == null || suggestion.isEmpty()) {
+            return result;
+        }
+        String enhanced = result.getReplyContent() + "\n\n---\n" + suggestion;
+        if (result.getOpenCodeSessionId() != null) {
+            return AppExecutionResult.withSession(enhanced, result.getOpenCodeSessionId(), result.isSessionCreated());
+        }
+        return AppExecutionResult.text(enhanced);
     }
 
     private String buildInitializationGuide() {
