@@ -18,13 +18,13 @@ Requirements for initial release. Each maps to roadmap phases.
 ### 对话体验 (Conversation UX)
 
 - [ ] **UX-01**: 已绑定且有活跃会话的话题中，用户直接输入文字即视为聊天提示，无需 `/oc chat` 前缀
-- [ ] **UX-02**: 异步任务路径返回 null 而非空字符串，不再出现空消息气泡
+- [x] **UX-02**: 异步任务路径返回 null 而非空字符串，不再出现空消息气泡
 - [ ] **UX-03**: 机器人回复中包含当前绑定状态指示（项目名/会话ID），用户随时知道"我在哪"
 
 ### 命令与路由 (Commands & Routing)
 
-- [ ] **CMD-01**: 重新设计命令集，匹配手动控制流（项目选择 → 会话选择/创建 → 绑定 → 对话）
-- [ ] **CMD-02**: 每种状态下只显示/允许有效的命令，白名单包含所有别名
+- [x] **CMD-01**: 重新设计命令集，匹配手动控制流（项目选择 → 会话选择/创建 → 绑定 → 对话）
+- [x] **CMD-02**: 每种状态下只显示/允许有效的命令，白名单包含所有别名
 - [ ] **CMD-03**: 所有错误消息包含下一步操作建议，不只是报错原因
 - [ ] **CMD-04**: 每个操作完成后，系统性地提示用户下一步该做什么
 
@@ -37,7 +37,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### 兼容性 (Compatibility)
 
 - [x] **COMPAT-01**: 现有261个测试全部通过，无状态应用（Help/Time/Bash/History）行为不变
-- [ ] **COMPAT-02**: 群聊中进行项目/会话选择，话题内进行对话（group→topic 模型）
+- [x] **COMPAT-02**: 群聊中进行项目/会话选择，话题内进行对话（group→topic 模型）
 
 ## v2 Requirements
 
@@ -82,17 +82,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CTX-04 | Phase 1 | **Complete** |
 | CTX-05 | Phase 1 | **Complete** |
 | UX-01 | Phase 2 | Pending |
-| UX-02 | Phase 2 | Pending |
+| UX-02 | Phase 2 | Complete |
 | UX-03 | Phase 2 | Pending |
-| CMD-01 | Phase 2 | Pending |
-| CMD-02 | Phase 2 | Pending |
+| CMD-01 | Phase 2 | Complete |
+| CMD-02 | Phase 2 | Complete |
 | CMD-03 | Phase 2 | Pending |
 | CMD-04 | Phase 2 | Pending |
 | CARD-01 | Phase 3 | Pending |
 | CARD-02 | Phase 3 | Pending |
 | CARD-03 | Phase 3 | Pending |
 | COMPAT-01 | Phase 1 | **Complete** |
-| COMPAT-02 | Phase 2 | Pending |
+| COMPAT-02 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
