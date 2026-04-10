@@ -14,6 +14,7 @@ import com.qdw.feishu.domain.model.BindingResult;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.model.MessageContext;
+import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
 import com.qdw.feishu.domain.reply.ReplyStrategy;
 import com.qdw.feishu.domain.reply.ReplyStrategyFactory;
 import com.qdw.feishu.domain.service.BotMessageService;
@@ -49,6 +50,9 @@ class BotMessageAppServiceTest {
 
     @Mock
     private FishuAppI openCodeApp;
+
+    @Mock
+    private OpenCodeSessionManager openCodeSessionManager;
 
     private BotMessageAppService appService;
 
@@ -177,6 +181,121 @@ class BotMessageAppServiceTest {
         // Blank string (whitespace only) should be treated like null — no reply sent
         assertEquals(true, result.getSendResult().isSuccess());
         verify(feishuGateway, never()).sendMessage(any(Message.class), any(String.class), any());
+    }
+
+    // ========== Task 3: 状态指示器测试 (UX-03) ==========
+
+    @Test
+    void should_prependStatusLine_when_openCodeReplyInBoundTopic() {
+        Message message = createMessage("/opencode projects", "omt_status", "chat_status");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_status");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_internal_1");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.text("project list"));
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        when(openCodeSessionManager.getSessionId(any(MessageContext.class)))
+                .thenReturn(java.util.Optional.of("ses_abc123"));
+        when(feishuGateway.sendMessage(eq(message), org.mockito.ArgumentMatchers.startsWith("📎"), eq("omt_status")))
+                .thenReturn(SendResult.success("msg_status", "omt_status"));
+
+        HandledMessageResult result = appService.handleMessage(message, messageContext);
+
+        assertEquals(true, result.getSendResult().isSuccess());
+        // Verify reply was sent with status line prepended
+        verify(feishuGateway).sendMessage(eq(message), org.mockito.ArgumentMatchers.startsWith("📎"), eq("omt_status"));
+    }
+
+    @Test
+    void should_notPrependStatusLine_when_nonOpenCodeApp() {
+        Message message = createMessage("/help", null, "chat_help_nostatus");
+        SendResult expected = SendResult.success("msg_help_nostatus");
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("help", helpApp, false));
+        when(helpApp.getAppId()).thenReturn("help");
+        when(helpApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.text("help text"));
+        when(helpApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        when(feishuGateway.sendMessage(message, "help text", null)).thenReturn(expected);
+
+        HandledMessageResult result = appService.handleMessage(message);
+
+        assertEquals(expected, result.getSendResult());
+        // Verify reply was sent WITHOUT status line
+        verify(feishuGateway).sendMessage(message, "help text", null);
+    }
+
+    @Test
+    void should_notPrependStatusLine_when_replyContentIsNull() {
+        Message message = createMessage("/opencode chat test", "omt_null", "chat_null");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_null");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_internal_2");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.noReply());
+
+        HandledMessageResult result = appService.handleMessage(message, messageContext);
+
+        // noReply → null content → no reply sent, no status line
+        assertEquals(true, result.getSendResult().isSuccess());
+        verify(feishuGateway, never()).sendMessage(any(Message.class), any(String.class), any());
+    }
+
+    @Test
+    void should_showUnboundStatus_when_noSessionBound() {
+        Message message = createMessage("/opencode status", "omt_unbound", "chat_unbound");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_unbound");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", null);
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.text("status info"));
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        when(openCodeSessionManager.getSessionId(any(MessageContext.class)))
+                .thenReturn(java.util.Optional.empty());
+        when(feishuGateway.sendMessage(eq(message), org.mockito.ArgumentMatchers.contains("未绑定会话"), eq("omt_unbound")))
+                .thenReturn(SendResult.success("msg_unbound", "omt_unbound"));
+
+        HandledMessageResult result = appService.handleMessage(message, messageContext);
+
+        assertEquals(true, result.getSendResult().isSuccess());
+        verify(feishuGateway).sendMessage(eq(message), org.mockito.ArgumentMatchers.contains("未绑定会话"), eq("omt_unbound"));
+    }
+
+    @Test
+    void should_notPrependStatusLine_when_helpCommand() {
+        Message message = createMessage("/opencode help", "omt_help_cmd", "chat_help_cmd");
+        ImContextRef contextRef = ImContextRef.feishuThread("omt_help_cmd");
+        ImContextBinding binding = ImContextBinding.create(contextRef, "opencode", "ses_internal_3");
+        MessageContext messageContext = MessageContext.of(contextRef, binding);
+
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
+                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+        when(openCodeApp.getAppId()).thenReturn("opencode");
+        when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
+                .thenReturn(AppExecutionResult.text("help content here"));
+        when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
+        // help command should NOT get status line
+        when(feishuGateway.sendMessage(eq(message), eq("help content here"), eq("omt_help_cmd")))
+                .thenReturn(SendResult.success("msg_help_cmd", "omt_help_cmd"));
+
+        HandledMessageResult result = appService.handleMessage(message, messageContext);
+
+        assertEquals(true, result.getSendResult().isSuccess());
+        // Reply content should NOT start with 📎 (no status line for help)
+        verify(feishuGateway).sendMessage(eq(message), eq("help content here"), eq("omt_help_cmd"));
     }
 
     private Message createMessage(String content, String topicId, String chatId) {
