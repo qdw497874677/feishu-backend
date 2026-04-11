@@ -44,17 +44,21 @@ class OpenCodeCommandHandlerTest {
 
     private NextStepSuggester nextStepSuggester;
 
+    private OpenCodeMessageFormatter messageFormatter;
+
     private OpenCodeCommandHandler commandHandler;
 
     @BeforeEach
     void setUp() {
         nextStepSuggester = new NextStepSuggester();
+        messageFormatter = new OpenCodeMessageFormatter();
         commandHandler = new OpenCodeCommandHandler(
             openCodeGateway,
             taskExecutor,
             sessionManager,
             commandValidator,
-            nextStepSuggester
+            nextStepSuggester,
+            messageFormatter
         );
 
         // 默认 mock 设置 - 命令验证通过

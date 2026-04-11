@@ -86,7 +86,7 @@ class OpenCodeExplicitInitializationTest {
         commandValidator = mock(TopicCommandValidator.class);
         taskExecutor = mock(OpenCodeTaskExecutor.class);
         sessionManager = new OpenCodeSessionManager(openCodeGateway, appSessionGateway, bindingGateway);
-        commandHandler = new OpenCodeCommandHandler(openCodeGateway, taskExecutor, sessionManager, commandValidator, new NextStepSuggester());
+        commandHandler = new OpenCodeCommandHandler(openCodeGateway, taskExecutor, sessionManager, commandValidator, new NextStepSuggester(), new OpenCodeMessageFormatter());
         
         // 默认设置：命令验证通过
         when(commandValidator.validateCommand(anyString(), any(), any()))

@@ -1,6 +1,5 @@
 package com.qdw.feishu.domain.opencode;
 
-import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicState;
 import org.springframework.stereotype.Component;
 
@@ -25,10 +24,9 @@ public class NextStepSuggester {
      *
      * @param executedCommand 刚执行的子命令（如 "projects", "sc" 等）
      * @param state 当前话题状态
-     * @param messageContext 消息上下文（可选，用于获取绑定信息）
      * @return 建议文本，或 null 表示不需要建议
      */
-    public String suggest(String executedCommand, TopicState state, MessageContext messageContext) {
+    public String suggest(String executedCommand, TopicState state) {
         return switch (executedCommand) {
             case "projects", "p" -> "💡 下一步：`/oc sessions <项目名>` 查看会话列表";
             case "sessions", "s" -> "💡 下一步：`/oc sc <会话ID>` 绑定会话到当前话题";

@@ -3,7 +3,6 @@ package com.qdw.feishu.domain.opencode;
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
-import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.MessageContext;
@@ -29,44 +28,32 @@ public class OpenCodeCommandHandler {
     private final OpenCodeSessionManager sessionManager;
     private final TopicCommandValidator commandValidator;
     private final NextStepSuggester nextStepSuggester;
+    private final OpenCodeMessageFormatter messageFormatter;
 
     public OpenCodeCommandHandler(OpenCodeGateway openCodeGateway,
                                    OpenCodeTaskExecutor taskExecutor,
                                    OpenCodeSessionManager sessionManager,
                                    TopicCommandValidator commandValidator,
-                                   NextStepSuggester nextStepSuggester) {
+                                   NextStepSuggester nextStepSuggester,
+                                   OpenCodeMessageFormatter messageFormatter) {
         this.openCodeGateway = openCodeGateway;
         this.taskExecutor = taskExecutor;
         this.sessionManager = sessionManager;
         this.commandValidator = commandValidator;
         this.nextStepSuggester = nextStepSuggester;
+        this.messageFormatter = messageFormatter;
     }
 
     /**
      * 处理命令
-     *
-     * @param message 消息对象
-     * @param subCommand 子命令
-     * @param parts 解析后的命令部分
-     * @param whitelist 命令白名单（由 OpenCodeApp 提供，确保一致性）
-     * @return 命令响应
      * @deprecated Use {@link #handle(Message, String, String[], CommandWhitelist, MessageContext)} instead.
      */
-    @Deprecated
+    @Deprecated(since = "Phase 1", forRemoval = true)
     public AppExecutionResult handle(Message message, String subCommand, String[] parts, CommandWhitelist whitelist) {
         return handle(message, subCommand, parts, whitelist, MessageContext.unresolved());
     }
 
-    /**
-     * 处理命令（使用 MessageContext 避免重复 findBinding 调用）
-     *
-     * @param message 消息对象
-     * @param subCommand 子命令
-     * @param parts 解析后的命令部分
-     * @param whitelist 命令白名单（由 OpenCodeApp 提供，确保一致性）
-     * @param messageContext 预解析的消息上下文
-     * @return 命令响应
-     */
+    /** 处理命令（使用 MessageContext 避免重复 findBinding 调用） */
     public AppExecutionResult handle(Message message, String subCommand, String[] parts,
                                       CommandWhitelist whitelist, MessageContext messageContext) {
         log.info("准备验证命令: subCommand={}", subCommand);
@@ -99,20 +86,16 @@ public class OpenCodeCommandHandler {
         };
 
         // CMD-04: 附加下一步建议（chat/chatnow/help/commands 不附加）
-        return appendNextStepSuggestion(result, subCommand, state, messageContext);
+        return appendNextStepSuggestion(result, subCommand, state);
     }
 
-    /**
-     * 在命令执行结果后附加下一步操作建议。
-     * 仅对有文本回复的结果附加，noReply 和 null 结果不受影响。
-     */
+    /** 在命令执行结果后附加下一步操作建议（仅对有文本回复的结果附加）。 */
     private AppExecutionResult appendNextStepSuggestion(AppExecutionResult result,
-                                                         String subCommand, TopicState state,
-                                                         MessageContext messageContext) {
+                                                          String subCommand, TopicState state) {
         if (result == null || result.getReplyContent() == null) {
             return result;
         }
-        String suggestion = nextStepSuggester.suggest(subCommand, state, messageContext);
+        String suggestion = nextStepSuggester.suggest(subCommand, state);
         if (suggestion == null || suggestion.isEmpty()) {
             return result;
         }
@@ -123,105 +106,29 @@ public class OpenCodeCommandHandler {
         return AppExecutionResult.text(enhanced);
     }
 
-    private String buildInitializationGuide() {
-        StringBuilder response = new StringBuilder();
-
-        response.append("🎯 **欢迎来到 OpenCode 助手！**\n\n");
-        response.append("📋 **开始使用前，需要完成以下初始化步骤：**\n\n");
-
-        response.append("**第 1 步：查看可用项目**\n");
-        response.append("  `/opencode p` （或 `/opencode projects`）\n\n");
-
-        response.append("**第 2 步：查看项目的最近会话**\n");
-        response.append("  `/opencode s <项目名称>` （或 `/opencode sessions`）\n");
-        response.append("  示例：`/opencode s feishu-backend`\n\n");
-
-        response.append("**第 3 步：选择会话并绑定到话题**\n");
-        response.append("  `/opencode sc <会话ID>` （或 `session continue <id>`）\n\n");
-
-        response.append("✅ **完成！** 初始化后可以：\n");
-        response.append("  • 使用 `/opencode chat <问题>` 开始对话\n");
-        response.append("  • 直接输入问题（无需命令前缀）\n\n");
-
-        response.append("**💡 简化别名：**\n");
-        response.append("  `p` → projects，`s` → sessions，`sc` → session continue\n\n");
-
-        response.append("**🔄 其他命令：**\n");
-        response.append("  `/opencode reset` - 重置话题（允许重新绑定会话）\n");
-        response.append("  `/opencode help` - 查看完整帮助\n");
-        response.append("  `/opencode commands` - 查看所有可用命令\n");
-
-        return response.toString();
-    }
-
-    private String buildConnectGuide() {
-        StringBuilder response = new StringBuilder();
-
-        response.append("🔗 **OpenCode 连接引导**\n\n");
-        response.append("**请先连接到 OpenCode 服务：**\n\n");
-        response.append("  `/opencode connect`\n\n");
-        response.append("连接成功后，可以：\n");
-        response.append("  • 查看项目列表\n");
-        response.append("  • 创建会话并开始对话\n");
-
-        return response.toString();
-    }
-
     /**
      * 处理 connect 命令
      */
     private String handleConnect() {
-        StringBuilder response = new StringBuilder();
-
-        response.append("🔗 **OpenCode 连接成功**\n\n");
-
-        // 获取健康信息
+        String status;
         try {
-            String status = openCodeGateway.getServerStatus();
-            response.append("**服务状态**\n").append(status).append("\n\n");
+            status = openCodeGateway.getServerStatus();
         } catch (Exception e) {
-            response.append("**服务状态**\n❌ 无法获取 (").append(e.getMessage()).append(")\n\n");
+            status = "❌ 无法获取 (" + e.getMessage() + ")";
         }
 
-        // 获取项目列表
-        response.append("**📁 可用项目**\n\n");
+        String projects;
         try {
-            String projects = openCodeGateway.listProjects();
-            response.append(projects).append("\n");
+            projects = openCodeGateway.listProjects();
         } catch (Exception e) {
-            response.append("❌ 无法获取项目列表 (").append(e.getMessage()).append(")\n\n");
+            projects = "❌ 无法获取项目列表 (" + e.getMessage() + ")";
         }
 
-        // 引导用户查询项目 session
-        response.append("**💡 下一步操作**\n\n");
-        response.append("1️⃣ 查看项目的最近会话：\n");
-        response.append("   `/opencode sessions <项目名称>`\n");
-        response.append("   示例：`/opencode sessions feishu-backend`\n\n");
-        response.append("2️⃣ 选择会话并绑定：\n");
-        response.append("   `/opencode session continue <会话ID>`\n\n");
-        response.append("3️⃣ 开始对话：\n");
-        response.append("   `/opencode chat <你的问题>`\n");
-        response.append("   或直接输入（在已初始化的话题中）\n\n");
-
-        response.append("**📝 其他命令**\n");
-        response.append(" `/opencode help` - 查看完整帮助\n");
-        response.append(" `/opencode commands` - 查看所有斜杠命令\n");
-
-        return response.toString();
+        return messageFormatter.buildConnectSuccessResponse(status, projects);
     }
 
-    /**
-      * 处理 new 命令
-      *
-      * 支持两种格式：
-      * - `/opencode new <prompt>` - 话题已绑定时使用当前项目
-      * - `/opencode new <project> <prompt>` - 指定项目创建会话
-      *
-      * 智能行为：
-      * - 话题已绑定（INITIALIZED）：在当前项目创建新会话，更换话题绑定
-      * - 话题未绑定（UNINITIALIZED/NON_TOPIC）：必须指定项目
-      */
-     @Deprecated
+    /** 处理 new 命令：`new <prompt>` 或 `new <project> <prompt>` */
+     @Deprecated(since = "Phase 1", forRemoval = true)
      private AppExecutionResult handleNewCommand(String[] parts, Message message) {
         return handleNewCommand(parts, message, MessageContext.unresolved());
      }
@@ -232,7 +139,7 @@ public class OpenCodeCommandHandler {
         boolean isInitialized = inTopic && sessionManager.isTopicInitialized(messageContext);
 
         if (parts.length < 3) {
-            return AppExecutionResult.text(buildNewCommandUsage(isInitialized));
+            return AppExecutionResult.text(messageFormatter.buildNewCommandUsage(isInitialized));
         }
 
         // 判断格式：/opencode new <prompt> 还是 /opencode new <project> <prompt>
@@ -250,58 +157,18 @@ public class OpenCodeCommandHandler {
             // 话题已绑定：使用当前项目
             if (isInitialized) {
                 log.info("话题已绑定，将在当前项目创建新会话: topicId={}", topicId);
-                // project 留空，让 OpenCode 使用默认行为
             } else {
                 // 话题未绑定：必须指定项目
                 log.warn("话题未绑定，必须指定项目名称");
-                return AppExecutionResult.text(buildNewCommandUsage(false));
+                return AppExecutionResult.text(messageFormatter.buildNewCommandUsage(false));
             }
         }
 
         return taskExecutor.executeWithNewSession(message, prompt, project);
     }
 
-    private String buildNewCommandUsage() {
-        return buildNewCommandUsage(false);
-    }
-
-    private String buildNewCommandUsage(boolean isTopicInitialized) {
-        if (isTopicInitialized) {
-            // 话题已绑定的使用说明
-            return "❌ **命令格式错误**\n\n" +
-                   "💡 **当前状态：话题已绑定**\n\n" +
-                   "✅ **使用方式（在当前项目创建新会话）**：\n" +
-                   "  `/opencode new <提示词>`\n" +
-                   "  示例：`/opencode new 重构登录模块`\n\n" +
-                   "🔧 **可选：指定其他项目**：\n" +
-                   "  `/opencode new <项目名称> <提示词>`\n" +
-                   "  示例：`/opencode new ai-study 优化算法`\n\n" +
-                   "💡 **提示**：不指定项目时，将在当前绑定的项目下创建新会话并更换话题绑定";
-        }
-
-        // 话题未绑定的使用说明
-        return "❌ **命令格式错误**\n\n" +
-               "💡 **当前状态：话题未绑定**\n\n" +
-               "❌ **必须指定项目**：\n" +
-               "  `/opencode new <项目名称> <提示词>`\n" +
-               "  示例：`/opencode new feishu-backend 重构登录模块`\n\n" +
-               "💡 **提示**：话题未绑定时，必须明确指定在哪个项目下创建会话";
-    }
-
-    /**
-      * 处理 chat 命令
-      *
-      * 支持三种模式：
-      * - chatnow/cn：立即对话（自动创建并绑定会话）
-      * - chat（话题内）：继续对话
-      *
-      * 智能行为：
-      * - 话题未初始化 + chatnow/cn → 自动创建新会话并绑定
-      * - 话题未初始化 + chat → 显示错误提示
-      * - 话题已初始化 + chatnow → 自动创建新会话并绑定
-      * - 话题已初始化 + chat → 使用现有会话继续对话
-      */
-      @Deprecated
+    /** 处理 chat 命令 */
+      @Deprecated(since = "Phase 1", forRemoval = true)
       private AppExecutionResult handleChatCommand(String[] parts, Message message) {
           return handleChatCommand(parts, message, MessageContext.unresolved());
       }
@@ -321,11 +188,11 @@ public class OpenCodeCommandHandler {
              if (inTopic) {
                  return AppExecutionResult.text(
                      sessionManager.getSessionId(messageContext)
-                         .map(sessionId -> buildChatStatusWithSession(topicId, sessionId))
-                         .orElse(buildChatQuickStart())
+                         .map(sessionId -> messageFormatter.buildChatStatusWithSession(topicId, sessionId))
+                         .orElse(messageFormatter.buildChatQuickStart())
                  );
              }
-             return AppExecutionResult.text(buildChatQuickStart());
+             return AppExecutionResult.text(messageFormatter.buildChatQuickStart());
          }
 
          String prompt = extractChatContent(parts, message);
@@ -338,7 +205,7 @@ public class OpenCodeCommandHandler {
          return taskExecutor.executeWithAutoSession(message, prompt);
      }
 
-     @Deprecated
+     @Deprecated(since = "Phase 1", forRemoval = true)
      private AppExecutionResult handleChatNowCommand(Message message) {
          return handleChatNowCommand(message, MessageContext.unresolved());
      }
@@ -350,7 +217,7 @@ public class OpenCodeCommandHandler {
          if (inTopic && sessionManager.isTopicInitialized(messageContext)) {
              Optional<String> currentSessionId = sessionManager.getSessionId(messageContext);
              if (currentSessionId.isPresent()) {
-                 return AppExecutionResult.text(buildSessionInitializedInfo(topicId, currentSessionId.get()));
+                 return AppExecutionResult.text(messageFormatter.buildSessionInitializedInfo(topicId, currentSessionId.get()));
              }
          }
 
@@ -359,12 +226,10 @@ public class OpenCodeCommandHandler {
 
          try {
              String result = taskExecutor.createSessionOnly(message);
-             // After creating session, must use Message-based getSessionId since
-             // the binding was just written and messageContext is stale
              Optional<String> newSessionId = sessionManager.getSessionId(message);
              if (newSessionId.isPresent()) {
                  return AppExecutionResult.withSession(
-                     buildSessionInitializedInfo(message.getTopicId(), newSessionId.get()),
+                     messageFormatter.buildSessionInitializedInfo(message.getTopicId(), newSessionId.get()),
                      newSessionId.get(),
                      true
                  );
@@ -376,101 +241,26 @@ public class OpenCodeCommandHandler {
          }
      }
 
-     private String buildSessionInitializedInfo(String topicId, String sessionId) {
-         StringBuilder response = new StringBuilder();
-
-         response.append("✅ **会话已创建并绑定到话题**\n\n");
-         response.append("📋 **会话信息**\n");
-         response.append("  🆔 Session ID: `").append(sessionId).append("`\n");
-         response.append("  💬 话题 ID: `").append(topicId).append("`\n");
-         response.append("  ✅ 状态: 已绑定\n\n");
-
-         response.append("💡 **开始对话**\n");
-         response.append("  在当前话题中发送：\n");
-         response.append("  `chat <你的问题>`\n");
-         response.append("  或直接输入问题\n\n");
-
-         response.append("📁 **默认工作目录**\n");
-         response.append("  `/root/workspace/feishu-backend/workspace/").append(java.time.LocalDate.now()).append("/`\n\n");
-
-         return response.toString();
-     }
-
-    /**
-      * 构建 chat 命令的快速开始提示
-      */
-     private String buildChatQuickStart() {
-         return "💬 **OpenCode 对话**\n\n" +
-                "🚀 **快速开始**\n" +
-                "  `/opencode chatnow 帮我写一个排序函数`\n" +
-                "  或 `/opencode cn 帮我写一个排序函数`\n\n" +
-                "✅ **系统会自动**\n" +
-                "  • 创建新会话\n" +
-                "  • 绑定到当前话题\n" +
-                "  • 开始对话\n\n" +
-                "💡 **提示**：首次使用会话会自动创建并绑定，无需手动配置";
-     }
-
-    private String buildInitializationRequiredMessage() {
-        return "❌ **话题未初始化**\n\n" +
-               "请先完成以下初始化步骤：\n\n" +
-               "**第 1 步：查看可用项目**\n" +
-               "  `/opencode projects`\n\n" +
-               "**第 2 步：查看项目的最近会话**\n" +
-               "  `/opencode sessions <项目名称>`\n" +
-               "  示例：`/opencode sessions feishu-backend`\n\n" +
-               "**第 3 步：选择会话并绑定到话题**\n" +
-               "  `/opencode session continue <会话ID>`\n\n" +
-               "✅ **完成后即可使用 chat 命令**\n\n" +
-               "💡 使用方式：\n" +
-               "  `/opencode chat <你的问题>`\n" +
-               "  或直接输入问题（无需命令前缀）";
-    }
-
-    private String buildChatStatusWithSession(String topicId, String sessionId) {
-        StringBuilder response = new StringBuilder();
-
-        response.append("💬 **当前会话信息**\n\n");
-        response.append("  🆔 Session ID: `").append(sessionId).append("`\n");
-        response.append("  💬 话题 ID: `").append(topicId).append("`\n");
-        response.append("  ✅ 状态: 已绑定\n\n");
-
-        response.append("**💡 使用方式：**\n");
-        response.append("  `/opencode chat <你的问题>` - 发送对话\n");
-        response.append("  或直接输入问题（无需命令前缀）\n\n");
-
-        response.append("**示例：**\n");
-        response.append("  `/opencode chat 帮我重构这个函数`\n");
-        response.append("  或直接：`帮我重构这个函数`\n");
-
-        return response.toString();
-    }
-
-    /**
-     * 提取 chat 命令的实际内容
-     */
+    /** 提取 chat 命令的实际内容 */
     private String extractChatContent(String[] parts, Message message) {
-        // 优先使用 parts 数组（更简单可靠）
         if (parts.length >= 3) {
             return String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
         }
-        
-        // 降级到字符串处理
+
         String content = message.getContent().trim();
         int firstSpace = content.indexOf(' ');
         if (firstSpace < 0) {
             return "";
         }
-        
+
         String remaining = content.substring(firstSpace + 1).trim();
-        // 移除 "chat" 子命令，提取实际对话内容
         if (remaining.toLowerCase().startsWith("chat ")) {
             remaining = remaining.substring("chat ".length()).trim();
         }
         return remaining;
     }
 
-    @Deprecated
+    @Deprecated(since = "Phase 1", forRemoval = true)
     private AppExecutionResult handleSessionCommand(String[] parts, Message message) {
         return handleSessionCommand(parts, message, MessageContext.unresolved());
     }
@@ -521,52 +311,18 @@ public class OpenCodeCommandHandler {
                    "  • 想要重新开始初始化流程";
         }
 
-            Optional<String> currentSession = sessionManager.getSessionId(message);
+        Optional<String> currentSession = sessionManager.getSessionId(message);
 
         sessionManager.clearSession(message);
         sessionManager.clearExplicitlyInitialized(message);
 
         log.info("已重置话题初始化状态: topicId={}", topicId);
 
-        StringBuilder response = new StringBuilder();
-        response.append("🔄 **话题已重置**\n\n");
-
-        if (currentSession.isPresent()) {
-            response.append("已解除绑定的会话: `").append(currentSession.get()).append("`\n\n");
-        }
-
-        response.append("✅ **可以重新初始化了**\n\n");
-        response.append("**下一步操作**：\n\n");
-        response.append("1️⃣ 查看可用项目：\n");
-        response.append("   `/opencode p` （或 `/opencode projects`）\n\n");
-        response.append("2️⃣ 查看项目的最近会话：\n");
-        response.append("   `/opencode s <项目名称>` （或 `/opencode sessions`）\n");
-        response.append("   示例：`/opencode s feishu-backend`\n\n");
-        response.append("3️⃣ 选择会话并绑定：\n");
-        response.append("   `/opencode sc <会话ID>` （或 `session continue <id>`）\n\n");
-
-        return response.toString();
+        return messageFormatter.buildResetResponse(topicId, currentSession);
     }
 
-    /**
-      * 处理未知命令
-      */
+    /** 处理未知命令 */
     private String handleUnknownCommand(Message message, String subCommand, String[] parts) {
-        // 必须使用 chat 子命令才能触发对话
-        return buildUnknownCommandResponse(subCommand, "");
-    }
-
-    private String buildUnknownCommandResponse(String subCommand, String prompt) {
-        return String.format(
-            "❌ 未知的子命令: `%s`\n\n" +
-            "📝 可用子命令：\n" +
-            "  `/opencode chat <内容>` - 对话（推荐）\n" +
-            "  `/opencode new <内容>` - 创建新会话\n" +
-            "  `/opencode projects` - 查看项目\n" +
-            "  `/opencode commands` - 查看命令\n" +
-            "  `/opencode session <status|list>` - 会话管理\n\n" +
-            "💡 如果你想对话，请使用：`/opencode chat %s`",
-            subCommand, prompt
-        );
+        return messageFormatter.buildUnknownCommandResponse(subCommand, "");
     }
 }

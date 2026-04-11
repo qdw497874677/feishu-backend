@@ -90,6 +90,31 @@ public class Message {
     }
 
     /**
+     * 创建一条内容不同的消息副本。
+     * 保留原消息的所有元数据（eventId, messageId, chatId, topicId, sender 等），
+     * 仅替换 content 字段。
+     *
+     * <p>用于命令合成场景（如将纯文本合成为 /opencode chat 命令）。
+     *
+     * @param newContent 新的消息内容（不能为空）
+     * @return 内容不同的消息副本
+     */
+    public Message withContent(String newContent) {
+        Message copy = new Message();
+        copy.eventId = this.eventId;
+        copy.messageId = this.messageId;
+        copy.content = newContent;
+        copy.topicId = this.topicId;
+        copy.rootId = this.rootId;
+        copy.chatId = this.chatId;
+        copy.sender = this.sender;
+        copy.type = this.type;
+        copy.receiveTime = this.receiveTime;
+        copy.status = this.status;
+        return copy;
+    }
+
+    /**
      * 获取用于日志显示的消息内容
      * 如果内容是 JSON 格式，自动解析并提取文本
      */

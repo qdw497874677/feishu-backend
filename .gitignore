@@ -47,5 +47,4 @@ run-local.sh
 
 # Data directory (local runtime data)
 data/
-com/
 *.class
