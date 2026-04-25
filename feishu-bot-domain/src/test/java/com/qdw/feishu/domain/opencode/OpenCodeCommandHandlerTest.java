@@ -570,19 +570,32 @@ class OpenCodeCommandHandlerTest {
     // ========== 未知命令测试 ==========
 
     @Test
-    @DisplayName("未知命令应返回帮助消息")
+    @DisplayName("未知命令（话题内 UNINITIALIZED）应自动触发向导")
     void handleUnknownCommand_returnsHelp() {
+        String topicId = "test-topic";
+        // UNINITIALIZED + 在话题内 + 无活跃向导 → 自动触发向导（行为已变更）
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
+        when(wizardManager.isWizardActive(topicId)).thenReturn(false);
+
+        com.qdw.feishu.domain.card.CardContent mockCard =
+            com.qdw.feishu.domain.card.CardContent.builder().headerTitle("向导").build();
+        WizardManager.WizardResult mockResult =
+            WizardManager.WizardResult.of(mockCard, WizardManager.WizardStep.SELECT_PROJECT);
+        when(wizardManager.start(anyString(), eq(topicId))).thenReturn(mockResult);
+        when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
+
         AppExecutionResult result = commandHandler.handle(
-            createTestMessage("/opencode unknown", "test-topic"),
+            createTestMessage("/opencode unknown", topicId),
             "unknown",
             new String[]{"/opencode", "unknown"},
             CommandWhitelist.all()
         );
 
-        // 实现返回未知命令提示
+        // 新行为：UNINITIALIZED + 未知命令 → 触发向导，返回 noReply
         assertNotNull(result);
-        String text = result.getReplyContent();
-        assertTrue(text.contains("未知") || text.contains("命令"));
+        assertNull(result.getReplyContent(), "UNINITIALIZED 话题中未知命令应触发向导（noReply）");
+        verify(wizardManager).start(anyString(), eq(topicId));
     }
 
     // ========== status 快捷命令测试 ==========
@@ -970,5 +983,136 @@ class OpenCodeCommandHandlerTest {
         // non-topic: validator may block or fallback to text
         // ensure sendInteractiveMessage was NOT called
         verify(feishuGateway, never()).sendInteractiveMessage(any(), any(), any());
+    }
+
+    // ============ Task 1: UNINITIALIZED 自动向导触发测试 ============
+
+    @Test
+    @DisplayName("Test 1: UNINITIALIZED + 在话题内 + 非管理命令 → 自动触发向导, sendInteractiveMessage, noReply")
+    void should_autoTriggerWizard_when_uninitializedTopicAndNonControlCommand() {
+        String topicId = "uninit-auto-topic";
+        String chatId = "chat_auto_123";
+        Message message = createTestMessage("/opencode chat 帮我写代码", topicId);
+        message.setChatId(chatId);
+
+        com.qdw.feishu.domain.card.CardContent mockCard =
+            com.qdw.feishu.domain.card.CardContent.builder().headerTitle("Test Wizard").build();
+        WizardManager.WizardResult mockResult =
+            WizardManager.WizardResult.of(mockCard, WizardManager.WizardStep.SELECT_PROJECT);
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
+        when(wizardManager.isWizardActive(topicId)).thenReturn(false);
+        when(wizardManager.start(anyString(), eq(topicId))).thenReturn(mockResult);
+        when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
+
+        AppExecutionResult result = commandHandler.handle(
+            message,
+            "chat",
+            new String[]{"/opencode", "chat", "帮我写代码"},
+            CommandWhitelist.all(),
+            MessageContext.unresolved()
+        );
+
+        assertNotNull(result);
+        assertNull(result.getReplyContent(), "应返回 noReply（卡片已通过 feishuGateway 发送）");
+        verify(wizardManager).start(anyString(), eq(topicId));
+        verify(feishuGateway).sendInteractiveMessage(any(Message.class), anyString(), eq(topicId));
+    }
+
+    @Test
+    @DisplayName("Test 2: UNINITIALIZED + 明确管理命令 sc → 不触发向导，走正常路由")
+    void should_notTriggerWizard_when_uninitializedTopicAndExplicitControlCommand() {
+        String topicId = "uninit-sc-topic";
+        String sessionId = "ses_explicit_123";
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
+        when(wizardManager.isWizardActive(topicId)).thenReturn(false);
+        when(taskExecutor.executeWithSpecificSession(any(), isNull(), eq(sessionId)))
+            .thenReturn(AppExecutionResult.withSession("✅ 会话已绑定", sessionId, false));
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode sc " + sessionId, topicId),
+            "sc",
+            new String[]{"/opencode", "sc", sessionId},
+            CommandWhitelist.all(),
+            MessageContext.unresolved()
+        );
+
+        assertNotNull(result);
+        // 验证向导 start() 从未被调用
+        verify(wizardManager, never()).start(anyString(), anyString());
+        // 验证 sc 命令正常路由
+        verify(taskExecutor).executeWithSpecificSession(any(), isNull(), eq(sessionId));
+    }
+
+    @Test
+    @DisplayName("Test 3: UNINITIALIZED + 向导已活跃 → 向导拦截正常触发，不重复调用 start()")
+    void should_interceptWithWizardGuard_when_wizardAlreadyActive() {
+        String topicId = "uninit-wizard-active-topic";
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.UNINITIALIZED);
+        when(wizardManager.isWizardActive(topicId)).thenReturn(true);
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode chat hello", topicId),
+            "chat",
+            new String[]{"/opencode", "chat", "hello"},
+            CommandWhitelist.all(),
+            MessageContext.unresolved()
+        );
+
+        assertNotNull(result);
+        assertTrue(result.getReplyContent().contains("向导进行中"), "应提示向导进行中");
+        // 向导已活跃，不应再次调用 start()
+        verify(wizardManager, never()).start(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Test 4: INITIALIZED + 非管理命令 → 不触发向导（仅 UNINITIALIZED 触发）")
+    void should_notTriggerWizard_when_topicIsInitialized() {
+        String topicId = "init-chat-topic";
+        String prompt = "帮我写代码";
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
+        when(wizardManager.isWizardActive(topicId)).thenReturn(false);
+        when(sessionManager.isTopicInitialized(any(MessageContext.class))).thenReturn(true);
+        when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
+            .thenReturn(AppExecutionResult.noReply());
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode chat " + prompt, topicId),
+            "chat",
+            new String[]{"/opencode", "chat", prompt},
+            CommandWhitelist.all(),
+            MessageContext.unresolved()
+        );
+
+        assertNotNull(result);
+        // INITIALIZED 不触发向导
+        verify(wizardManager, never()).start(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Test 5: UNINITIALIZED + NON_TOPIC (topicId=null) → 不触发向导（只在话题内触发）")
+    void should_notTriggerWizard_when_nonTopicContext() {
+        // topicId = null => NON_TOPIC, 命令不通过白名单验证
+        when(commandValidator.validateCommand(eq("chat"), any(), any()))
+            .thenReturn(ValidationResult.restricted("命令受限"));
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode chat hello", null),
+            "chat",
+            new String[]{"/opencode", "chat", "hello"},
+            CommandWhitelist.all(),
+            MessageContext.unresolved()
+        );
+
+        assertNotNull(result);
+        // 非话题环境，命令被白名单拦截，向导 start() 不被调用
+        verify(wizardManager, never()).start(anyString(), anyString());
     }
 }

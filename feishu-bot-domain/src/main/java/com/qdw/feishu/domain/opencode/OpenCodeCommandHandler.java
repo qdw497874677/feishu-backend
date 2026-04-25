@@ -100,6 +100,21 @@ public class OpenCodeCommandHandler {
             }
         }
 
+        // 自动向导触发：UNINITIALIZED + 在话题内 + 无活跃向导 + 非显式管理命令
+        if (inTopic && state == TopicState.UNINITIALIZED
+                && wizardManager != null && !wizardManager.isWizardActive(topicId)
+                && !isExplicitControlCommand(subCommand)) {
+            log.info("UNINITIALIZED 话题自动触发向导: topicId={}, subCommand={}", topicId, subCommand);
+            String chatId = message.getChatId();
+            WizardManager.WizardResult wizardResult = wizardManager.start(chatId, topicId);
+            if (wizardResult != null && wizardResult.getCardContent() != null) {
+                CardActionContext actionCtx = CardActionContext.from(messageContext);
+                String cardJson = cardRenderer.render(wizardResult.getCardContent(), actionCtx);
+                feishuGateway.sendInteractiveMessage(message, cardJson, topicId);
+                return AppExecutionResult.noReply();
+            }
+        }
+
         // 路由到具体处理逻辑
         AppExecutionResult result = switch (subCommand) {
             case "help" -> null; // caller handles
@@ -445,6 +460,19 @@ public class OpenCodeCommandHandler {
      */
     private boolean isWizardAction(String subCommand) {
         return subCommand != null && subCommand.startsWith("wizard_");
+    }
+
+    /**
+     * 显式管理命令：用户有明确操作意图，跳过自动向导触发。
+     * 包含所有在 UNINITIALIZED 白名单中有具体功能意义的命令。
+     */
+    private boolean isExplicitControlCommand(String subCommand) {
+        return switch (subCommand) {
+            case "connect", "help", "status", "projects", "p",
+                 "sessions", "s", "session", "sc",
+                 "chatnow", "cn", "new", "reset", "commands" -> true;
+            default -> subCommand != null && subCommand.startsWith("wizard_");
+        };
     }
 
     /**
