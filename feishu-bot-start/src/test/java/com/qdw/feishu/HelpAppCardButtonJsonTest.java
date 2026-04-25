@@ -4,8 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.app.HelpApp;
+import com.qdw.feishu.domain.card.CardActionContext;
+import com.qdw.feishu.domain.card.CardContent;
+import com.qdw.feishu.domain.card.CardElement;
+import com.qdw.feishu.domain.card.CardButton;
 import com.qdw.feishu.domain.core.AppRegistry;
+import com.qdw.feishu.domain.gateway.CardRenderer;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
+import com.qdw.feishu.infrastructure.card.FeishuCardRenderer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,16 +24,18 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 /**
  * 单元测试 - 验证卡片按钮 JSON 格式
- * 
+ *
  * 测试目标：
- * 1. button value 必须是字符串格式（修复 200671 错误）
+ * 1. button value 必须是 Map 格式包含 action 字段
  * 2. 验证卡片 JSON 结构正确
+ * 3. [金标准] 迁移到 CardRenderer 后结构等价
  */
 @ExtendWith(MockitoExtension.class)
 class HelpAppCardButtonJsonTest {
@@ -45,12 +53,11 @@ class HelpAppCardButtonJsonTest {
     @BeforeEach
     void setUp() {
         helpApp = new HelpApp();
-        // 使用反射注入依赖
+        CardRenderer cardRenderer = new FeishuCardRenderer(objectMapper);
         ReflectionTestUtils.setField(helpApp, "appRegistry", appRegistry);
         ReflectionTestUtils.setField(helpApp, "feishuGateway", feishuGateway);
-        ReflectionTestUtils.setField(helpApp, "objectMapper", objectMapper);
+        ReflectionTestUtils.setField(helpApp, "cardRenderer", cardRenderer);
 
-        // Mock appRegistry 返回测试应用列表
         when(appRegistry.getAllApps()).thenReturn(createTestApps());
     }
 
@@ -83,109 +90,124 @@ class HelpAppCardButtonJsonTest {
 
     @Test
     @DisplayName("测试 button value 是 Map 格式包含 action 字段")
+    @SuppressWarnings("unchecked")
     void should_useMapValueWithAction_forButtonValue() throws Exception {
-        // Given: HelpApp 实例已在 setUp 中初始化
-        
-        // When: 调用 buildCardHelpJson 方法（使用反射）
         Method buildCardHelpJson = HelpApp.class.getDeclaredMethod("buildCardHelpJson");
         buildCardHelpJson.setAccessible(true);
         String cardJson = (String) buildCardHelpJson.invoke(helpApp);
 
-        // Then: 验证 JSON 不为空
         assertNotNull(cardJson, "Card JSON should not be null");
         assertFalse(cardJson.isEmpty(), "Card JSON should not be empty");
-        
-        // 解析 JSON 并验证结构
+
         Map<String, Object> card = objectMapper.readValue(cardJson, Map.class);
-        
-        // 验证 schema
+
         assertEquals("2.0", card.get("schema"), "Schema must be 2.0");
-        
-        // 验证 header
+
         Map<String, Object> header = (Map<String, Object>) card.get("header");
         assertNotNull(header, "Header should not be null");
         assertEquals("blue", header.get("template"), "Header template must be blue");
-        
-        // 验证 body
+
         Map<String, Object> body = (Map<String, Object>) card.get("body");
         assertNotNull(body, "Body should not be null");
-        
-        // 验证 elements 中包含 button
+
         List<Map<String, Object>> elements = (List<Map<String, Object>>) body.get("elements");
         assertNotNull(elements, "Elements should not be null");
-        
-        // 验证每个 button 的 value 是 Map 格式，包含 action 字段
+
         int buttonCount = 0;
         for (Map<String, Object> element : elements) {
             if ("button".equals(element.get("tag"))) {
                 buttonCount++;
                 Object value = element.get("value");
-                assertTrue(value instanceof Map, 
+                assertTrue(value instanceof Map,
                     "Button value must be Map type, got: " + (value != null ? value.getClass() : "null"));
-                
+
                 Map<String, Object> valueMap = (Map<String, Object>) value;
-                assertTrue(valueMap.containsKey("action"), 
+                assertTrue(valueMap.containsKey("action"),
                     "Button value must contain 'action' key");
-                
+
                 Object action = valueMap.get("action");
-                assertTrue(action instanceof String, 
+                assertTrue(action instanceof String,
                     "Action value must be String type");
-                assertFalse(((String) action).isEmpty(), 
+                assertFalse(((String) action).isEmpty(),
                     "Action value cannot be empty");
-                
-                System.out.println("✅ Button value verified: " + value + " (type: Map with action)");
             }
         }
-        
-        assertTrue(buttonCount >= 5, 
+
+        assertTrue(buttonCount >= 5,
             "Should have at least 5 buttons, got: " + buttonCount);
     }
 
     @Test
     @DisplayName("测试卡片 JSON 包含正确的按钮数量")
+    @SuppressWarnings("unchecked")
     void should_generateCorrectNumberOfButtons() throws Exception {
-        // Given: HelpApp 实例已在 setUp 中初始化
-        
-        // When: 生成卡片 JSON
         Method buildCardHelpJson = HelpApp.class.getDeclaredMethod("buildCardHelpJson");
         buildCardHelpJson.setAccessible(true);
         String cardJson = (String) buildCardHelpJson.invoke(helpApp);
 
-        // Then: 解析并验证按钮数量
         Map<String, Object> card = objectMapper.readValue(cardJson, Map.class);
         Map<String, Object> body = (Map<String, Object>) card.get("body");
         List<Map<String, Object>> elements = (List<Map<String, Object>>) body.get("elements");
-        
-        // 统计 button 元素数量
+
         long buttonCount = elements.stream()
             .filter(e -> "button".equals(e.get("tag")))
             .count();
-        
-        // 验证至少有 5 个按钮（help, opencode, bash, history, time）
-        assertTrue(buttonCount >= 5, 
+
+        assertTrue(buttonCount >= 5,
             "Should have at least 5 buttons (help, opencode, bash, history, time), got: " + buttonCount);
-        
-        System.out.println("✅ Total buttons: " + buttonCount);
     }
 
     @Test
-    @DisplayName("测试卡片 JSON 格式 - 打印完整 JSON 用于调试")
-    void should_printCardJson_forDebugging() throws Exception {
-        // Given: HelpApp 实例已在 setUp 中初始化
-        
-        // When: 生成卡片 JSON
+    @DisplayName("[金标准] 迁移后 JSON 结构等价：header、按钮 action、按钮数量、schema")
+    @SuppressWarnings("unchecked")
+    void should_matchGoldStandardStructure_afterMigration() throws Exception {
+        // 金标准快照：旧实现 buildCardHelpJson() 的结构特征
+        // schema = "2.0", header.template = "blue", header.title.content = "🤖 应用菜单"
+        // 5 buttons with actions: "help", "opencode projects", "bash help", "history", "time"
+
         Method buildCardHelpJson = HelpApp.class.getDeclaredMethod("buildCardHelpJson");
         buildCardHelpJson.setAccessible(true);
         String cardJson = (String) buildCardHelpJson.invoke(helpApp);
 
-        // Then: 打印 JSON 用于调试
-        System.out.println("=== Generated Card JSON ===");
-        System.out.println(objectMapper.writerWithDefaultPrettyPrinter()
-            .writeValueAsString(objectMapper.readValue(cardJson, Map.class)));
-        System.out.println("===========================");
-        
-        // 验证 JSON 格式正确
-        assertDoesNotThrow(() -> objectMapper.readValue(cardJson, Map.class), 
-            "Card JSON should be valid JSON");
+        Map<String, Object> card = objectMapper.readValue(cardJson, Map.class);
+
+        // 验证 schema 版本
+        assertEquals("2.0", card.get("schema"), "Schema version must match gold standard");
+
+        // 验证 header
+        Map<String, Object> header = (Map<String, Object>) card.get("header");
+        Map<String, Object> title = (Map<String, Object>) header.get("title");
+        assertEquals("🤖 应用菜单", title.get("content"), "Header title must match gold standard");
+        assertEquals("blue", header.get("template"), "Header template must match gold standard");
+
+        // 验证按钮 action 列表
+        Map<String, Object> body = (Map<String, Object>) card.get("body");
+        List<Map<String, Object>> elements = (List<Map<String, Object>>) body.get("elements");
+
+        List<String> actions = elements.stream()
+            .filter(e -> "button".equals(e.get("tag")))
+            .map(e -> {
+                Map<String, Object> value = (Map<String, Object>) e.get("value");
+                return (String) value.get("action");
+            })
+            .collect(Collectors.toList());
+
+        // 金标准 action 列表（按 createTestApps 顺序）
+        List<String> expectedActions = Arrays.asList(
+            "help",               // help app -> default action = appId
+            "opencode projects",  // opencode -> getDefaultAction returns "opencode projects"
+            "bash help",          // bash -> getDefaultAction returns "bash help"
+            "history",            // history -> default action = appId
+            "time"                // time -> default action = appId
+        );
+
+        assertEquals(expectedActions, actions, "Button actions must match gold standard order and values");
+
+        // 验证按钮数量
+        assertEquals(5, actions.size(), "Button count must match gold standard (5 apps)");
+
+        // 验证 markdown 提示文本存在
+        boolean hasMarkdown = elements.stream().anyMatch(e -> "markdown".equals(e.get("tag")));
+        assertTrue(hasMarkdown, "Must contain markdown prompt text");
     }
 }

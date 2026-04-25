@@ -1,9 +1,11 @@
 package com.qdw.feishu.domain.app;
 
-import com.alibaba.cola.exception.SysException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qdw.feishu.domain.card.CardButton;
+import com.qdw.feishu.domain.card.CardContent;
+import com.qdw.feishu.domain.card.CardElement;
 import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.core.ReplyMode;
+import com.qdw.feishu.domain.gateway.CardRenderer;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +14,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -20,13 +23,14 @@ public class HelpApp implements FishuAppI {
     @Autowired
     @Lazy
     private AppRegistry appRegistry;
-    
+
     @Autowired
     @Lazy
     private FeishuGateway feishuGateway;
-    
+
     @Autowired
-    private ObjectMapper objectMapper;
+    @Lazy
+    private CardRenderer cardRenderer;
 
     @Override
     public String getAppId() {
@@ -82,57 +86,35 @@ public class HelpApp implements FishuAppI {
         }
     }
 
+    /**
+     * 使用 CardContent + CardRenderer 构建帮助卡片 JSON。
+     */
     private String buildCardHelpJson() {
-        try {
-            Map<String, Object> card = new LinkedHashMap<>();
-            card.put("schema", "2.0");
-            card.put("config", Map.of("wide_screen_mode", true));
-            
-            // Header
-            Map<String, Object> header = new LinkedHashMap<>();
-            header.put("title", Map.of("content", "🤖 应用菜单", "tag", "plain_text"));
-            header.put("template", "blue");
-            card.put("header", header);
-            
-            // Body elements
-            List<Map<String, Object>> elements = new ArrayList<>();
-            
-            // Markdown element
-            elements.add(Map.of("tag", "markdown", "content", "点击按钮选择应用，或直接输入命令"));
-            
-            // 每个按钮单独一行（垂直布局）
-            List<FishuAppI> apps = appRegistry.getAllApps();
-            
-            for (FishuAppI app : apps) {
-                Map<String, Object> button = new LinkedHashMap<>();
-                button.put("tag", "button");
-                button.put("text", Map.of(
-                    "content", getAppIcon(app.getAppId()) + " " + app.getAppName(),
-                    "tag", "plain_text"
-                ));
-                button.put("type", getButtonType(app.getAppId()));
-                // value 必须是对象格式，避免 SDK 反序列化错误
-                // 特殊处理：opencode 显示项目列表，bash 显示帮助
-                String actionValue = getDefaultAction(app.getAppId());
-                button.put("value", Map.of("action", actionValue));
-                
-                // 每个按钮作为单独的元素
-                elements.add(button);
-            }
-            
-            card.put("body", Map.of("elements", elements));
-            
-            return objectMapper.writeValueAsString(card);
-        } catch (Exception e) {
-            log.error("构建卡片JSON失败", e);
-            throw new SysException("BUILD_CARD_ERROR", "Failed to build card JSON", e);
-        }
+        List<FishuAppI> apps = appRegistry.getAllApps();
+
+        List<CardButton> buttons = apps.stream()
+            .map(app -> CardButton.builder()
+                .label(getAppIcon(app.getAppId()) + " " + app.getAppName())
+                .action(getDefaultAction(app.getAppId()))
+                .style(getButtonType(app.getAppId()))
+                .build())
+            .collect(Collectors.toList());
+
+        CardContent card = CardContent.builder()
+            .headerTitle("🤖 应用菜单")
+            .headerTemplate("blue")
+            .wideScreenMode(true)
+            .addElement(CardElement.markdown("点击按钮选择应用，或直接输入命令"))
+            .addElement(CardElement.buttonGroup(buttons))
+            .build();
+
+        return cardRenderer.render(card, null);
     }
 
     private String generateTextHelp() {
         StringBuilder sb = new StringBuilder();
         sb.append("🤖 应用菜单\n\n");
-        
+
         List<FishuAppI> apps = appRegistry.getAllApps();
         for (int i = 0; i < apps.size(); i++) {
             FishuAppI app = apps.get(i);
@@ -143,7 +125,7 @@ public class HelpApp implements FishuAppI {
             sb.append(String.format("   %s\n", app.getDescription()));
             sb.append(String.format("   示例: %s\n\n", app.getHelp()));
         }
-        
+
         sb.append("回复编号或应用名称选择");
         return sb.toString();
     }
