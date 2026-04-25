@@ -100,6 +100,13 @@ Plans:
 
 **Dependency:** Phase 1 + Phase 2 (stable context + stable commands required).
 
+**Status:** Gap Closure — 2 gaps found in verification (CARD-02 auto-trigger missing, WizardManager compute() Javadoc mismatch).
+
+**Plans:** 2 plans
+Plans:
+- [x] 03-PLAN.md — 卡片基础设施 + 3步向导 + 会话卡片 (CARD-01, CARD-02, CARD-03)
+- [ ] 03-02-PLAN.md — Gap closure: UNINITIALIZED 自动向导触发 + compute() 并发修复 (CARD-02)
+
 **UI hint:** no
 
 ---
