@@ -1,8 +1,10 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
+import com.qdw.feishu.domain.card.CardButton;
 import com.qdw.feishu.domain.card.CardActionContext;
 import com.qdw.feishu.domain.card.CardContent;
+import com.qdw.feishu.domain.card.CardElement;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.gateway.CardRenderer;
@@ -15,7 +17,9 @@ import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -103,7 +107,7 @@ public class OpenCodeCommandHandler {
             case "status" -> AppExecutionResult.text(sessionManager.getCurrentSessionStatus(messageContext));
             case "new" -> handleNewCommand(parts, message, messageContext);
             case "chat", "chatnow", "cn" -> handleChatCommand(parts, message, messageContext);
-            case "sessions", "s" -> AppExecutionResult.text(sessionManager.handleSessionsCommand(parts));
+            case "sessions", "s" -> handleSessionsCommand(parts, message, messageContext);
             case "session", "sc" -> handleSessionCommand(parts, message, messageContext);
             case "projects", "p" -> AppExecutionResult.text(openCodeGateway.listProjects());
             case "commands" -> AppExecutionResult.text(openCodeGateway.listCommands());
@@ -133,6 +137,84 @@ public class OpenCodeCommandHandler {
             return AppExecutionResult.withSession(enhanced, result.getOpenCodeSessionId(), result.isSessionCreated());
         }
         return AppExecutionResult.text(enhanced);
+    }
+
+    /**
+     * 处理 sessions 命令。
+     *
+     * 在话题中优先尝试卡片格式，失败时降级为纯文本。
+     * 非话题环境直接使用纯文本。
+     */
+    private AppExecutionResult handleSessionsCommand(String[] parts, Message message, MessageContext ctx) {
+        String project = parts.length >= 3 ? parts[2] : (parts.length >= 2 ? parts[1] : null);
+        if (project == null || project.isBlank() || project.equalsIgnoreCase("sessions") || project.equalsIgnoreCase("s")) {
+            return AppExecutionResult.text(messageFormatter.buildNewCommandUsage(false));
+        }
+
+        // 话题中：尝试卡片格式
+        if (ctx.isThreadContext()) {
+            AppExecutionResult cardResult = trySendSessionListCard(project, message, ctx);
+            if (cardResult != null) {
+                return cardResult;
+            }
+        }
+
+        // 降级为纯文本
+        return AppExecutionResult.text(sessionManager.handleSessionsCommand(parts));
+    }
+
+    /**
+     * 尝试发送会话列表卡片。
+     *
+     * 成功时直接通过 feishuGateway 发送卡片，返回 AppExecutionResult.noReply()。
+     * 失败时返回 null，调用者降级为文本。
+     */
+    private AppExecutionResult trySendSessionListCard(String project, Message message, MessageContext ctx) {
+        try {
+            List<SessionInfo> sessions = openCodeGateway.listRecentSessionsStructured(project, 10);
+            if (sessions.isEmpty()) {
+                return AppExecutionResult.text(
+                    "该项目暂无会话。使用 `/oc new " + project + " <问题>` 创建新会话。");
+            }
+
+            CardActionContext actionCtx = CardActionContext.from(ctx);
+            List<CardElement> elements = new ArrayList<>();
+            elements.add(CardElement.markdown("**" + project + "** 的最近会话："));
+
+            // 每个会话一个绑定按钮
+            List<CardButton> sessionButtons = new ArrayList<>();
+            for (SessionInfo session : sessions) {
+                String label = session.getTitle()
+                    + (session.getLastPrompt() != null && !session.getLastPrompt().isBlank()
+                        ? " — " + session.getLastPrompt() : "")
+                    + " (" + session.getRelativeTime() + ")";
+                if (label.length() > 40) {
+                    label = label.substring(0, 37) + "...";
+                }
+                sessionButtons.add(CardButton.defaults(label, "sc " + session.getSessionId()));
+            }
+            elements.add(CardElement.buttonGroup(sessionButtons));
+
+            // 底部"新建会话"按钮
+            elements.add(CardElement.buttonGroup(
+                CardButton.primary("+ 新建会话", "wizard_new_session:" + project)
+            ));
+
+            CardContent card = CardContent.builder()
+                .headerTitle("📋 会话列表 — " + project)
+                .headerTemplate("turquoise")
+                .wideScreenMode(true)
+                .elements(elements)
+                .build();
+
+            String cardJson = cardRenderer.render(card, actionCtx);
+            feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
+            return AppExecutionResult.noReply();
+
+        } catch (Exception e) {
+            log.warn("卡片会话列表渲染失败，降级为文本: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

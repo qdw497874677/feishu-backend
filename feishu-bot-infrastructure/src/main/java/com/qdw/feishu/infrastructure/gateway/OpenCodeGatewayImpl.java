@@ -3,6 +3,7 @@ package com.qdw.feishu.infrastructure.gateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
+import com.qdw.feishu.domain.opencode.SessionInfo;
 import com.qdw.feishu.infrastructure.config.OpenCodeProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -323,7 +324,19 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
     @Override
     public String listRecentSessions(String project, int limit) {
-        return executeWithRetry("listRecentSessions", () -> {
+        // 委托给结构化方法，然后格式化为文本（单一数据源）
+        try {
+            List<SessionInfo> sessions = listRecentSessionsStructured(project, limit);
+            return formatSessionsAsText(sessions, project, limit);
+        } catch (Exception e) {
+            log.error("列出项目会话失败: project={}", project, e);
+            return "❌ 获取项目会话列表失败: " + e.getMessage();
+        }
+    }
+
+    @Override
+    public List<SessionInfo> listRecentSessionsStructured(String project, int limit) {
+        return executeWithRetry("listRecentSessionsStructured", () -> {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(properties.getServerUrl() + "/session"))
@@ -335,16 +348,106 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
                         HttpResponse.BodyHandlers.ofString());
 
                 if (response.statusCode() == 200) {
-                    return formatProjectSessionList(response.body(), project, limit);
+                    return parseSessionsStructured(response.body(), project, limit);
                 } else {
-                    return "❌ 获取会话列表失败: " + response.body();
+                    log.error("获取会话列表失败: status={}", response.statusCode());
+                    return List.of();
                 }
 
             } catch (Exception e) {
-                log.error("列出项目会话失败: project={}", project, e);
-                return "❌ 获取项目会话列表失败: " + e.getMessage();
+                log.error("获取结构化会话列表失败: project={}", project, e);
+                throw new RuntimeException("获取会话列表失败", e);
             }
         });
+    }
+
+    /**
+     * 将 API JSON 响应解析为结构化 SessionInfo 列表（过滤指定项目）
+     */
+    private List<SessionInfo> parseSessionsStructured(String jsonResponse, String project, int limit) {
+        try {
+            JsonNode json = objectMapper.readTree(jsonResponse);
+            if (!json.isArray() || json.size() == 0) {
+                return List.of();
+            }
+
+            List<SessionInfo> result = new ArrayList<>();
+            for (JsonNode session : json) {
+                if (!isSessionBelongToProject(session, project)) {
+                    continue;
+                }
+
+                String sessionId = session.has("id") ? session.get("id").asText() : null;
+                if (sessionId == null || sessionId.isBlank()) {
+                    continue;
+                }
+
+                String title = (session.has("title") && !session.get("title").isNull())
+                    ? session.get("title").asText()
+                    : "无标题";
+
+                // 最后提示词摘要（截断到 50 字符）
+                String lastPrompt = null;
+                if (session.has("lastPrompt") && !session.get("lastPrompt").isNull()) {
+                    String raw = session.get("lastPrompt").asText();
+                    lastPrompt = raw.length() > 50 ? raw.substring(0, 47) + "..." : raw;
+                }
+
+                // 相对时间
+                String relativeTime = "未知时间";
+                if (session.has("created_at")) {
+                    relativeTime = formatTimestamp(session.get("created_at").asLong());
+                } else if (session.has("updatedAt")) {
+                    relativeTime = formatTimestamp(session.get("updatedAt").asLong());
+                }
+
+                result.add(SessionInfo.builder()
+                    .sessionId(sessionId)
+                    .title(title)
+                    .lastPrompt(lastPrompt)
+                    .relativeTime(relativeTime)
+                    .projectName(project)
+                    .build());
+
+                if (result.size() >= limit) {
+                    break;
+                }
+            }
+            return result;
+
+        } catch (Exception e) {
+            log.error("解析结构化会话列表失败", e);
+            return List.of();
+        }
+    }
+
+    /**
+     * 将 SessionInfo 列表格式化为文本（供纯文本降级路径使用）
+     */
+    private String formatSessionsAsText(List<SessionInfo> sessions, String project, int limit) {
+        if (sessions.isEmpty()) {
+            return String.format("📋 项目 **%s** 暂无会话记录\n\n" +
+                   "💡 提示：\n" +
+                   " - 确认项目名称是否正确\n" +
+                   " - 使用 `/opencode projects` 查看所有项目\n" +
+                   " - 使用 `/opencode new <提示词>` 在此项目中创建新会话", project);
+        }
+
+        int count = Math.min(limit, sessions.size());
+        StringBuilder sb = new StringBuilder(
+            String.format("📋 项目 **%s** 的最近 %d 个会话:\n\n", project, count));
+
+        for (int i = 0; i < sessions.size(); i++) {
+            SessionInfo s = sessions.get(i);
+            sb.append(String.format("%d. %s\n   ID: `%s`\n", i + 1, s.getTitle(), s.getSessionId()));
+            if (s.getLastPrompt() != null && !s.getLastPrompt().isBlank()) {
+                sb.append(String.format("   摘要: %s\n", s.getLastPrompt()));
+            }
+            sb.append(String.format("   时间: %s\n\n", s.getRelativeTime()));
+        }
+
+        sb.append("💡 选择会话:\n   `/opencode session continue <ID>`\n");
+        return sb.toString();
     }
 
     @Override

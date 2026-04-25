@@ -1,5 +1,9 @@
 package com.qdw.feishu.domain.gateway;
 
+import com.qdw.feishu.domain.opencode.SessionInfo;
+
+import java.util.List;
+
 /**
  * OpenCode Gateway 接口
  *
@@ -50,6 +54,17 @@ public interface OpenCodeGateway {
      * @return 格式化的会话列表，包含 session ID 和摘要
      */
     String listRecentSessions(String project, int limit);
+
+    /**
+     * 获取项目的最近会话列表（结构化数据）。
+     *
+     * 用于卡片渲染，返回解析后的会话对象列表而非纯文本。
+     *
+     * @param project 项目名称
+     * @param limit 返回的会话数量上限
+     * @return 结构化会话列表（空列表表示无会话）
+     */
+    List<SessionInfo> listRecentSessionsStructured(String project, int limit);
 
     /**
      * 列出所有项目

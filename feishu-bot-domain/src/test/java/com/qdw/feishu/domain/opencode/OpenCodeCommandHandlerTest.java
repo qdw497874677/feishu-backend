@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -824,5 +825,150 @@ class OpenCodeCommandHandlerTest {
 
         assertNotNull(result);
         assertFalse(result.getReplyContent().contains("向导进行中"), "取消命令不应被拦截");
+    }
+
+    // ========== Task 4: 增强会话列表 (sessions card) ==========
+
+    @Test
+    @DisplayName("sessions 命令 - 话题中返回卡片（调用 sendInteractiveMessage + noReply）")
+    void handleSessionsCommand_inTopic_returnsCard() throws Exception {
+        String topicId = "topic-sessions-card";
+        Message message = createTestMessage("/opencode sessions feishu-backend", topicId);
+
+        com.qdw.feishu.domain.model.ImContextRef contextRef =
+            com.qdw.feishu.domain.model.ImContextRef.feishuThread(topicId);
+        MessageContext threadContext = MessageContext.of(contextRef, null);
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
+        when(sessionManager.getSessionId(any(MessageContext.class)))
+            .thenReturn(Optional.of("ses_123"));
+
+        List<com.qdw.feishu.domain.opencode.SessionInfo> sessions = List.of(
+            com.qdw.feishu.domain.opencode.SessionInfo.builder()
+                .sessionId("ses_abc").title("Test session")
+                .lastPrompt("some prompt").relativeTime("5分钟前").projectName("feishu-backend").build()
+        );
+        when(openCodeGateway.listRecentSessionsStructured(eq("feishu-backend"), anyInt()))
+            .thenReturn(sessions);
+
+        when(cardRenderer.render(any(), any())).thenReturn("{\"card\":\"json\"}");
+
+        AppExecutionResult result = commandHandler.handle(
+            message,
+            "sessions",
+            new String[]{"/opencode", "sessions", "feishu-backend"},
+            CommandWhitelist.all(),
+            threadContext
+        );
+
+        assertNotNull(result);
+        assertNull(result.getReplyContent(), "话题中 sessions 应返回 noReply（卡片已通过 feishuGateway 发送）");
+        verify(feishuGateway).sendInteractiveMessage(any(Message.class), anyString(), eq(topicId));
+    }
+
+    @Test
+    @DisplayName("sessions 命令 - 卡片渲染失败时降级为文本")
+    void handleSessionsCommand_cardRenderFails_fallbackToText() throws Exception {
+        String topicId = "topic-sessions-fallback";
+        Message message = createTestMessage("/opencode sessions feishu-backend", topicId);
+
+        com.qdw.feishu.domain.model.ImContextRef contextRef =
+            com.qdw.feishu.domain.model.ImContextRef.feishuThread(topicId);
+        MessageContext threadContext = MessageContext.of(contextRef, null);
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
+        when(sessionManager.getSessionId(any(MessageContext.class)))
+            .thenReturn(Optional.of("ses_123"));
+
+        when(openCodeGateway.listRecentSessionsStructured(anyString(), anyInt()))
+            .thenThrow(new RuntimeException("network error"));
+
+        when(sessionManager.handleSessionsCommand(any()))
+            .thenReturn("📋 text session list");
+
+        AppExecutionResult result = commandHandler.handle(
+            message,
+            "sessions",
+            new String[]{"/opencode", "sessions", "feishu-backend"},
+            CommandWhitelist.all(),
+            threadContext
+        );
+
+        assertNotNull(result);
+        assertNotNull(result.getReplyContent(), "卡片失败时应有文本回复");
+        assertTrue(result.getReplyContent().contains("📋"), "降级结果应包含会话列表文本");
+        verify(feishuGateway, never()).sendInteractiveMessage(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("sessions 命令 - 会话列表卡片底部有新建会话按钮（通过卡片内容验证）")
+    void handleSessionsCommand_cardIncludesNewSessionButton() throws Exception {
+        String topicId = "topic-sessions-newbtn";
+        Message message = createTestMessage("/opencode sessions feishu-backend", topicId);
+
+        com.qdw.feishu.domain.model.ImContextRef contextRef =
+            com.qdw.feishu.domain.model.ImContextRef.feishuThread(topicId);
+        MessageContext threadContext = MessageContext.of(contextRef, null);
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.INITIALIZED);
+        when(sessionManager.getSessionId(any(MessageContext.class)))
+            .thenReturn(Optional.of("ses_456"));
+
+        List<com.qdw.feishu.domain.opencode.SessionInfo> sessions = List.of(
+            com.qdw.feishu.domain.opencode.SessionInfo.builder()
+                .sessionId("ses_xyz").title("A session").relativeTime("1小时前").projectName("feishu-backend").build()
+        );
+        when(openCodeGateway.listRecentSessionsStructured(eq("feishu-backend"), anyInt()))
+            .thenReturn(sessions);
+
+        // Capture the CardContent passed to renderer to verify new-session button
+        org.mockito.ArgumentCaptor<com.qdw.feishu.domain.card.CardContent> cardCaptor =
+            org.mockito.ArgumentCaptor.forClass(com.qdw.feishu.domain.card.CardContent.class);
+        when(cardRenderer.render(cardCaptor.capture(), any())).thenReturn("{\"card\":\"ok\"}");
+
+        commandHandler.handle(
+            message,
+            "sessions",
+            new String[]{"/opencode", "sessions", "feishu-backend"},
+            CommandWhitelist.all(),
+            threadContext
+        );
+
+        com.qdw.feishu.domain.card.CardContent capturedCard = cardCaptor.getValue();
+        assertNotNull(capturedCard);
+        // Verify at least one element is a button group with new-session action
+        boolean hasNewSessionButton = capturedCard.getElements().stream()
+            .filter(e -> e.isButtonGroup())
+            .flatMap(e -> e.getButtons().stream())
+            .anyMatch(btn -> btn.getAction() != null && btn.getAction().contains("wizard_new_session:feishu-backend"));
+        assertTrue(hasNewSessionButton, "卡片应包含新建会话按钮");
+    }
+
+    @Test
+    @DisplayName("sessions 命令 - 非话题中使用文本格式")
+    void handleSessionsCommand_notInTopic_fallbackToText() {
+        Message message = createTestMessage("/opencode sessions feishu-backend", null);
+        MessageContext chatContext = MessageContext.unresolved();
+
+        when(sessionManager.detectTopicState(any(MessageContext.class)))
+            .thenReturn(TopicState.NON_TOPIC);
+        when(sessionManager.handleSessionsCommand(any()))
+            .thenReturn("📋 sessions text");
+
+        AppExecutionResult result = commandHandler.handle(
+            message,
+            "sessions",
+            new String[]{"/opencode", "sessions", "feishu-backend"},
+            CommandWhitelist.all(),
+            chatContext
+        );
+
+        assertNotNull(result);
+        // non-topic: validator may block or fallback to text
+        // ensure sendInteractiveMessage was NOT called
+        verify(feishuGateway, never()).sendInteractiveMessage(any(), any(), any());
     }
 }
