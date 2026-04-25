@@ -11,7 +11,7 @@
 |---|-------|------|--------------|------------------|
 | 1 | Context Foundation | Fix data flow — context propagation, structured IDs, request caching | CTX-01, CTX-02, CTX-03, CTX-04, CTX-05, COMPAT-01 | 4 | **COMPLETE** |
 | 2 | Command Router & Conversation UX | Redesign command routing + direct typing + reply suppression | CMD-01, CMD-02, CMD-03, CMD-04, UX-01, UX-02, UX-03, COMPAT-02 | 5 |
-| 3 | Cards & Guided Flows | Interactive card entry + onboarding wizard + enhanced session list | CARD-01, CARD-02, CARD-03 | 3 |
+| 3 | Cards & Guided Flows | 1/1 | Complete   | 2026-04-25 |
 
 ## Phase Details
 

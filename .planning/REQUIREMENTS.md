@@ -30,9 +30,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 卡片与引导流程 (Cards & Guided Flow)
 
-- [ ] **CARD-01**: 交互式卡片按钮可用于项目选择和会话选择，卡片事件携带完整的对话上下文（chatId/topicId）
-- [ ] **CARD-02**: 首次使用时提供分步卡片向导（选项目 → 选会话 → 确认绑定），降低使用门槛
-- [ ] **CARD-03**: 会话列表展示最后提示词摘要和相对时间戳，用户能通过上下文识别会话
+- [x] **CARD-01**: 交互式卡片按钮可用于项目选择和会话选择，卡片事件携带完整的对话上下文（chatId/topicId）
+- [x] **CARD-02**: 首次使用时提供分步卡片向导（选项目 → 选会话 → 确认绑定），降低使用门槛
+- [x] **CARD-03**: 会话列表展示最后提示词摘要和相对时间戳，用户能通过上下文识别会话
 
 ### 兼容性 (Compatibility)
 
@@ -88,9 +88,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMD-02 | Phase 2 | **Complete** |
 | CMD-03 | Phase 2 | **Complete** |
 | CMD-04 | Phase 2 | **Complete** |
-| CARD-01 | Phase 3 | Pending |
-| CARD-02 | Phase 3 | Pending |
-| CARD-03 | Phase 3 | Pending |
+| CARD-01 | Phase 3 | Complete |
+| CARD-02 | Phase 3 | Complete |
+| CARD-03 | Phase 3 | Complete |
 | COMPAT-01 | Phase 1 | **Complete** |
 | COMPAT-02 | Phase 2 | **Complete** |
 
