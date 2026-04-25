@@ -662,15 +662,28 @@ feishu-bot-domain/src/main/java/com/qdw/feishu/domain/
 ├── app/                      # 应用系统
 │   ├── FishuAppI.java        # 应用接口
 │   └── *.java                # 应用实现
+├── card/                     # 卡片领域模型（Phase 3）
+│   ├── CardContent.java      # IM 无关的卡片内容模型
+│   ├── CardElement.java      # 卡片元素（markdown / button_group）
+│   ├── CardButton.java       # 按钮值对象
+│   ├── CardActionContext.java # 按钮上下文（chatId/topicId/sessionId）
+│   └── StreamingCardManager.java # 流式卡片管理
 ├── gateway/                  # 网关接口
 │   ├── FeishuGateway.java
 │   ├── MessageListenerGateway.java
+│   ├── CardRenderer.java          # 卡片渲染网关接口（Phase 3）
 │   └── MessageEventParser.java    # 防腐层接口
 ├── message/                  # 消息模型
 │   └── Message.java
 ├── reply/                    # 策略模式
 │   ├── ReplyStrategy.java
 │   └── ReplyStrategyFactory.java
+├── opencode/                 # OpenCode 应用
+│   ├── OpenCodeApp.java
+│   ├── OpenCodeCommandHandler.java
+│   ├── WizardManager.java         # 3步向导状态机（Phase 3）
+│   ├── SessionInfo.java           # 会话结构化数据（Phase 3）
+│   └── *.java
 ├── router/                   # 路由器
 │   └── AppRouter.java
 └── service/                  # 领域服务
@@ -693,4 +706,4 @@ feishu-bot-infrastructure/src/main/java/com/qdw/feishu/infrastructure/
 
 ---
 
-**最后更新**: 2026-02-02
+**最后更新**: 2026-04-25
