@@ -1,8 +1,12 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
+import com.qdw.feishu.domain.card.CardActionContext;
+import com.qdw.feishu.domain.card.CardContent;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
+import com.qdw.feishu.domain.gateway.CardRenderer;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.MessageContext;
@@ -29,19 +33,28 @@ public class OpenCodeCommandHandler {
     private final TopicCommandValidator commandValidator;
     private final NextStepSuggester nextStepSuggester;
     private final OpenCodeMessageFormatter messageFormatter;
+    private final CardRenderer cardRenderer;
+    private final FeishuGateway feishuGateway;
+    private final WizardManager wizardManager;
 
     public OpenCodeCommandHandler(OpenCodeGateway openCodeGateway,
                                    OpenCodeTaskExecutor taskExecutor,
                                    OpenCodeSessionManager sessionManager,
                                    TopicCommandValidator commandValidator,
                                    NextStepSuggester nextStepSuggester,
-                                   OpenCodeMessageFormatter messageFormatter) {
+                                   OpenCodeMessageFormatter messageFormatter,
+                                   CardRenderer cardRenderer,
+                                   FeishuGateway feishuGateway,
+                                   WizardManager wizardManager) {
         this.openCodeGateway = openCodeGateway;
         this.taskExecutor = taskExecutor;
         this.sessionManager = sessionManager;
         this.commandValidator = commandValidator;
         this.nextStepSuggester = nextStepSuggester;
         this.messageFormatter = messageFormatter;
+        this.cardRenderer = cardRenderer;
+        this.feishuGateway = feishuGateway;
+        this.wizardManager = wizardManager;
     }
 
     /**
@@ -70,6 +83,19 @@ public class OpenCodeCommandHandler {
             }
         }
 
+        // 向导优先拦截：向导进行中，只允许向导 action 和白名单内的非侵入命令
+        String topicId = message.getTopicId();
+        boolean inTopic = topicId != null && !topicId.isEmpty();
+        if (inTopic && wizardManager != null && wizardManager.isWizardActive(topicId)) {
+            if (!isWizardAction(subCommand)) {
+                log.info("向导进行中，拦截非向导命令: subCommand={}, topicId={}", subCommand, topicId);
+                return AppExecutionResult.text(
+                    "⚠️ 向导进行中，请先完成向导。\n\n"
+                    + "点击上方卡片按钮继续，或输入 `/oc wizard_cancel` 取消向导。"
+                );
+            }
+        }
+
         // 路由到具体处理逻辑
         AppExecutionResult result = switch (subCommand) {
             case "help" -> null; // caller handles
@@ -82,7 +108,10 @@ public class OpenCodeCommandHandler {
             case "projects", "p" -> AppExecutionResult.text(openCodeGateway.listProjects());
             case "commands" -> AppExecutionResult.text(openCodeGateway.listCommands());
             case "reset" -> AppExecutionResult.text(handleResetCommand(message));
-            default -> AppExecutionResult.text(handleUnknownCommand(message, subCommand, parts));
+            // 向导 action 路由（卡片按钮点击时 subCommand 以 wizard_ 开头）
+            default -> isWizardAction(subCommand)
+                ? handleWizardAction(subCommand, message, messageContext)
+                : AppExecutionResult.text(handleUnknownCommand(message, subCommand, parts));
         };
 
         // CMD-04: 附加下一步建议（chat/chatnow/help/commands 不附加）
@@ -324,5 +353,81 @@ public class OpenCodeCommandHandler {
     /** 处理未知命令 */
     private String handleUnknownCommand(Message message, String subCommand, String[] parts) {
         return messageFormatter.buildUnknownCommandResponse(subCommand, "");
+    }
+
+    // ============ 向导相关方法 ============
+
+    /**
+     * 判断 subCommand 是否是向导 action。
+     * 向导 action 以 "wizard_" 开头。
+     */
+    private boolean isWizardAction(String subCommand) {
+        return subCommand != null && subCommand.startsWith("wizard_");
+    }
+
+    /**
+     * 处理向导 action（卡片按钮点击触发）。
+     *
+     * <p>卡片发送模式：handler 内直接调用 feishuGateway.sendInteractiveMessage() 发送卡片
+     * + 返回 AppExecutionResult.noReply() 抑制文本回复。
+     * 与 HelpApp.trySendCardHelp() 已有模式一致。
+     */
+    private AppExecutionResult handleWizardAction(String subCommand, Message message, MessageContext messageContext) {
+        String topicId = message.getTopicId();
+        String chatId = message.getChatId();
+
+        if (wizardManager == null) {
+            return AppExecutionResult.text("❌ 向导功能不可用");
+        }
+
+        try {
+            WizardManager.WizardResult wizardResult = wizardManager.handleAction(subCommand, chatId, topicId);
+
+            if (wizardResult == null) {
+                // 非向导相关 action，或向导已过期
+                return AppExecutionResult.text(handleUnknownCommand(message, subCommand, new String[]{}));
+            }
+
+            if (wizardResult.isCompleted()) {
+                // 向导完成：发送成功卡片 + 返回 withSession 通知会话绑定
+                String sessionId = wizardResult.getOpenCodeSessionId();
+                if (wizardResult.getCardContent() != null && cardRenderer != null) {
+                    try {
+                        CardActionContext actionCtx = CardActionContext.from(messageContext);
+                        String cardJson = cardRenderer.render(wizardResult.getCardContent(), actionCtx);
+                        feishuGateway.sendInteractiveMessage(message, cardJson, topicId);
+                        return AppExecutionResult.withSession(null, sessionId, false);
+                    } catch (Exception e) {
+                        log.warn("向导完成卡片发送失败，降级为文本: {}", e.getMessage());
+                    }
+                }
+                return AppExecutionResult.withSession(
+                    "✅ 已绑定会话 `" + sessionId + "`\n\n💬 现在可以直接输入问题开始对话！",
+                    sessionId, false);
+            }
+
+            if (wizardResult.getCardContent() != null && cardRenderer != null) {
+                // 有卡片内容：发送卡片 + noReply
+                try {
+                    CardActionContext actionCtx = CardActionContext.from(messageContext);
+                    String cardJson = cardRenderer.render(wizardResult.getCardContent(), actionCtx);
+                    feishuGateway.sendInteractiveMessage(message, cardJson, topicId);
+                    return AppExecutionResult.noReply();
+                } catch (Exception e) {
+                    log.warn("向导卡片发送失败，降级为文本: {}", e.getMessage());
+                }
+            }
+
+            // 降级：文本形式
+            if (wizardResult.getTextContent() != null) {
+                return AppExecutionResult.text(wizardResult.getTextContent());
+            }
+
+            return AppExecutionResult.noReply();
+
+        } catch (Exception e) {
+            log.error("处理向导 action 失败: subCommand={}", subCommand, e);
+            return AppExecutionResult.text("❌ 向导处理失败：" + e.getMessage());
+        }
     }
 }

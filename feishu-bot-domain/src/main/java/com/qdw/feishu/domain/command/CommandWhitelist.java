@@ -117,7 +117,11 @@ public class CommandWhitelist {
             return !excludedSet.contains(command);
         } else {
             // 白名单模式：空集合表示允许所有，否则只允许列表中的命令
-            return allowedSet.isEmpty() || allowedSet.contains(command);
+            // 支持前缀匹配：若白名单含 "wizard_select_project"，则 "wizard_select_project:feishu-backend" 也被允许
+            return allowedSet.isEmpty()
+                || allowedSet.contains(command)
+                || allowedSet.stream().anyMatch(entry -> entry.endsWith("_") ? command.startsWith(entry)
+                    : command.startsWith(entry + ":"));
         }
     }
 

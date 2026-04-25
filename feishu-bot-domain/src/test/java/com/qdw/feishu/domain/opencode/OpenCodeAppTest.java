@@ -350,6 +350,26 @@ class OpenCodeAppTest {
     }
 
     @Test
+    @DisplayName("UNINITIALIZED 状态白名单应包含向导 action")
+    void getCommandWhitelist_uninitialized_includesWizardActions() {
+        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+
+        assertNotNull(whitelist);
+        assertTrue(whitelist.isCommandAllowed("wizard_select_project",
+            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            "UNINITIALIZED 白名单应包含 wizard_select_project");
+        assertTrue(whitelist.isCommandAllowed("wizard_select_session",
+            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            "UNINITIALIZED 白名单应包含 wizard_select_session");
+        assertTrue(whitelist.isCommandAllowed("wizard_confirm",
+            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            "UNINITIALIZED 白名单应包含 wizard_confirm");
+        assertTrue(whitelist.isCommandAllowed("wizard_cancel",
+            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            "UNINITIALIZED 白名单应包含 wizard_cancel");
+    }
+
+    @Test
     @DisplayName("execute - 内容应被 trim")
     void execute_contentIsTrimmed() {
         String topicId = "test-topic";

@@ -3,6 +3,8 @@ package com.qdw.feishu.domain.opencode;
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
+import com.qdw.feishu.domain.gateway.CardRenderer;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
@@ -42,6 +44,15 @@ class OpenCodeCommandHandlerTest {
     @Mock
     private TopicCommandValidator commandValidator;
 
+    @Mock
+    private CardRenderer cardRenderer;
+
+    @Mock
+    private FeishuGateway feishuGateway;
+
+    @Mock
+    private WizardManager wizardManager;
+
     private NextStepSuggester nextStepSuggester;
 
     private OpenCodeMessageFormatter messageFormatter;
@@ -58,12 +69,18 @@ class OpenCodeCommandHandlerTest {
             sessionManager,
             commandValidator,
             nextStepSuggester,
-            messageFormatter
+            messageFormatter,
+            cardRenderer,
+            feishuGateway,
+            wizardManager
         );
 
         // 默认 mock 设置 - 命令验证通过
         when(commandValidator.validateCommand(anyString(), any(), any()))
             .thenReturn(ValidationResult.allowed());
+
+        // 默认 mock - 向导不活跃
+        when(wizardManager.isWizardActive(anyString())).thenReturn(false);
 
         // 默认 mock 设置 - detectTopicState 返回 NON_TOPIC 状态（无 topicId）
         when(sessionManager.detectTopicState(any(Message.class)))
@@ -737,5 +754,75 @@ class OpenCodeCommandHandlerTest {
         // chat returns noReply (async), so no suggestion either
         assertNotNull(result);
         assertNull(result.getReplyContent());
+    }
+
+    // ============ 向导集成测试 ============
+
+    @Test
+    @DisplayName("向导进行中，非向导命令被拦截并提示")
+    void should_interceptNonWizardCommand_when_wizardActive() {
+        String topicId = "wizard-topic";
+        when(wizardManager.isWizardActive(topicId)).thenReturn(true);
+
+        AppExecutionResult result = commandHandler.handle(
+            createTestMessage("/opencode projects", topicId),
+            "projects",
+            new String[]{"/opencode", "projects"},
+            CommandWhitelist.all(),
+            unresolvedContext()
+        );
+
+        assertNotNull(result);
+        assertTrue(result.getReplyContent().contains("向导进行中"), "应提示向导进行中");
+        verify(openCodeGateway, never()).listProjects();
+    }
+
+    @Test
+    @DisplayName("向导 action 路由到 WizardManager")
+    void should_routeWizardAction_to_wizardManager() {
+        String topicId = "wizard-topic";
+        String chatId = "chat_123";
+        when(wizardManager.isWizardActive(topicId)).thenReturn(true);
+        when(wizardManager.handleAction(eq("wizard_confirm"), eq(chatId), eq(topicId)))
+            .thenReturn(WizardManager.WizardResult.ofText("✅ 向导完成"));
+
+        Message message = createTestMessage("/opencode wizard_confirm", topicId);
+        message.setChatId(chatId);
+
+        AppExecutionResult result = commandHandler.handle(
+            message,
+            "wizard_confirm",
+            new String[]{"/opencode", "wizard_confirm"},
+            CommandWhitelist.all(),
+            unresolvedContext()
+        );
+
+        assertNotNull(result);
+        verify(wizardManager).handleAction(eq("wizard_confirm"), eq(chatId), eq(topicId));
+    }
+
+    @Test
+    @DisplayName("向导 cancel 不被拦截（即使向导活跃）")
+    void should_allowWizardCancel_even_when_wizardActive() {
+        String topicId = "wizard-topic";
+        String chatId = "chat_456";
+        // cancel 是向导 action，不应被拦截
+        when(wizardManager.isWizardActive(topicId)).thenReturn(true);
+        when(wizardManager.handleAction(eq("wizard_cancel"), eq(chatId), eq(topicId)))
+            .thenReturn(WizardManager.WizardResult.ofText("已取消向导"));
+
+        Message message = createTestMessage("/opencode wizard_cancel", topicId);
+        message.setChatId(chatId);
+
+        AppExecutionResult result = commandHandler.handle(
+            message,
+            "wizard_cancel",
+            new String[]{"/opencode", "wizard_cancel"},
+            CommandWhitelist.all(),
+            unresolvedContext()
+        );
+
+        assertNotNull(result);
+        assertFalse(result.getReplyContent().contains("向导进行中"), "取消命令不应被拦截");
     }
 }

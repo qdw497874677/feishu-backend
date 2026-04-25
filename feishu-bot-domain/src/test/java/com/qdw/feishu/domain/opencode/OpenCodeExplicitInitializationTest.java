@@ -2,6 +2,8 @@ package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.gateway.AppSessionGateway;
+import com.qdw.feishu.domain.gateway.CardRenderer;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
@@ -41,6 +43,9 @@ class OpenCodeExplicitInitializationTest {
     private OpenCodeCommandHandler commandHandler;
     private OpenCodeTaskExecutor taskExecutor;
     private OpenCodeSessionManager sessionManager;
+    private CardRenderer cardRenderer;
+    private FeishuGateway feishuGateway;
+    private WizardManager wizardManager;
     
     private static final TypeToken<OpenCodeSessionData> TYPE_TOKEN = new TypeToken<OpenCodeSessionData>() {};
 
@@ -85,8 +90,12 @@ class OpenCodeExplicitInitializationTest {
         bindingGateway = mock(ImContextBindingGateway.class);
         commandValidator = mock(TopicCommandValidator.class);
         taskExecutor = mock(OpenCodeTaskExecutor.class);
+        cardRenderer = mock(CardRenderer.class);
+        feishuGateway = mock(FeishuGateway.class);
+        wizardManager = mock(WizardManager.class);
         sessionManager = new OpenCodeSessionManager(openCodeGateway, appSessionGateway, bindingGateway);
-        commandHandler = new OpenCodeCommandHandler(openCodeGateway, taskExecutor, sessionManager, commandValidator, new NextStepSuggester(), new OpenCodeMessageFormatter());
+        commandHandler = new OpenCodeCommandHandler(openCodeGateway, taskExecutor, sessionManager, commandValidator, new NextStepSuggester(), new OpenCodeMessageFormatter(), cardRenderer, feishuGateway, wizardManager);
+        when(wizardManager.isWizardActive(anyString())).thenReturn(false);
         
         // 默认设置：命令验证通过
         when(commandValidator.validateCommand(anyString(), any(), any()))
