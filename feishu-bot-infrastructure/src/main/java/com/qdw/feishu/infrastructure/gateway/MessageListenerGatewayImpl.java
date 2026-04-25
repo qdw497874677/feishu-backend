@@ -7,6 +7,7 @@ import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
 import com.lark.oapi.service.im.ImService;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.ws.Client;
+import com.qdw.feishu.domain.card.CardActionContext;
 import com.qdw.feishu.domain.gateway.MessageEventParser;
 import com.qdw.feishu.domain.gateway.MessageListenerGateway;
 import com.qdw.feishu.domain.message.Message;
@@ -138,8 +139,11 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
     }
 
     /**
-     * 处理卡片按钮点击事件
-     * 将按钮 action 值（如 "time"）转换为 "/time" 命令，通过现有消息处理流程执行
+     * 处理卡片按钮点击事件。
+     *
+     * <p>增强版本（Phase 3, Task 2）：从按钮 value map 解析富上下文（chatId/topicId），
+     * 并提取 cardToken 用于后续更新原卡片。
+     * 向后兼容：若 value map 中无 chatId/topicId，则从 event context 兜底获取。
      */
     private void handleCardAction(P2CardActionTrigger event) {
         try {
@@ -156,7 +160,9 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
                 return;
             }
 
-            String action = actionValue.get("action").toString();
+            // 从 value map 解析 action 和富上下文
+            String action = CardActionContext.extractAction(actionValue);
+            CardActionContext context = CardActionContext.fromValueMap(actionValue);
             log.info("卡片按钮点击: action={}", action);
 
             // 获取平台事件 ID（用于去重）
@@ -175,10 +181,24 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
             }
             message.setSender(new Sender(openId, "card-user"));
 
-            // 从 context 获取 chatId
-            if (event.getEvent().getContext() != null) {
-                message.setChatId(event.getEvent().getContext().getOpenChatId());
+            // chatId：优先从 value map 取（富上下文），fallback 从 event context 取
+            String chatId = context.getChatId();
+            if (chatId == null && event.getEvent().getContext() != null) {
+                chatId = event.getEvent().getContext().getOpenChatId();
             }
+            message.setChatId(chatId);
+
+            // topicId：优先从 value map 取（富上下文）
+            // 飞书 CallBackContext 不提供 threadId，所以仅依赖 value map 传递 topicId
+            String topicId = context.getTopicId();
+            message.setTopicId(topicId);
+
+            // cardToken：从 event header 提取（用于更新原卡片）
+            String cardToken = extractCardToken(event);
+            message.setCardToken(cardToken);
+
+            log.info("卡片伪消息构造完成: chatId={}, topicId={}, cardToken={}",
+                chatId, topicId, cardToken != null ? "present" : "null");
 
             if (messageHandler != null) {
                 messageHandler.accept(message);
@@ -186,6 +206,19 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
 
         } catch (Exception e) {
             log.error("处理卡片按钮点击事件失败", e);
+        }
+    }
+
+    /**
+     * 从卡片事件中提取 cardToken（用于更新原卡片）。
+     * 飞书 SDK P2CardActionTrigger 的 header eventId 用作 token 占位。
+     */
+    private String extractCardToken(P2CardActionTrigger event) {
+        try {
+            return event.getHeader() != null ? event.getHeader().getEventId() : null;
+        } catch (Exception e) {
+            log.warn("提取 cardToken 失败: {}", e.getMessage());
+            return null;
         }
     }
 

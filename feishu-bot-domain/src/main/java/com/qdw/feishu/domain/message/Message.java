@@ -52,6 +52,9 @@ public class Message {
     /** 状态 */
     private MessageStatus status;
 
+    /** 卡片事件 token，用于更新原卡片（仅卡片按钮点击事件时设置） */
+    private String cardToken;
+
     public Message(String messageId, String content, Sender sender) {
         this.messageId = messageId;
         this.content = content;
@@ -111,6 +114,7 @@ public class Message {
         copy.type = this.type;
         copy.receiveTime = this.receiveTime;
         copy.status = this.status;
+        copy.cardToken = this.cardToken;
         return copy;
     }
 
