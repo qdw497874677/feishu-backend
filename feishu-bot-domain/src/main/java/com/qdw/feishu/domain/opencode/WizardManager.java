@@ -26,7 +26,9 @@ import java.util.concurrent.TimeUnit;
  * <p>存储策略：使用 ConcurrentHashMap + 时间戳 TTL 实现带过期的向导状态缓存。
  * 定时任务每分钟清理过期条目，避免内存泄漏。
  *
- * <p>并发安全：状态转换使用 {@link ConcurrentHashMap#compute} 保证原子性。
+ * <p>并发安全：状态存储使用 {@link ConcurrentHashMap} 保证条目级别的可见性。
+ * WizardState 内部字段声明为 {@code volatile} 保证跨线程可见性；当前向导步骤为单线程
+ * 顺序操作（用户点击卡片按钮是串行的），因此 volatile 足够满足实际并发需求。
  */
 @Slf4j
 @Component
