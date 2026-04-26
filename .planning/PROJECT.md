@@ -33,7 +33,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 - [x] **R4: Suppress empty replies** — Async task paths return null (not "") so no ghost bubble appears before streaming card — *Validated in Phase 2: Command Router & Conversation UX (UX-02)*
 - [ ] **R5: chatnow executes prompt** — `/oc cn <prompt>` creates session AND forwards the prompt in one step
 - [x] **R6: Manual control flow** — User manually: picks project → picks/creates session → binds to topic → converses. No auto-magic. — *Validated in Phase 2: status command, next-step suggestions, and actionable error messages complete the manual flow (CMD-01, CMD-04, CMD-03)*
-- [ ] **R7: Card + command dual entry** — Both interactive card buttons and typed commands work as entry points for project/session selection
+- [x] **R7: Card + command dual entry** — Both interactive card buttons and typed commands work as entry points for project/session selection — *Validated in Phase 3: Cards & Guided Flows (CARD-01, CARD-02, CARD-03)*
 - [x] **R8: Group→Topic conversation model** — Project/session selection happens in group main chat; conversation happens in topic threads — *Validated in Phase 2: COMPAT-02 group chat guidance directs users to topics (CMD-02)*
 - [x] **R9: Clean command set** — Redesigned commands reflecting the new flow (connect/bind/unbind/status/chat etc.) — *Validated in Phase 2: status shortcut, complete alias whitelist, next-step suggestions (CMD-01, CMD-02, CMD-04)*
 - [x] **R10: Robust session ID passing** — Pass session IDs as structured data (method return values, fields) instead of parsing from formatted reply text — *Validated in Phase 1: Context Foundation (CTX-02)*
@@ -96,7 +96,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 | Manual control (not auto-magic) | User explicitly picks project/session — predictable, debuggable | — Pending |
 | Direct typing in bound topics | Once bound, no prefix needed — natural conversation UX | ✓ Phase 2 |
 | Group chat for selection, topic for conversation | Separation of concerns: setup vs. conversation | ✓ Phase 2 |
-| Card + command dual entry points | Cards for discoverability, commands for power users | — Pending (Phase 3) |
+| Card + command dual entry points | Cards for discoverability, commands for power users | ✓ Phase 3 |
 | No cross-project in one topic | Keeps context clean — new topic for new project | — Pending |
 | Consolidate to single state model | Eliminate TopicState vs ContextSessionState confusion | — Pending |
 | Centralized next-step suggestions | NextStepSuggester service provides contextual guidance after each command | ✓ Phase 2 |
@@ -125,5 +125,7 @@ This document evolves at phase transitions and milestone boundaries.
 
 **Phase 2 complete** — Command router & conversation UX. Direct typing in bound topics (synthesizeCommandIfNeeded), ghost bubble suppression (noReply + empty guard), status shortcut command, complete alias whitelist, NextStepSuggester service, status indicator (📎 opencode | ses_xxx), actionable error messages with group chat guidance. 309 tests passing.
 
+**Phase 3 complete** — Cards & guided flows. CardContent/CardElement/CardButton domain models (IM-agnostic), FeishuCardRenderer (schema 2.0 JSON), card action context propagation (chatId/topicId/sessionId in button values), WizardManager 3-step onboarding wizard with TTL-cached state machine, UNINITIALIZED auto-trigger for first-time users, SessionInfo + sessions card with last-prompt summaries and relative timestamps, HelpApp migrated from hand-written JSON to CardContent+CardRenderer. 462 tests passing.
+
 ---
-*Last updated: 2026-04-10 after Phase 2 completion*
+*Last updated: 2026-04-26 after Phase 3 completion*
