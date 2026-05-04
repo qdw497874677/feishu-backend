@@ -14,7 +14,6 @@ import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
 import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
@@ -26,7 +25,6 @@ import java.util.Optional;
  * - 应用会话数据通过 AppSessionGateway 管理
  */
 @Slf4j
-@Component
 public class OpenCodeSessionManager {
 
     private static final String APP_ID = "opencode";

@@ -9,28 +9,22 @@ import com.qdw.feishu.domain.gateway.CardRenderer;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
-@Component
 public class HelpApp implements FishuAppI {
 
-    @Autowired
-    @Lazy
-    private AppRegistry appRegistry;
+    private final AppRegistry appRegistry;
+    private final FeishuGateway feishuGateway;
+    private final CardRenderer cardRenderer;
 
-    @Autowired
-    @Lazy
-    private FeishuGateway feishuGateway;
-
-    @Autowired
-    @Lazy
-    private CardRenderer cardRenderer;
+    public HelpApp(AppRegistry appRegistry, FeishuGateway feishuGateway, CardRenderer cardRenderer) {
+        this.appRegistry = appRegistry;
+        this.feishuGateway = feishuGateway;
+        this.cardRenderer = cardRenderer;
+    }
 
     @Override
     public String getAppId() {

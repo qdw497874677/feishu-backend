@@ -8,10 +8,8 @@ import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.result.BizResult;
 import com.qdw.feishu.domain.router.UnifiedCommandRouter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 @Slf4j
-@Service
 public class EventProcessor {
     private final CommandAdapterFactory commandAdapterFactory;
     private final UnifiedCommandRouter commandRouter;

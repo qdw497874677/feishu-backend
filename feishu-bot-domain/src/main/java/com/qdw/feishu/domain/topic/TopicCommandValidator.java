@@ -5,7 +5,6 @@ import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 /**
  * 话题命令验证器
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Service;
  * 提供通用的命令验证方法，支持根据话题状态限制可用命令
  */
 @Slf4j
-@Service
 public class TopicCommandValidator {
 
     /**

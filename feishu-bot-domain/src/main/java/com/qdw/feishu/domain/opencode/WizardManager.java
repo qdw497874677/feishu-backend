@@ -8,7 +8,6 @@ import com.qdw.feishu.domain.gateway.CardRenderer;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.model.ImContextRef;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +30,6 @@ import java.util.concurrent.TimeUnit;
  * 顺序操作（用户点击卡片按钮是串行的），因此 volatile 足够满足实际并发需求。
  */
 @Slf4j
-@Component
 public class WizardManager {
 
     /** 向导步骤枚举 */

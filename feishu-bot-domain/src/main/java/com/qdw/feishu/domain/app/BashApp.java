@@ -8,8 +8,6 @@ import com.qdw.feishu.domain.history.CommandExecution;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -23,7 +21,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @Slf4j
-@Component
 public class BashApp implements FishuAppI {
 
     private static final String WORKSPACE_DIR = ".workspace";
@@ -192,7 +189,6 @@ public class BashApp implements FishuAppI {
         return AppExecutionResult.text(result);
     }
 
-    @Async("bashExecutor")
     public void executeCommandAsync(Message message, String command) {
         try {
             File workspaceDir = ensureWorkspaceExists();

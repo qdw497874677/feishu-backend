@@ -1,11 +1,8 @@
 package com.qdw.feishu.domain.command;
 
-import org.springframework.stereotype.Component;
-
 import java.util.Set;
 import java.util.regex.Pattern;
 
-@Component
 public class CommandWhitelistValidator {
 
     private static final Set<String> WHITELIST = Set.of(

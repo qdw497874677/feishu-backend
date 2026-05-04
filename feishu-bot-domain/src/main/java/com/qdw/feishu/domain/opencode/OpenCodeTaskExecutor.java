@@ -6,8 +6,6 @@ import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.ReactionEmoji;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Component;
 
 /**
  * OpenCode 任务执行器
@@ -17,7 +15,6 @@ import org.springframework.stereotype.Component;
  * - 完成：添加 CLAP 表情
  */
 @Slf4j
-@Component
 public class OpenCodeTaskExecutor {
 
     private static final int EXECUTE_TIMEOUT = 120;
@@ -148,7 +145,6 @@ public class OpenCodeTaskExecutor {
         return AppExecutionResult.noReply();
     }
 
-    @Async("opencodeExecutor")
     public void executeAsync(Message message, String prompt, String sessionId) {
         String messageId = message.getMessageId();
         log.info("异步执行开始: messageId={}, sessionId={}", messageId, sessionId);

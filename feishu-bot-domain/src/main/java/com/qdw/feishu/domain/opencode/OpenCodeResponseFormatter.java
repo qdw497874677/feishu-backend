@@ -3,7 +3,6 @@ package com.qdw.feishu.domain.opencode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 /**
  * OpenCode 响应格式化器
@@ -11,7 +10,6 @@ import org.springframework.stereotype.Component;
  * 负责格式化 OpenCode 执行结果，提取 Session ID
  */
 @Slf4j
-@Component
 public class OpenCodeResponseFormatter {
 
     private final ObjectMapper objectMapper;

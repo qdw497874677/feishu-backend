@@ -11,7 +11,6 @@ import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.List;
@@ -22,7 +21,6 @@ import java.util.List;
  * 主应用协调者，负责入口和元数据，具体逻辑委托给专用组件
  */
 @Slf4j
-@Component
 public class OpenCodeApp implements FishuAppI {
 
     private final OpenCodeGateway openCodeGateway;

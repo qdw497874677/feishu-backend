@@ -1,7 +1,5 @@
 package com.qdw.feishu.domain.opencode;
 
-import org.springframework.stereotype.Component;
-
 import java.util.Optional;
 
 /**
@@ -10,7 +8,6 @@ import java.util.Optional;
  * 负责构建各类用户提示、引导和状态消息，
  * 从 OpenCodeCommandHandler 中提取以保持单一职责。
  */
-@Component
 public class OpenCodeMessageFormatter {
 
     public String buildInitializationGuide() {

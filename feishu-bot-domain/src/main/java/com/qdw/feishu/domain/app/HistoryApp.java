@@ -7,12 +7,10 @@ import com.qdw.feishu.domain.message.ChatHistory;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.time.format.DateTimeFormatter;
 
 @Slf4j
-@Component
 public class HistoryApp implements FishuAppI {
 
     private final FeishuGateway feishuGateway;

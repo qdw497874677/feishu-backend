@@ -5,7 +5,6 @@ import com.qdw.feishu.domain.gateway.CardGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,7 +21,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 抽象分层：依赖 CardGateway 接口，便于替换实现
  */
 @Slf4j
-@Component
 public class StreamingCardManager {
 
     private final CardGateway cardGateway;

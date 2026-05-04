@@ -15,7 +15,6 @@ import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.topic.TopicState;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,7 +27,6 @@ import java.util.Optional;
  * 负责解析和路由命令到对应的处理逻辑
  */
 @Slf4j
-@Component
 public class OpenCodeCommandHandler {
 
     private final OpenCodeGateway openCodeGateway;

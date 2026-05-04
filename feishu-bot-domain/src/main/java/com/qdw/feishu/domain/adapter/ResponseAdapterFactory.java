@@ -3,12 +3,10 @@ package com.qdw.feishu.domain.adapter;
 import com.qdw.feishu.domain.command.EventSource;
 import com.qdw.feishu.domain.command.UnifiedCommand;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Slf4j
-@Component
 public class ResponseAdapterFactory {
     private final List<ResponseAdapter> adapters;
     

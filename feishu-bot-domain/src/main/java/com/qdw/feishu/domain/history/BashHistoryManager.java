@@ -1,7 +1,5 @@
 package com.qdw.feishu.domain.history;
 
-import org.springframework.stereotype.Service;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -9,7 +7,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
-@Service
 public class BashHistoryManager {
 
     private static final int MAX_HISTORY_SIZE = 100;

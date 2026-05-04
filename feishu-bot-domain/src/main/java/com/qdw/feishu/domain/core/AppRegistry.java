@@ -3,24 +3,17 @@ package com.qdw.feishu.domain.core;
 import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.config.FeishuReplyProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
-@Component
 public class AppRegistry {
 
     private final Map<String, FishuAppI> apps;
+    private final FeishuReplyProperties replyProperties;
 
-    @Autowired
-    @Lazy
-    private FeishuReplyProperties replyProperties;
-
-    public AppRegistry(List<FishuAppI> allApps) {
+    public AppRegistry(List<FishuAppI> allApps, FeishuReplyProperties replyProperties) {
         log.info("=== AppRegistry 初始化开始 ===");
         log.info("检测到的应用类数量: {}", allApps.size());
         allApps.forEach(app -> log.info("  - {} ({})", app.getAppName(), app.getAppId()));
@@ -31,6 +24,8 @@ public class AppRegistry {
                 app -> app,
                 (existing, replacement) -> existing
             ));
+
+        this.replyProperties = replyProperties;
 
         log.info("应用注册完成，共注册 {} 个应用: {}",
             apps.size(), apps.keySet());

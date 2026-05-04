@@ -1,7 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.topic.TopicState;
-import org.springframework.stereotype.Component;
 
 /**
  * 集中式下一步建议生成器。
@@ -16,7 +15,6 @@ import org.springframework.stereotype.Component;
  *   <li>其他命令根据当前状态给出最合理的下一步</li>
  * </ul>
  */
-@Component
 public class NextStepSuggester {
 
     /**

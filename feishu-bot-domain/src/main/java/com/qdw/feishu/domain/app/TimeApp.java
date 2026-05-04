@@ -5,14 +5,12 @@ import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 @Slf4j
-@Component
 public class TimeApp implements FishuAppI {
 
     private static final DateTimeFormatter FORMATTER =

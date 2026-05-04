@@ -11,12 +11,10 @@ import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.model.MessageContext;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
 @Slf4j
-@Service
 public class BotMessageService {
 
     private final AppRegistry appRegistry;

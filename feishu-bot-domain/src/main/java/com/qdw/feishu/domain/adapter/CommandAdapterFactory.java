@@ -1,12 +1,10 @@
 package com.qdw.feishu.domain.adapter;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Slf4j
-@Component
 public class CommandAdapterFactory {
     private final List<CommandAdapter> adapters;
     

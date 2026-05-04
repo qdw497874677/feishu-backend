@@ -5,10 +5,8 @@ import com.qdw.feishu.domain.command.UnifiedCommand;
 import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.result.BizResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 @Slf4j
-@Component
 public class UnifiedCommandRouter {
     private final AppRegistry appRegistry;
     

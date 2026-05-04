@@ -1,7 +1,6 @@
 package com.qdw.feishu.domain.service;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -13,7 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 使用内存缓存，设置过期时间为 5 分钟
  */
 @Slf4j
-@Component
 public class MessageDeduplicator {
 
     private final ConcurrentHashMap<String, Instant> processedEvents = new ConcurrentHashMap<>();

@@ -5,7 +5,6 @@ import com.qdw.feishu.domain.config.CardProperties;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.message.Message;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.Set;
@@ -27,7 +26,6 @@ import java.util.concurrent.TimeUnit;
  * - opencode.card.fallback-on-error: 是否降级
  */
 @Slf4j
-@Component
 public class OpenCodeStreamingHandler {
 
     private final FeishuGateway feishuGateway;
