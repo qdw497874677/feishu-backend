@@ -27,7 +27,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 
 ### Active
 
-- [ ] **R1: Unified state model** — Consolidate TopicState + ContextSessionState into a single state detection mechanism; eliminate redundant DB queries
+- [x] **R1: Unified state model** — Consolidate TopicState + ContextSessionState into a single state detection mechanism; eliminate redundant DB queries — *Validated in Phase 4: Code Cleanup & Refactoring (V2-03)*
 - [x] **R2: Context-aware binding** — When session is bound on chatId and reply creates a new topic, automatically migrate/propagate binding to the new threadId context — *Validated in Phase 1: Context Foundation (CTX-01)*
 - [x] **R3: Direct typing in bound topics** — Plain text (no `/oc` prefix) in an initialized topic is treated as a chat prompt and forwarded to OpenCode — *Validated in Phase 2: Command Router & Conversation UX (UX-01)*
 - [x] **R4: Suppress empty replies** — Async task paths return null (not "") so no ghost bubble appears before streaming card — *Validated in Phase 2: Command Router & Conversation UX (UX-02)*
@@ -55,7 +55,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 - Feishu SDK 2.5.2 for messaging, cards, WebSocket
 - OpenCode server at localhost:4098 (health check: v1.2.27)
 - SQLite for persistence (context bindings + app sessions)
-- 309 tests passing (192 domain + 55 app + 59 infra + 3 start) — after Phase 2 completion
+- 309 tests passing (192 domain + 55 app + 59 infra + 3 start) — after Phase 4 completion
 
 **Prior work:**
 - IM context binding system already built (ImContextRef, ImContextBinding, two-phase binding model)
@@ -98,7 +98,7 @@ A user in a bound topic can type plain text and get an AI response — no comman
 | Group chat for selection, topic for conversation | Separation of concerns: setup vs. conversation | ✓ Phase 2 |
 | Card + command dual entry points | Cards for discoverability, commands for power users | ✓ Phase 3 |
 | No cross-project in one topic | Keeps context clean — new topic for new project | — Pending |
-| Consolidate to single state model | Eliminate TopicState vs ContextSessionState confusion | — Pending |
+| Consolidate to single state model | Eliminate TopicState vs ContextSessionState confusion | ✓ Phase 4 |
 | Centralized next-step suggestions | NextStepSuggester service provides contextual guidance after each command | ✓ Phase 2 |
 | Status indicator in reply header | 📎 opencode \| ses_xxx shows binding state in every reply | ✓ Phase 2 |
 | Structured session ID passing | Eliminate fragile text parsing of session IDs | ✓ Phase 1 |
@@ -125,7 +125,7 @@ This document evolves at phase transitions and milestone boundaries.
 
 **Phase 2 complete** — Command router & conversation UX. Direct typing in bound topics (synthesizeCommandIfNeeded), ghost bubble suppression (noReply + empty guard), status shortcut command, complete alias whitelist, NextStepSuggester service, status indicator (📎 opencode | ses_xxx), actionable error messages with group chat guidance. 309 tests passing.
 
-**Phase 3 complete** — Cards & guided flows. CardContent/CardElement/CardButton domain models (IM-agnostic), FeishuCardRenderer (schema 2.0 JSON), card action context propagation (chatId/topicId/sessionId in button values), WizardManager 3-step onboarding wizard with TTL-cached state machine, UNINITIALIZED auto-trigger for first-time users, SessionInfo + sessions card with last-prompt summaries and relative timestamps, HelpApp migrated from hand-written JSON to CardContent+CardRenderer. 462 tests passing.
+**Phase 4 complete** — Code cleanup & refactoring. Security hardening (production-safe test controller, DEBUG-only sensitive logs, prod profile), COLA compliance (all Spring annotations removed from domain, 28 @Bean registrations), unified state model (ContextSessionState replaces TopicState), data integrity (shared SQLite DataSource, single-SQL optimistic lock), file decomposition (OpenCodeGatewayImpl → 5 API classes, OpenCodeCommandHandler 541→185 lines with 9 handler sub-classes). 355 tests passing.
 
 ---
-*Last updated: 2026-04-26 after Phase 3 completion*
+*Last updated: 2026-05-04 after Phase 4 completion*
