@@ -154,7 +154,7 @@ Plans:
 - [x] 04-01-PLAN.md — Security hardening + data integrity fixes (D-05 to D-07, D-14 to D-16)
 - [x] 04-02-PLAN.md — COLA Spring annotation removal from domain (D-08 to D-11)
 - [x] 04-03-PLAN.md — Unified state model + architecture fixes (D-02 to D-04, D-12, D-13)
-- [ ] 04-04-PLAN.md — Large file decomposition (D-17, D-18)
+- [x] 04-04-PLAN.md — Large file decomposition (D-17, D-18)
 
 **UI hint:** no
 
