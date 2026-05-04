@@ -1,8 +1,8 @@
 # Roadmap: OpenCode Interactive Flow Redesign
 
 **Created:** 2026-04-07
-**Phases:** 3
-**Requirements:** 17 (100% mapped)
+**Phases:** 4
+**Requirements:** 17 (100% mapped) + V2-03 in Phase 4
 **Granularity:** Coarse
 
 ## Overview
@@ -142,6 +142,22 @@ Phase 3: Cards & Guided Flows
 | 兼容性 | 2 | 2 (Phase 1+2) | 100% |
 | **Total** | **17** | **17** | **100%** |
 
+### Phase 4: Code Cleanup and Refactoring
+
+**Goal:** Pay down accumulated technical debt after 3 feature-building phases — security fixes, COLA architecture compliance (Spring removal from domain), unified state model, data integrity fixes, and large file decomposition. No new features.
+
+**Requirements:** V2-03 (unified state model)
+**Depends on:** Phase 3
+**Plans:** 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Security hardening + data integrity fixes (D-05 to D-07, D-14 to D-16)
+- [ ] 04-02-PLAN.md — COLA Spring annotation removal from domain (D-08 to D-11)
+- [ ] 04-03-PLAN.md — Unified state model + architecture fixes (D-02 to D-04, D-12, D-13)
+- [ ] 04-04-PLAN.md — Large file decomposition (D-17, D-18)
+
+**UI hint:** no
+
 ---
 *Roadmap created: 2026-04-07*
-*Last updated: 2026-04-10 — Phase 2 complete (all 8 requirements: CMD-01..04, UX-01..03, COMPAT-02)*
+*Last updated: 2026-05-04 — Phase 4 planned (4 plans in 3 waves)*
