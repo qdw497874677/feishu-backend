@@ -43,7 +43,7 @@ public class BotMessageService {
     private BotRoutingDecision routeExplicitCommand(Message message, MessageContext messageContext) {
         FishuAppI commandApp = resolveAppFromCommandOnly(message);
         if (commandApp == null) {
-            return new BotRoutingDecision(null, null, false);
+            return new BotRoutingDecision(null, false);
         }
 
         // Use pre-resolved binding from MessageContext when available
@@ -62,7 +62,7 @@ public class BotMessageService {
             }
         }
 
-        return new BotRoutingDecision(commandApp.getAppId(), commandApp, isSessionAwareApp(commandApp));
+        return new BotRoutingDecision(commandApp.getAppId(), isSessionAwareApp(commandApp));
     }
 
     private BotRoutingDecision routeImplicitMessage(MessageContext messageContext) {
@@ -81,12 +81,12 @@ public class BotMessageService {
             return routeToHelp();
         }
 
-        return new BotRoutingDecision(appId, appOpt.get(), false);
+        return new BotRoutingDecision(appId, false);
     }
 
     private BotRoutingDecision routeToHelp() {
         FishuAppI helpApp = appRegistry.getApp("help").orElse(null);
-        return new BotRoutingDecision(helpApp != null ? helpApp.getAppId() : null, helpApp, false);
+        return new BotRoutingDecision(helpApp != null ? helpApp.getAppId() : null, false);
     }
 
     private boolean isExplicitCommand(Message message) {

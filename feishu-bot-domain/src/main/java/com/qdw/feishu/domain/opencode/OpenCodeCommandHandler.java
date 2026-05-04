@@ -13,7 +13,7 @@ import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -73,7 +73,7 @@ public class OpenCodeCommandHandler {
                                       CommandWhitelist whitelist, MessageContext messageContext) {
         log.info("准备验证命令: subCommand={}", subCommand);
 
-        TopicState state = sessionManager.detectTopicState(messageContext);
+        ContextSessionState state = sessionManager.detectTopicState(messageContext);
         log.info("话题状态: {}, subCommand={}", state.getDescription(), subCommand);
 
         // 验证命令是否允许（通过 CommandWhitelist）
@@ -99,7 +99,7 @@ public class OpenCodeCommandHandler {
         }
 
         // 自动向导触发：UNINITIALIZED + 在话题内 + 无活跃向导 + 非显式管理命令
-        if (inTopic && state == TopicState.UNINITIALIZED
+        if (inTopic && state == ContextSessionState.IN_APP_NO_SESSION
                 && wizardManager != null && !wizardManager.isWizardActive(topicId)
                 && !isExplicitControlCommand(subCommand)) {
             log.info("UNINITIALIZED 话题自动触发向导: topicId={}, subCommand={}", topicId, subCommand);
@@ -137,7 +137,7 @@ public class OpenCodeCommandHandler {
 
     /** 在命令执行结果后附加下一步操作建议（仅对有文本回复的结果附加）。 */
     private AppExecutionResult appendNextStepSuggestion(AppExecutionResult result,
-                                                          String subCommand, TopicState state) {
+                                                           String subCommand, ContextSessionState state) {
         if (result == null || result.getReplyContent() == null) {
             return result;
         }

@@ -21,7 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 
 /**
  * Unit tests for OpenCodeApp
@@ -47,9 +47,9 @@ class OpenCodeAppTest {
 
         // 默认 mock 设置 - detectTopicState 返回 INITIALIZED 状态 (both overloads)
         when(sessionManager.detectTopicState(any(Message.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
 
         // 默认 mock 设置 - getCurrentSessionStatus 返回会话状态 (both overloads)
         when(sessionManager.getCurrentSessionStatus(any(Message.class)))
@@ -122,65 +122,65 @@ class OpenCodeAppTest {
     @Test
     @DisplayName("NON_TOPIC 状态的白名单应只包含特定命令")
     void getCommandWhitelist_nonTopic_returnsCorrectWhitelist() {
-        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.NON_TOPIC);
+        CommandWhitelist whitelist = app.getCommandWhitelist(ContextSessionState.UNBOUND);
 
         assertNotNull(whitelist);
-        assertTrue(whitelist.isCommandAllowed("connect", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC));
-        assertTrue(whitelist.isCommandAllowed("help", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC));
-        assertTrue(whitelist.isCommandAllowed("projects", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC));
-        assertFalse(whitelist.isCommandAllowed("chat", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC));
+        assertTrue(whitelist.isCommandAllowed("connect", ContextSessionState.UNBOUND));
+        assertTrue(whitelist.isCommandAllowed("help", ContextSessionState.UNBOUND));
+        assertTrue(whitelist.isCommandAllowed("projects", ContextSessionState.UNBOUND));
+        assertFalse(whitelist.isCommandAllowed("chat", ContextSessionState.UNBOUND));
     }
 
     @Test
     @DisplayName("NON_TOPIC 状态白名单应包含 new 命令")
     void getCommandWhitelist_nonTopic_includesNew() {
-        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.NON_TOPIC);
+        CommandWhitelist whitelist = app.getCommandWhitelist(ContextSessionState.UNBOUND);
 
         assertNotNull(whitelist);
-        assertTrue(whitelist.isCommandAllowed("new", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC),
+        assertTrue(whitelist.isCommandAllowed("new", ContextSessionState.UNBOUND),
                 "NON_TOPIC 白名单应包含 new 命令");
-        assertTrue(whitelist.isCommandAllowed("chatnow", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC),
+        assertTrue(whitelist.isCommandAllowed("chatnow", ContextSessionState.UNBOUND),
                 "NON_TOPIC 白名单应包含 chatnow 命令");
-        assertTrue(whitelist.isCommandAllowed("cn", com.qdw.feishu.domain.topic.TopicState.NON_TOPIC),
+        assertTrue(whitelist.isCommandAllowed("cn", ContextSessionState.UNBOUND),
                 "NON_TOPIC 白名单应包含 cn 别名");
     }
 
     @Test
     @DisplayName("UNINITIALIZED 状态白名单应包含 status 和 new")
     void getCommandWhitelist_uninitialized_includesStatusAndNew() {
-        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+        CommandWhitelist whitelist = app.getCommandWhitelist(ContextSessionState.IN_APP_NO_SESSION);
 
         assertNotNull(whitelist);
-        assertTrue(whitelist.isCommandAllowed("status", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+        assertTrue(whitelist.isCommandAllowed("status", ContextSessionState.IN_APP_NO_SESSION),
                 "UNINITIALIZED 白名单应包含 status 命令");
-        assertTrue(whitelist.isCommandAllowed("new", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+        assertTrue(whitelist.isCommandAllowed("new", ContextSessionState.IN_APP_NO_SESSION),
                 "UNINITIALIZED 白名单应包含 new 命令");
-        assertFalse(whitelist.isCommandAllowed("chat", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+        assertFalse(whitelist.isCommandAllowed("chat", ContextSessionState.IN_APP_NO_SESSION),
                 "UNINITIALIZED 白名单不应包含 chat 命令");
     }
 
     @Test
     @DisplayName("UNINITIALIZED 状态的白名单应排除 chat")
     void getCommandWhitelist_uninitialized_excludesChat() {
-        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+        CommandWhitelist whitelist = app.getCommandWhitelist(ContextSessionState.IN_APP_NO_SESSION);
 
         assertNotNull(whitelist);
-        assertFalse(whitelist.isCommandAllowed("chat", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
-        assertTrue(whitelist.isCommandAllowed("projects", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
-        assertTrue(whitelist.isCommandAllowed("sessions", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
-        assertTrue(whitelist.isCommandAllowed("session", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
-        assertTrue(whitelist.isCommandAllowed("sc", com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED));
+        assertFalse(whitelist.isCommandAllowed("chat", ContextSessionState.IN_APP_NO_SESSION));
+        assertTrue(whitelist.isCommandAllowed("projects", ContextSessionState.IN_APP_NO_SESSION));
+        assertTrue(whitelist.isCommandAllowed("sessions", ContextSessionState.IN_APP_NO_SESSION));
+        assertTrue(whitelist.isCommandAllowed("session", ContextSessionState.IN_APP_NO_SESSION));
+        assertTrue(whitelist.isCommandAllowed("sc", ContextSessionState.IN_APP_NO_SESSION));
     }
 
     @Test
     @DisplayName("INITIALIZED 状态的白名单应允许所有命令")
     void getCommandWhitelist_initialized_allowsAll() {
-        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.INITIALIZED);
+        CommandWhitelist whitelist = app.getCommandWhitelist(ContextSessionState.IN_APP_WITH_SESSION);
 
         assertNotNull(whitelist);
-        assertTrue(whitelist.isCommandAllowed("chat", com.qdw.feishu.domain.topic.TopicState.INITIALIZED));
-        assertTrue(whitelist.isCommandAllowed("new", com.qdw.feishu.domain.topic.TopicState.INITIALIZED));
-        assertTrue(whitelist.isCommandAllowed("projects", com.qdw.feishu.domain.topic.TopicState.INITIALIZED));
+        assertTrue(whitelist.isCommandAllowed("chat", ContextSessionState.IN_APP_WITH_SESSION));
+        assertTrue(whitelist.isCommandAllowed("new", ContextSessionState.IN_APP_WITH_SESSION));
+        assertTrue(whitelist.isCommandAllowed("projects", ContextSessionState.IN_APP_WITH_SESSION));
     }
 
     // ========== isTopicInitialized 测试 ==========
@@ -352,20 +352,20 @@ class OpenCodeAppTest {
     @Test
     @DisplayName("UNINITIALIZED 状态白名单应包含向导 action")
     void getCommandWhitelist_uninitialized_includesWizardActions() {
-        CommandWhitelist whitelist = app.getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+        CommandWhitelist whitelist = app.getCommandWhitelist(ContextSessionState.IN_APP_NO_SESSION);
 
         assertNotNull(whitelist);
         assertTrue(whitelist.isCommandAllowed("wizard_select_project",
-            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            ContextSessionState.IN_APP_NO_SESSION),
             "UNINITIALIZED 白名单应包含 wizard_select_project");
         assertTrue(whitelist.isCommandAllowed("wizard_select_session",
-            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            ContextSessionState.IN_APP_NO_SESSION),
             "UNINITIALIZED 白名单应包含 wizard_select_session");
         assertTrue(whitelist.isCommandAllowed("wizard_confirm",
-            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            ContextSessionState.IN_APP_NO_SESSION),
             "UNINITIALIZED 白名单应包含 wizard_confirm");
         assertTrue(whitelist.isCommandAllowed("wizard_cancel",
-            com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED),
+            ContextSessionState.IN_APP_NO_SESSION),
             "UNINITIALIZED 白名单应包含 wizard_cancel");
     }
 

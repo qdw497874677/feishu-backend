@@ -12,7 +12,7 @@ import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -113,9 +113,9 @@ class OpenCodeSessionManagerTest {
 
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
 
-        TopicState result = sessionManager.detectTopicState(message);
+        ContextSessionState result = sessionManager.detectTopicState(message);
 
-        assertEquals(TopicState.INITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_WITH_SESSION, result);
     }
 
     @Test
@@ -127,9 +127,9 @@ class OpenCodeSessionManagerTest {
 
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.empty());
 
-        TopicState result = sessionManager.detectTopicState(message);
+        ContextSessionState result = sessionManager.detectTopicState(message);
 
-        assertEquals(TopicState.UNINITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_NO_SESSION, result);
     }
 
     @Test
@@ -142,9 +142,9 @@ class OpenCodeSessionManagerTest {
 
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
 
-        TopicState result = sessionManager.detectTopicState(message);
+        ContextSessionState result = sessionManager.detectTopicState(message);
 
-        assertEquals(TopicState.UNINITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_NO_SESSION, result);
     }
 
     @Test
@@ -157,9 +157,9 @@ class OpenCodeSessionManagerTest {
 
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.of(binding));
 
-        TopicState result = sessionManager.detectTopicState(message);
+        ContextSessionState result = sessionManager.detectTopicState(message);
 
-        assertEquals(TopicState.INITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_WITH_SESSION, result);
     }
 
     @Test
@@ -170,9 +170,9 @@ class OpenCodeSessionManagerTest {
         message.setTopicId(null);
         message.setChatId(null);
 
-        TopicState result = sessionManager.detectTopicState(message);
+        ContextSessionState result = sessionManager.detectTopicState(message);
 
-        assertEquals(TopicState.NON_TOPIC, result);
+        assertEquals(ContextSessionState.UNBOUND, result);
         verify(bindingGateway, never()).findBinding(any());
     }
 
@@ -185,9 +185,9 @@ class OpenCodeSessionManagerTest {
 
         when(bindingGateway.findBinding(contextRef)).thenReturn(Optional.empty());
 
-        TopicState result = sessionManager.detectTopicState(message);
+        ContextSessionState result = sessionManager.detectTopicState(message);
 
-        assertEquals(TopicState.UNINITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_NO_SESSION, result);
     }
 
     // ========== getCurrentSessionStatus 测试 ==========
@@ -791,9 +791,9 @@ class OpenCodeSessionManagerTest {
         ImContextBinding binding = createBinding(contextRef, "ses_ctx_1");
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
-        TopicState result = sessionManager.detectTopicState(messageContext);
+        ContextSessionState result = sessionManager.detectTopicState(messageContext);
 
-        assertEquals(TopicState.INITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_WITH_SESSION, result);
         verify(bindingGateway, never()).findBinding(any());
     }
 
@@ -804,9 +804,9 @@ class OpenCodeSessionManagerTest {
         ImContextBinding binding = createBinding(contextRef, null);
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
-        TopicState result = sessionManager.detectTopicState(messageContext);
+        ContextSessionState result = sessionManager.detectTopicState(messageContext);
 
-        assertEquals(TopicState.UNINITIALIZED, result);
+        assertEquals(ContextSessionState.IN_APP_NO_SESSION, result);
         verify(bindingGateway, never()).findBinding(any());
     }
 
@@ -815,9 +815,9 @@ class OpenCodeSessionManagerTest {
     void should_returnNonTopic_when_messageContextUnresolved() {
         MessageContext messageContext = MessageContext.unresolved();
 
-        TopicState result = sessionManager.detectTopicState(messageContext);
+        ContextSessionState result = sessionManager.detectTopicState(messageContext);
 
-        assertEquals(TopicState.NON_TOPIC, result);
+        assertEquals(ContextSessionState.UNBOUND, result);
         verify(bindingGateway, never()).findBinding(any());
     }
 

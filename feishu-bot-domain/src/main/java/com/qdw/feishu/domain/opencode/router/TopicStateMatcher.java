@@ -1,7 +1,7 @@
 package com.qdw.feishu.domain.opencode.router;
 
 import com.qdw.feishu.domain.message.Message;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 
 /**
  * 话题状态匹配器
@@ -17,7 +17,7 @@ public interface TopicStateMatcher {
      * @param message 消息对象
      * @return true 表示匹配，false 表示不匹配
      */
-    boolean matches(TopicState state, Message message);
+    boolean matches(ContextSessionState state, Message message);
 
     /**
      * 创建精确匹配器
@@ -25,7 +25,7 @@ public interface TopicStateMatcher {
      * @param targetState 目标状态
      * @return 精确匹配该状态的匹配器
      */
-    static TopicStateMatcher exactState(TopicState targetState) {
+    static TopicStateMatcher exactState(ContextSessionState targetState) {
         return (state, message) -> state == targetState;
     }
 
@@ -35,9 +35,9 @@ public interface TopicStateMatcher {
      * @param states 允许的状态列表
      * @return 匹配任一状态的匹配器
      */
-    static TopicStateMatcher anyOf(TopicState... states) {
+    static TopicStateMatcher anyOf(ContextSessionState... states) {
         return (state, message) -> {
-            for (TopicState s : states) {
+            for (ContextSessionState s : states) {
                 if (state == s) {
                     return true;
                 }
@@ -52,7 +52,7 @@ public interface TopicStateMatcher {
      * @param excludedState 排除的状态
      * @return 不匹配该状态的匹配器
      */
-    static TopicStateMatcher not(TopicState excludedState) {
+    static TopicStateMatcher not(ContextSessionState excludedState) {
         return (state, message) -> state != excludedState;
     }
 

@@ -7,7 +7,7 @@ import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.result.BizResult;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import java.util.Collections;
 import java.util.List;
 
@@ -28,9 +28,7 @@ public interface FishuAppI {
      *
      * @param message the incoming message
      * @return structured execution result
-     * @deprecated Use {@link #execute(Message, MessageContext)} instead.
      */
-    @Deprecated
     AppExecutionResult execute(Message message);
 
     /**
@@ -123,7 +121,7 @@ public interface FishuAppI {
      * @param state 话题状态
      * @return 允许的命令集合，null 表示允许所有命令
      */
-    default CommandWhitelist getCommandWhitelist(TopicState state) {
+    default CommandWhitelist getCommandWhitelist(ContextSessionState state) {
         return null;
     }
 

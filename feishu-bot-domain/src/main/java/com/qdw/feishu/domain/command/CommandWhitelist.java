@@ -3,7 +3,7 @@ package com.qdw.feishu.domain.command;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 
 /**
  * 命令白名单配置
@@ -80,9 +80,9 @@ public class CommandWhitelist {
     public static CommandWhitelist allExcept(String... commands) {
         Set<String> excluded = Set.of(commands);
         return builder()
-            .allowAllInState(TopicState.NON_TOPIC, excluded)
-            .allowAllInState(TopicState.UNINITIALIZED, excluded)
-            .allowAllInState(TopicState.INITIALIZED, excluded)
+            .allowAllInState(ContextSessionState.UNBOUND, excluded)
+            .allowAllInState(ContextSessionState.IN_APP_NO_SESSION, excluded)
+            .allowAllInState(ContextSessionState.IN_APP_WITH_SESSION, excluded)
             .build();
     }
 
@@ -93,11 +93,12 @@ public class CommandWhitelist {
      * @param state 话题状态
      * @return 如果允许返回 true，否则返回 false
      */
-    public boolean isCommandAllowed(String command, TopicState state) {
+    public boolean isCommandAllowed(String command, ContextSessionState state) {
         return switch (state) {
-            case NON_TOPIC -> isCommandAllowedInState(command, nonTopicAllowAll, nonTopicAllowed, nonTopicExcluded);
-            case UNINITIALIZED -> isCommandAllowedInState(command, uninitializedAllowAll, uninitializedAllowed, uninitializedExcluded);
-            case INITIALIZED -> isCommandAllowedInState(command, initializedAllowAll, initializedAllowed, initializedExcluded);
+            case UNBOUND -> isCommandAllowedInState(command, nonTopicAllowAll, nonTopicAllowed, nonTopicExcluded);
+            case IN_APP_NO_SESSION -> isCommandAllowedInState(command, uninitializedAllowAll, uninitializedAllowed, uninitializedExcluded);
+            case IN_APP_WITH_SESSION -> isCommandAllowedInState(command, initializedAllowAll, initializedAllowed, initializedExcluded);
+            default -> true; // BOUND_TO_OTHER_APP and other states: allow all
         };
     }
 
@@ -163,7 +164,7 @@ public class CommandWhitelist {
          * @param commands 命令列表
          * @return this
          */
-        public Builder addForState(TopicState state, String... commands) {
+        public Builder addForState(ContextSessionState state, String... commands) {
             Set<String> targetSet = getTargetSet(state);
             for (String command : commands) {
                 targetSet.add(command);
@@ -190,23 +191,23 @@ public class CommandWhitelist {
          * @param except 要排除的命令集合
          * @return this
          */
-        public Builder allowAllInState(TopicState state, Set<String> except) {
+        public Builder allowAllInState(ContextSessionState state, Set<String> except) {
             switch (state) {
-                case NON_TOPIC -> {
+                case UNBOUND -> {
                     nonTopicAllowAll = true;
                     nonTopicExcluded.clear();
                     if (except != null && !except.isEmpty()) {
                         nonTopicExcluded.addAll(except);
                     }
                 }
-                case UNINITIALIZED -> {
+                case IN_APP_NO_SESSION -> {
                     uninitializedAllowAll = true;
                     uninitializedExcluded.clear();
                     if (except != null && !except.isEmpty()) {
                         uninitializedExcluded.addAll(except);
                     }
                 }
-                case INITIALIZED -> {
+                case IN_APP_WITH_SESSION -> {
                     initializedAllowAll = true;
                     initializedExcluded.clear();
                     if (except != null && !except.isEmpty()) {
@@ -217,19 +218,21 @@ public class CommandWhitelist {
             return this;
         }
 
-        private Set<String> getTargetSet(TopicState state) {
+        private Set<String> getTargetSet(ContextSessionState state) {
             return switch (state) {
-                case NON_TOPIC -> nonTopicAllowed;
-                case UNINITIALIZED -> uninitializedAllowed;
-                case INITIALIZED -> initializedAllowed;
+                case UNBOUND -> nonTopicAllowed;
+                case IN_APP_NO_SESSION -> uninitializedAllowed;
+                case IN_APP_WITH_SESSION -> initializedAllowed;
+                default -> initializedAllowed; // fallback for BOUND_TO_OTHER_APP etc.
             };
         }
 
-        private Set<String> getTargetExcludedSet(TopicState state) {
+        private Set<String> getTargetExcludedSet(ContextSessionState state) {
             return switch (state) {
-                case NON_TOPIC -> nonTopicExcluded;
-                case UNINITIALIZED -> uninitializedExcluded;
-                case INITIALIZED -> initializedExcluded;
+                case UNBOUND -> nonTopicExcluded;
+                case IN_APP_NO_SESSION -> uninitializedExcluded;
+                case IN_APP_WITH_SESSION -> initializedExcluded;
+                default -> initializedExcluded;
             };
         }
 

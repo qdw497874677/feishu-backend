@@ -12,7 +12,7 @@ import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.model.opencode.OpenCodeSessionData;
 import com.qdw.feishu.domain.session.AppSession;
 import com.qdw.feishu.domain.session.TypeToken;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
@@ -84,28 +84,28 @@ public class OpenCodeSessionManager {
      * @deprecated Use {@link #detectTopicState(MessageContext)} instead.
      */
     @Deprecated
-    public TopicState detectTopicState(Message message) {
+    public ContextSessionState detectTopicState(Message message) {
         return resolveContext(message)
             .map(contextRef -> bindingGateway.findBinding(contextRef)
                 .filter(binding -> binding.isForApp(APP_ID))
-                .map(binding -> binding.getSessionId() == null ? TopicState.UNINITIALIZED : TopicState.INITIALIZED)
-                .orElse(TopicState.UNINITIALIZED))
-            .orElse(TopicState.NON_TOPIC);
+                .map(binding -> binding.getSessionId() == null ? ContextSessionState.IN_APP_NO_SESSION : ContextSessionState.IN_APP_WITH_SESSION)
+                .orElse(ContextSessionState.IN_APP_NO_SESSION))
+            .orElse(ContextSessionState.UNBOUND);
     }
 
     /**
      * Detect topic state using pre-resolved MessageContext.
      * Skips findBinding() — uses binding from MessageContext directly.
      */
-    public TopicState detectTopicState(MessageContext messageContext) {
+    public ContextSessionState detectTopicState(MessageContext messageContext) {
         if (messageContext == null || !messageContext.isResolved()) {
-            return TopicState.NON_TOPIC;
+            return ContextSessionState.UNBOUND;
         }
         if (!messageContext.isBoundToApp(APP_ID)) {
-            return TopicState.UNINITIALIZED;
+            return ContextSessionState.IN_APP_NO_SESSION;
         }
         ImContextBinding binding = messageContext.getBinding();
-        return binding.getSessionId() == null ? TopicState.UNINITIALIZED : TopicState.INITIALIZED;
+        return binding.getSessionId() == null ? ContextSessionState.IN_APP_NO_SESSION : ContextSessionState.IN_APP_WITH_SESSION;
     }
 
     /**

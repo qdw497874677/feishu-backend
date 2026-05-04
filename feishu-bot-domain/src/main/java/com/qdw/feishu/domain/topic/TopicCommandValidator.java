@@ -4,6 +4,7 @@ import com.qdw.feishu.domain.app.FishuAppI;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.command.ValidationResult;
 import com.qdw.feishu.domain.message.Message;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -21,19 +22,19 @@ public class TopicCommandValidator {
      * @param app 应用实例
      * @return 话题状态
      */
-    public TopicState detectState(Message message, FishuAppI app) {
+    public ContextSessionState detectState(Message message, FishuAppI app) {
         String topicId = message.getTopicId();
 
         // 非话题
         if (topicId == null || topicId.isEmpty()) {
             log.debug("检测到非话题消息");
-            return TopicState.NON_TOPIC;
+            return ContextSessionState.UNBOUND;
         }
 
         // 检测是否已初始化
         boolean initialized = app.isTopicInitialized(message);
         log.debug("话题状态检测: topicId={}, initialized={}", topicId, initialized);
-        return initialized ? TopicState.INITIALIZED : TopicState.UNINITIALIZED;
+        return initialized ? ContextSessionState.IN_APP_WITH_SESSION : ContextSessionState.IN_APP_NO_SESSION;
     }
 
     /**
@@ -44,7 +45,7 @@ public class TopicCommandValidator {
      * @param whitelist 命令白名单
      * @return 验证结果
      */
-    public ValidationResult validateCommand(String subCommand, TopicState state, CommandWhitelist whitelist) {
+    public ValidationResult validateCommand(String subCommand, ContextSessionState state, CommandWhitelist whitelist) {
         if (whitelist == null) {
             // null 白名单表示允许所有命令
             return ValidationResult.allowed();
@@ -68,13 +69,13 @@ public class TopicCommandValidator {
      * @param command 命令
      * @return 提示消息
      */
-    public String getRestrictedCommandMessage(TopicState state, String appId, String command) {
+    public String getRestrictedCommandMessage(ContextSessionState state, String appId, String command) {
         return buildRestrictedMessage(state, command);
     }
 
-    private String buildRestrictedMessage(TopicState state, String command) {
+    private String buildRestrictedMessage(ContextSessionState state, String command) {
         return switch (state) {
-            case NON_TOPIC -> String.format(
+            case UNBOUND -> String.format(
                 "⚠️ 命令 `%s` 需要在话题中操作\n\n" +
                 "💡 在群聊中，你可以：\n" +
                 " - 使用 `/oc cn <问题>` 快速创建话题并对话（推荐）\n" +
@@ -87,7 +88,7 @@ public class TopicCommandValidator {
                 command
             );
 
-            case UNINITIALIZED -> String.format(
+            case IN_APP_NO_SESSION -> String.format(
                 "⚠️ 命令 `%s` 需要话题已初始化\n\n" +
                 "💡 请先初始化话题：\n" +
                 " - `/oc sc <会话ID>` - 绑定已有会话\n" +
@@ -97,10 +98,12 @@ public class TopicCommandValidator {
                 command
             );
 
-            case INITIALIZED -> String.format(
+            case IN_APP_WITH_SESSION -> String.format(
                 "⚠️ 命令 `%s` 不可用",
                 command
             );
+
+            default -> String.format("⚠️ 命令 `%s` 不可用", command);
         };
     }
 }

@@ -11,7 +11,7 @@ import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.model.ImContextRef;
 import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -89,16 +89,16 @@ class OpenCodeCommandHandlerTest {
                 Message msg = invocation.getArgument(0);
                 String topicId = msg.getTopicId();
                 if (topicId == null || topicId.isEmpty()) {
-                    return TopicState.NON_TOPIC;
+                    return ContextSessionState.UNBOUND;
                 }
                 return sessionManager.getSessionId(msg).isPresent() 
-                    ? TopicState.INITIALIZED 
-                    : TopicState.UNINITIALIZED;
+                    ? ContextSessionState.IN_APP_WITH_SESSION 
+                    : ContextSessionState.IN_APP_NO_SESSION;
             });
 
         // MessageContext overload — mirrors Message-based behavior
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
 
         // 默认 mock 设置 - 话题未初始化（无sessionId）
         when(sessionManager.getSessionId(any(Message.class)))
@@ -294,7 +294,7 @@ class OpenCodeCommandHandlerTest {
             .thenReturn(Optional.of("ses_123"));
         when(sessionManager.isTopicInitialized(any(Message.class))).thenReturn(true);
         when(sessionManager.isTopicInitialized(any(MessageContext.class))).thenReturn(true);
-        when(sessionManager.detectTopicState(any(MessageContext.class))).thenReturn(TopicState.INITIALIZED);
+        when(sessionManager.detectTopicState(any(MessageContext.class))).thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
 
         when(taskExecutor.executeWithNewSession(any(Message.class), eq(prompt), isNull()))
             .thenReturn(expectedResult);
@@ -371,7 +371,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getSessionId(any(MessageContext.class)))
             .thenReturn(Optional.of(sessionId));
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode chat", topicId),
@@ -397,7 +397,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.isTopicInitialized(any(MessageContext.class)))
             .thenReturn(true);
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
             .thenReturn(AppExecutionResult.noReply());
 
@@ -429,7 +429,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
             .thenReturn(statusText);
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
@@ -456,7 +456,7 @@ class OpenCodeCommandHandlerTest {
         when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
             .thenReturn(statusText);
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
 
         AppExecutionResult result = commandHandler.handle(
             createTestMessage("/opencode session status", topicId),
@@ -575,7 +575,7 @@ class OpenCodeCommandHandlerTest {
         String topicId = "test-topic";
         // UNINITIALIZED + 在话题内 + 无活跃向导 → 自动触发向导（行为已变更）
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
         when(wizardManager.isWizardActive(topicId)).thenReturn(false);
 
         com.qdw.feishu.domain.card.CardContent mockCard =
@@ -608,7 +608,7 @@ class OpenCodeCommandHandlerTest {
         String statusText = "📋 **当前会话信息**\n\n  🆔 Session ID: `" + sessionId + "`";
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
             .thenReturn(statusText);
 
@@ -633,7 +633,7 @@ class OpenCodeCommandHandlerTest {
         String statusText = "📭 当前话题还没有 OpenCode 会话\n\n💡 发送 `/opencode <提示词>` 创建新会话";
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-                .thenReturn(TopicState.UNINITIALIZED);
+                .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
         when(sessionManager.getCurrentSessionStatus(any(MessageContext.class)))
                 .thenReturn(statusText);
 
@@ -753,7 +753,7 @@ class OpenCodeCommandHandlerTest {
         String topicId = "init-topic";
         String prompt = "帮我写代码";
         when(sessionManager.isTopicInitialized(any(MessageContext.class))).thenReturn(true);
-        when(sessionManager.detectTopicState(any(MessageContext.class))).thenReturn(TopicState.INITIALIZED);
+        when(sessionManager.detectTopicState(any(MessageContext.class))).thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))
             .thenReturn(AppExecutionResult.noReply());
 
@@ -853,7 +853,7 @@ class OpenCodeCommandHandlerTest {
         MessageContext threadContext = MessageContext.of(contextRef, null);
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(sessionManager.getSessionId(any(MessageContext.class)))
             .thenReturn(Optional.of("ses_123"));
 
@@ -891,7 +891,7 @@ class OpenCodeCommandHandlerTest {
         MessageContext threadContext = MessageContext.of(contextRef, null);
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(sessionManager.getSessionId(any(MessageContext.class)))
             .thenReturn(Optional.of("ses_123"));
 
@@ -926,7 +926,7 @@ class OpenCodeCommandHandlerTest {
         MessageContext threadContext = MessageContext.of(contextRef, null);
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(sessionManager.getSessionId(any(MessageContext.class)))
             .thenReturn(Optional.of("ses_456"));
 
@@ -967,7 +967,7 @@ class OpenCodeCommandHandlerTest {
         MessageContext chatContext = MessageContext.unresolved();
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.NON_TOPIC);
+            .thenReturn(ContextSessionState.UNBOUND);
         when(sessionManager.handleSessionsCommand(any()))
             .thenReturn("📋 sessions text");
 
@@ -1001,7 +1001,7 @@ class OpenCodeCommandHandlerTest {
             WizardManager.WizardResult.of(mockCard, WizardManager.WizardStep.SELECT_PROJECT);
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
         when(wizardManager.isWizardActive(topicId)).thenReturn(false);
         when(wizardManager.start(anyString(), eq(topicId))).thenReturn(mockResult);
         when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
@@ -1027,7 +1027,7 @@ class OpenCodeCommandHandlerTest {
         String sessionId = "ses_explicit_123";
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
         when(wizardManager.isWizardActive(topicId)).thenReturn(false);
         when(taskExecutor.executeWithSpecificSession(any(), isNull(), eq(sessionId)))
             .thenReturn(AppExecutionResult.withSession("✅ 会话已绑定", sessionId, false));
@@ -1053,7 +1053,7 @@ class OpenCodeCommandHandlerTest {
         String topicId = "uninit-wizard-active-topic";
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.UNINITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_NO_SESSION);
         when(wizardManager.isWizardActive(topicId)).thenReturn(true);
 
         AppExecutionResult result = commandHandler.handle(
@@ -1077,7 +1077,7 @@ class OpenCodeCommandHandlerTest {
         String prompt = "帮我写代码";
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
-            .thenReturn(TopicState.INITIALIZED);
+            .thenReturn(ContextSessionState.IN_APP_WITH_SESSION);
         when(wizardManager.isWizardActive(topicId)).thenReturn(false);
         when(sessionManager.isTopicInitialized(any(MessageContext.class))).thenReturn(true);
         when(taskExecutor.executeWithAutoSession(any(), eq(prompt)))

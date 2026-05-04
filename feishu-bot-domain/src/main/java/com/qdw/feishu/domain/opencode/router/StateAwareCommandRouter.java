@@ -1,7 +1,7 @@
 package com.qdw.feishu.domain.opencode.router;
 
 import com.qdw.feishu.domain.message.Message;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -50,7 +50,7 @@ public class StateAwareCommandRouter {
      * @param currentState 当前话题状态
      * @return 执行结果
      */
-    public String route(String[] parts, Message message, TopicState currentState) {
+    public String route(String[] parts, Message message, ContextSessionState currentState) {
         log.debug("路由命令: currentState={}, partsCount={}", currentState, parts.length);
 
         Optional<Handler> matchedHandler = handlers.stream()
@@ -69,11 +69,12 @@ public class StateAwareCommandRouter {
     /**
      * 构建命令不可用提示
      */
-    private String buildNotAvailableMessage(TopicState state) {
+    private String buildNotAvailableMessage(ContextSessionState state) {
         return switch (state) {
-            case NON_TOPIC -> "❌ 此命令在话题外不可用\n\n💡 提示：请使用 `/opencode chatnow` 立即开始对话";
-            case UNINITIALIZED -> "❌ 此命令需要先绑定会话\n\n💡 提示：使用 `/opencode sc <会话ID>` 绑定会话";
-            case INITIALIZED -> "❌ 此命令在当前状态下不可用";
+            case UNBOUND -> "❌ 此命令在话题外不可用\n\n💡 提示：请使用 `/opencode chatnow` 立即开始对话";
+            case IN_APP_NO_SESSION -> "❌ 此命令需要先绑定会话\n\n💡 提示：使用 `/opencode sc <会话ID>` 绑定会话";
+            case IN_APP_WITH_SESSION -> "❌ 此命令在当前状态下不可用";
+            default -> "❌ 此命令在当前状态下不可用";
         };
     }
 

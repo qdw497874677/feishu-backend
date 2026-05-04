@@ -1,6 +1,6 @@
 package com.qdw.feishu.domain.opencode;
 
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 
 /**
  * 集中式下一步建议生成器。
@@ -24,7 +24,7 @@ public class NextStepSuggester {
      * @param state 当前话题状态
      * @return 建议文本，或 null 表示不需要建议
      */
-    public String suggest(String executedCommand, TopicState state) {
+    public String suggest(String executedCommand, ContextSessionState state) {
         return switch (executedCommand) {
             case "projects", "p" -> "💡 下一步：`/oc sessions <项目名>` 查看会话列表";
             case "sessions", "s" -> "💡 下一步：`/oc sc <会话ID>` 绑定会话到当前话题";
@@ -39,15 +39,15 @@ public class NextStepSuggester {
         };
     }
 
-    private String suggestAfterSessionBind(TopicState state) {
-        if (state == TopicState.INITIALIZED) {
+    private String suggestAfterSessionBind(ContextSessionState state) {
+        if (state == ContextSessionState.IN_APP_WITH_SESSION) {
             return "💡 下一步：直接输入问题开始对话，或 `/oc chat <内容>`";
         }
         return "💡 下一步：`/oc chat <内容>` 开始对话";
     }
 
-    private String suggestAfterStatus(TopicState state) {
-        if (state == TopicState.INITIALIZED) {
+    private String suggestAfterStatus(ContextSessionState state) {
+        if (state == ContextSessionState.IN_APP_WITH_SESSION) {
             return "💡 下一步：直接输入问题继续对话";
         }
         return "💡 下一步：`/oc sc <会话ID>` 绑定会话";

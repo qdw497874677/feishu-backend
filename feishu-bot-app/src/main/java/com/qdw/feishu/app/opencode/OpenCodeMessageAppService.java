@@ -16,7 +16,7 @@ import com.qdw.feishu.domain.opencode.OpenCodeApp;
 import com.qdw.feishu.domain.opencode.OpenCodeSessionManager;
 import com.qdw.feishu.domain.session.ContextSessionState;
 import com.qdw.feishu.domain.session.TypeToken;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -223,8 +223,8 @@ public class OpenCodeMessageAppService {
         }
 
         // Must be INITIALIZED state
-        TopicState state = openCodeSessionManager.detectTopicState(messageContext);
-        if (state != TopicState.INITIALIZED) {
+        ContextSessionState state = openCodeSessionManager.detectTopicState(messageContext);
+        if (state != ContextSessionState.IN_APP_WITH_SESSION) {
             return message;
         }
 

@@ -2,6 +2,7 @@ package com.qdw.feishu.app.message;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
+import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
@@ -23,8 +24,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,6 +38,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class BotMessageAppServiceTest {
 
     @Mock
@@ -54,6 +59,9 @@ class BotMessageAppServiceTest {
     @Mock
     private OpenCodeSessionManager openCodeSessionManager;
 
+    @Mock
+    private AppRegistry appRegistry;
+
     private BotMessageAppService appService;
 
     @BeforeEach
@@ -69,12 +77,15 @@ class BotMessageAppServiceTest {
                 return feishuGateway.sendMessage(message, replyContent, topicId);
             }
         };
+        when(appRegistry.getApp("help")).thenReturn(Optional.of(helpApp));
+        when(appRegistry.getApp("opencode")).thenReturn(Optional.of(openCodeApp));
         appService = new BotMessageAppService(
                 botMessageService,
                 feishuGateway,
                 bindingGateway,
                 new ReplyStrategyFactory(List.of(replyStrategy)),
-                openCodeSessionManager
+                openCodeSessionManager,
+                appRegistry
         );
     }
 
@@ -83,7 +94,7 @@ class BotMessageAppServiceTest {
         Message message = createMessage("/help", null, "chat_help");
         SendResult expected = SendResult.success("msg_help");
 
-        when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("help", helpApp, false));
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("help", false));
         when(helpApp.execute(any(Message.class), any(MessageContext.class))).thenReturn(AppExecutionResult.text("help text"));
         when(helpApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "help text", null)).thenReturn(expected);
@@ -101,7 +112,7 @@ class BotMessageAppServiceTest {
         SendResult expected = SendResult.success("msg_open", "omt_actual");
         ImContextRef contextRef = ImContextRef.feishuThread("omt_actual");
 
-        when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
+        when(botMessageService.routeMessage(eq(message), any(MessageContext.class))).thenReturn(new BotRoutingDecision("opencode", true));
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class))).thenReturn(AppExecutionResult.text("project list"));
         when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "project list", "omt_route")).thenReturn(expected);
@@ -136,7 +147,7 @@ class BotMessageAppServiceTest {
         MessageContext messageContext = MessageContext.of(chatRef, chatBinding);
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, true));
+                .thenReturn(new BotRoutingDecision("opencode", true));
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class))).thenReturn(AppExecutionResult.text("project list"));
         when(openCodeApp.getReplyMode()).thenReturn(ReplyMode.DEFAULT);
         when(feishuGateway.sendMessage(message, "project list", null)).thenReturn(expected);
@@ -157,7 +168,7 @@ class BotMessageAppServiceTest {
         Message message = createMessage("/opencode chat test", "omt_empty", "chat_empty");
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+                .thenReturn(new BotRoutingDecision("opencode", false));
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text(""));
 
@@ -173,7 +184,7 @@ class BotMessageAppServiceTest {
         Message message = createMessage("/opencode chat test", "omt_blank", "chat_blank");
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+                .thenReturn(new BotRoutingDecision("opencode", false));
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text("   "));
 
@@ -194,7 +205,7 @@ class BotMessageAppServiceTest {
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+                .thenReturn(new BotRoutingDecision("opencode", false));
         when(openCodeApp.getAppId()).thenReturn("opencode");
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text("project list"));
@@ -217,7 +228,7 @@ class BotMessageAppServiceTest {
         SendResult expected = SendResult.success("msg_help_nostatus");
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("help", helpApp, false));
+                .thenReturn(new BotRoutingDecision("help", false));
         when(helpApp.getAppId()).thenReturn("help");
         when(helpApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text("help text"));
@@ -239,7 +250,7 @@ class BotMessageAppServiceTest {
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+                .thenReturn(new BotRoutingDecision("opencode", false));
         when(openCodeApp.getAppId()).thenReturn("opencode");
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.noReply());
@@ -259,7 +270,7 @@ class BotMessageAppServiceTest {
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+                .thenReturn(new BotRoutingDecision("opencode", false));
         when(openCodeApp.getAppId()).thenReturn("opencode");
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text("status info"));
@@ -283,7 +294,7 @@ class BotMessageAppServiceTest {
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
         when(botMessageService.routeMessage(eq(message), any(MessageContext.class)))
-                .thenReturn(new BotRoutingDecision("opencode", openCodeApp, false));
+                .thenReturn(new BotRoutingDecision("opencode", false));
         when(openCodeApp.getAppId()).thenReturn("opencode");
         when(openCodeApp.execute(any(Message.class), any(MessageContext.class)))
                 .thenReturn(AppExecutionResult.text("help content here"));

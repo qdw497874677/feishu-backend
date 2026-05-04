@@ -2,6 +2,7 @@ package com.qdw.feishu.app.message;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
+import com.qdw.feishu.domain.core.AppRegistry;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.ImContextBindingGateway;
@@ -31,17 +32,20 @@ public class BotMessageAppService {
     private final ImContextBindingGateway bindingGateway;
     private final ReplyStrategyFactory replyStrategyFactory;
     private final OpenCodeSessionManager openCodeSessionManager;
+    private final AppRegistry appRegistry;
 
     public BotMessageAppService(BotMessageService botMessageService,
                                 FeishuGateway feishuGateway,
                                 ImContextBindingGateway bindingGateway,
                                 ReplyStrategyFactory replyStrategyFactory,
-                                OpenCodeSessionManager openCodeSessionManager) {
+                                OpenCodeSessionManager openCodeSessionManager,
+                                AppRegistry appRegistry) {
         this.botMessageService = botMessageService;
         this.feishuGateway = feishuGateway;
         this.bindingGateway = bindingGateway;
         this.replyStrategyFactory = replyStrategyFactory;
         this.openCodeSessionManager = openCodeSessionManager;
+        this.appRegistry = appRegistry;
     }
 
     public HandledMessageResult handleMessage(Message message) {
@@ -50,11 +54,14 @@ public class BotMessageAppService {
 
     public HandledMessageResult handleMessage(Message message, MessageContext messageContext) {
         BotRoutingDecision decision = botMessageService.routeMessage(message, messageContext);
-        if (decision == null || decision.getApp() == null) {
+        if (decision == null || decision.getAppId() == null) {
             return new HandledMessageResult(SendResult.failure("应用不存在"), null, null);
         }
 
-        FishuAppI app = decision.getApp();
+        FishuAppI app = appRegistry.getApp(decision.getAppId()).orElse(null);
+        if (app == null) {
+            return new HandledMessageResult(SendResult.failure("应用不存在: " + decision.getAppId()), null, null);
+        }
         AppExecutionResult execResult = app.execute(message, messageContext);
         String replyContent = execResult != null ? execResult.getReplyContent() : null;
 

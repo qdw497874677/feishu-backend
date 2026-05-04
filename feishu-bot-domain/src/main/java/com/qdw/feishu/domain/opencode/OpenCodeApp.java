@@ -9,7 +9,7 @@ import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.MessageContext;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
-import com.qdw.feishu.domain.topic.TopicState;
+import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Arrays;
@@ -142,15 +142,15 @@ public class OpenCodeApp implements FishuAppI {
     }
 
     @Override
-    public CommandWhitelist getCommandWhitelist(com.qdw.feishu.domain.topic.TopicState state) {
+    public CommandWhitelist getCommandWhitelist(ContextSessionState state) {
         return switch (state) {
-            case NON_TOPIC -> CommandWhitelist.builder()
+            case UNBOUND -> CommandWhitelist.builder()
                 // 话题外允许的命令：基础命令 + 初始化命令 + 快速对话
                 .add("help", "connect", "projects", "p",           // 基础命令
                      "sessions", "s", "session", "sc",            // 会话管理（初始化命令）
                      "chatnow", "cn", "new")                       // 快速对话 + 指定项目创建
                 .build();
-            case UNINITIALIZED -> CommandWhitelist.builder()
+            case IN_APP_NO_SESSION -> CommandWhitelist.builder()
                 // 话题未初始化：允许初始化相关命令 + 向导 action
                 .add("help", "connect", "projects", "p",           // 基础命令
                      "sessions", "s", "session", "sc",            // 会话管理
@@ -160,7 +160,8 @@ public class OpenCodeApp implements FishuAppI {
                      "wizard_select_project", "wizard_select_session",
                      "wizard_new_session", "wizard_confirm", "wizard_cancel")
                 .build();
-            case INITIALIZED -> CommandWhitelist.all();  // 话题已初始化：允许所有命令
+            case IN_APP_WITH_SESSION -> CommandWhitelist.all();  // 话题已初始化：允许所有命令
+            default -> CommandWhitelist.all();  // BOUND_TO_OTHER_APP 等状态不限制
         };
     }
 
@@ -170,9 +171,8 @@ public class OpenCodeApp implements FishuAppI {
     }
 
     /**
-     * @deprecated Use {@link #execute(Message, MessageContext)} instead.
+     * Execute with basic message context.
      */
-    @Deprecated
     @Override
     public AppExecutionResult execute(Message message) {
         return execute(message, MessageContext.unresolved());
@@ -217,7 +217,7 @@ public class OpenCodeApp implements FishuAppI {
         }
 
         // 委托给命令处理器（传递白名单确保一致性）— use MessageContext overloads
-        TopicState state = sessionManager.detectTopicState(messageContext);
+        ContextSessionState state = sessionManager.detectTopicState(messageContext);
         CommandWhitelist whitelist = getCommandWhitelist(state);
         AppExecutionResult result = commandHandler.handle(message, subCommand, parts, whitelist, messageContext);
         if (result != null) {

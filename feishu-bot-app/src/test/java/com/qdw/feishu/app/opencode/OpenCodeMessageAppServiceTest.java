@@ -357,7 +357,7 @@ class OpenCodeMessageAppServiceTest {
         SendResult expected = SendResult.success("msg_synth", "omt_synth");
 
         when(openCodeSessionManager.detectTopicState(any(MessageContext.class)))
-                .thenReturn(com.qdw.feishu.domain.topic.TopicState.INITIALIZED);
+                .thenReturn(com.qdw.feishu.domain.session.ContextSessionState.IN_APP_WITH_SESSION);
 
         // buildStatusFromContext needs loadStatus for binding with sessionId
         OpenCodeSessionData sessionData = OpenCodeSessionData.create("oc_ses_456");
@@ -387,7 +387,7 @@ class OpenCodeMessageAppServiceTest {
         MessageContext messageContext = MessageContext.of(contextRef, binding);
 
         when(openCodeSessionManager.detectTopicState(any(MessageContext.class)))
-                .thenReturn(com.qdw.feishu.domain.topic.TopicState.UNINITIALIZED);
+                .thenReturn(com.qdw.feishu.domain.session.ContextSessionState.IN_APP_NO_SESSION);
 
         // buildStatusFromContext: binding for opencode with null sessionId → inAppNoSession
         // isChatCommand("帮我写代码") → true (no /) → shows session status guidance
