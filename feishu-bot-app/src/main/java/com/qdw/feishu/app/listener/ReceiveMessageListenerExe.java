@@ -45,11 +45,9 @@ public class ReceiveMessageListenerExe {
      */
     @Async
     public void execute(Message message) {
-        log.info("=== 收到新消息 ===");
-        log.info("事件ID: {}", message.getEventId());
-        log.info("发送者: {}", message.getSender());
-        log.info("消息内容: {}", message.getDisplayContent());
-        log.info("消息ID: {}", message.getMessageId());
+        log.info("收到消息: msgId={}", message.getMessageId());
+        log.debug("消息详情: eventId={}, sender={}, content={}",
+            message.getEventId(), message.getSender(), message.getDisplayContent());
 
         if (messageDeduplicator.isProcessed(message.getEventId())) {
             log.info("消息已处理过，跳过");

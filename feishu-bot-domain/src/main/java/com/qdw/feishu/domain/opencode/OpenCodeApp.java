@@ -185,7 +185,8 @@ public class OpenCodeApp implements FishuAppI {
         String content = message.getContent().trim();
         String[] parts = content.split("\\s+", 3);
 
-        log.info("OpenCodeApp.execute: content='{}'", content);
+        log.info("OpenCodeApp.execute: msgId={}", message.getMessageId());
+        log.debug("OpenCodeApp.execute: content='{}'", content);
 
         // 空命令（只有 /opencode），进入话题模式，显示欢迎消息
         if (parts.length < 2) {

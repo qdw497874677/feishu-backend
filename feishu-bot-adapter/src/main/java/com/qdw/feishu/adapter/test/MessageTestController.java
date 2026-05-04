@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 @RestController
 @RequestMapping("/test/message")
-@Profile({"dev", "test", "default"})
+@Profile({"dev", "test"})
 public class MessageTestController {
     
     @Autowired

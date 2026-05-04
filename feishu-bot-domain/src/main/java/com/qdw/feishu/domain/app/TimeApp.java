@@ -57,9 +57,8 @@ public class TimeApp implements FishuAppI {
 
     @Override
     public AppExecutionResult execute(Message message) {
-        log.info("=== TimeApp.execute 开始 ===");
-        log.info("应用 ID: {}", getAppId());
-        log.info("输入消息: {}", message.getContent());
+        log.info("TimeApp收到消息: msgId={}", message.getMessageId());
+        log.debug("输入消息: {}", message.getContent());
 
         LocalDateTime now = LocalDateTime.now();
         String formattedTime = now.format(FORMATTER);

@@ -78,7 +78,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     public SendResult sendReply(String receiveOpenId, String content) {
-        log.info("Sending reply to: {}, content: {}", receiveOpenId, content);
+        log.info("Sending reply to: {}", receiveOpenId);
+        log.debug("Reply content: {}", content);
 
         return executeWithRetry("sendReply", () -> {
             try {
@@ -112,7 +113,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     public SendResult sendMessage(Message message, String content, String topicId) {
-        log.info("Sending message to chatId: {}, content: {}, topicId: {}", message.getChatId(), content, topicId);
+        log.info("Sending message to chatId: {}, topicId: {}", message.getChatId(), topicId);
+        log.debug("Message content: {}", content);
 
         return executeWithRetry("sendMessage", () -> {
             try {
@@ -143,7 +145,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     public SendResult sendDirectReply(Message message, String content) {
-        log.info("Sending direct reply to chatId: {}, content: {}", message.getChatId(), content);
+        log.info("Sending direct reply to chatId: {}", message.getChatId());
+        log.debug("Direct reply content: {}", content);
 
         return executeWithRetry("sendDirectReply", () -> {
             try {
@@ -184,7 +187,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
         textContent.put("text", content);
         String jsonContent = objectMapper.writeValueAsString(textContent);
 
-        log.info("Sending message to chat: chatId={}, content={}", chatId, content);
+        log.info("Sending message to chat: chatId={}", chatId);
+        log.debug("Chat message content: {}", content);
 
         return executeWithRetry("sendMessageToChat", () -> {
             try {
@@ -213,7 +217,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     private SendResult sendReplyToTopic(String threadId, String content) throws Exception {
-        log.info("Replying to thread: threadId={}, content={}", threadId, content);
+        log.info("Replying to thread: threadId={}", threadId);
+        log.debug("Thread reply content: {}", content);
 
         ChatHistory history = listMessages(null, threadId, 1, null);
 
@@ -235,7 +240,8 @@ public class FeishuGatewayImpl implements FeishuGateway {
         textContent.put("text", content);
         String jsonContent = objectMapper.writeValueAsString(textContent);
 
-        log.info("Replying to message: {} with content: {}", messageId, content);
+        log.info("Replying to message: {}", messageId);
+        log.debug("Reply content: {}", content);
 
         return executeWithRetry("sendReplyToMessage", () -> {
             try {

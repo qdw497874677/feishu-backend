@@ -75,7 +75,8 @@ public class HistoryApp implements FishuAppI {
     public AppExecutionResult execute(Message message) {
         log.info("=== HistoryApp.execute 开始 ===");
         log.info("应用 ID: {}", getAppId());
-        log.info("输入消息: {}", message.getContent());
+        log.info("HistoryApp收到消息: msgId={}", message.getMessageId());
+        log.debug("输入消息: {}", message.getContent());
 
         ChatHistory history = feishuGateway.listMessages(
             message.getChatId(),
