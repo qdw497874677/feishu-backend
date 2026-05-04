@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -52,11 +51,8 @@ class HelpAppCardButtonJsonTest {
 
     @BeforeEach
     void setUp() {
-        helpApp = new HelpApp();
         CardRenderer cardRenderer = new FeishuCardRenderer(objectMapper);
-        ReflectionTestUtils.setField(helpApp, "appRegistry", appRegistry);
-        ReflectionTestUtils.setField(helpApp, "feishuGateway", feishuGateway);
-        ReflectionTestUtils.setField(helpApp, "cardRenderer", cardRenderer);
+        helpApp = new HelpApp(appRegistry, feishuGateway, cardRenderer);
 
         when(appRegistry.getAllApps()).thenReturn(createTestApps());
     }
