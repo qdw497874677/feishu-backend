@@ -1,15 +1,14 @@
 package com.qdw.feishu.domain.config;
 
 import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
 /**
  * 卡片流式输出配置
+ *
+ * Domain-layer POJO — no Spring dependency.
+ * Infrastructure layer provides the @ConfigurationProperties implementation.
  */
 @Data
-@Component
-@ConfigurationProperties(prefix = "opencode.card")
 public class CardProperties {
 
     /**

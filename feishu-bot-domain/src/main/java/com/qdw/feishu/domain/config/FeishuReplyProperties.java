@@ -2,15 +2,14 @@ package com.qdw.feishu.domain.config;
 
 import com.qdw.feishu.domain.core.ReplyMode;
 import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
 /**
  * 飞书回复配置属性
+ *
+ * Domain-layer POJO — no Spring dependency.
+ * Infrastructure layer provides the @ConfigurationProperties implementation.
  */
 @Data
-@Component
-@ConfigurationProperties(prefix = "feishu.reply")
 public class FeishuReplyProperties {
 
     /**
