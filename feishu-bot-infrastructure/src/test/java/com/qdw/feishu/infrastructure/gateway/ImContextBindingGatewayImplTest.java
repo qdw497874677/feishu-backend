@@ -33,10 +33,17 @@ class ImContextBindingGatewayImplTest {
     private ImContextBindingGatewayImpl gateway;
     private String dbPath;
 
+    private javax.sql.DataSource createTestDataSource(String path) {
+        return org.springframework.boot.jdbc.DataSourceBuilder.create()
+                .url("jdbc:sqlite:" + path)
+                .driverClassName("org.sqlite.JDBC")
+                .build();
+    }
+
     @BeforeEach
     void setUp() {
         dbPath = tempDir.resolve("test-bindings.db").toString();
-        gateway = new ImContextBindingGatewayImpl(dbPath);
+        gateway = new ImContextBindingGatewayImpl(createTestDataSource(dbPath), dbPath);
         gateway.init();
     }
 
@@ -355,7 +362,7 @@ class ImContextBindingGatewayImplTest {
 
         // Close and reopen
         gateway.cleanup();
-        ImContextBindingGatewayImpl newGateway = new ImContextBindingGatewayImpl(dbPath);
+        ImContextBindingGatewayImpl newGateway = new ImContextBindingGatewayImpl(createTestDataSource(dbPath), dbPath);
         newGateway.init();
 
         // When
@@ -455,7 +462,7 @@ class ImContextBindingGatewayImplTest {
 
         // Close and reopen
         gateway.cleanup();
-        ImContextBindingGatewayImpl newGateway = new ImContextBindingGatewayImpl(dbPath);
+        ImContextBindingGatewayImpl newGateway = new ImContextBindingGatewayImpl(createTestDataSource(dbPath), dbPath);
         newGateway.init();
 
         // When
@@ -515,7 +522,7 @@ class ImContextBindingGatewayImplTest {
         }
 
         // When: Gateway initializes (should detect and migrate using create-copy-swap)
-        ImContextBindingGatewayImpl migratedGateway = new ImContextBindingGatewayImpl(oldSchemaDbPath);
+        ImContextBindingGatewayImpl migratedGateway = new ImContextBindingGatewayImpl(createTestDataSource(oldSchemaDbPath), oldSchemaDbPath);
         migratedGateway.init();
 
         // Then: Gateway should work with nullable session_id
@@ -600,7 +607,7 @@ class ImContextBindingGatewayImplTest {
         }
 
         // When: Gateway initializes (should detect stale temp table, clean up, and complete migration)
-        ImContextBindingGatewayImpl recoveredGateway = new ImContextBindingGatewayImpl(interruptedDbPath);
+        ImContextBindingGatewayImpl recoveredGateway = new ImContextBindingGatewayImpl(createTestDataSource(interruptedDbPath), interruptedDbPath);
         recoveredGateway.init();
 
         // Then: Migration should complete successfully

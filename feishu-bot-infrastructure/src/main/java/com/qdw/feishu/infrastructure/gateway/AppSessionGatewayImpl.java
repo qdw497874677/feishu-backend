@@ -9,9 +9,9 @@ import com.qdw.feishu.domain.session.SessionIdGenerator;
 import com.qdw.feishu.domain.session.SessionState;
 import com.qdw.feishu.domain.session.TypeToken;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -50,10 +50,11 @@ public class AppSessionGatewayImpl implements AppSessionGateway {
 
     public AppSessionGatewayImpl(
             SessionIdGenerator sessionIdGenerator,
+            @Qualifier("sqliteDataSource") DataSource sqliteDataSource,
             @Value("${feishu.topic-mapping.sqlite.path:feishu-topic-mappings.db}") String dbFilePath) {
         this.sessionIdGenerator = sessionIdGenerator;
         this.dbFilePath = dbFilePath;
-        this.jdbcTemplate = new JdbcTemplate(createDataSource());
+        this.jdbcTemplate = new JdbcTemplate(sqliteDataSource);
         this.objectMapper = new ObjectMapper();
     }
 
@@ -73,16 +74,6 @@ public class AppSessionGatewayImpl implements AppSessionGateway {
     @PreDestroy
     public void cleanup() {
         log.info("SQLite App Session connection closed");
-    }
-
-    private DataSource createDataSource() {
-        String connectionString = "jdbc:sqlite:" + dbFilePath;
-        log.info("SQLite connection string: {}", connectionString);
-
-        return DataSourceBuilder.create()
-                .url(connectionString)
-                .driverClassName("org.sqlite.JDBC")
-                .build();
     }
 
     private void ensureDbDirectoryExists() {
@@ -262,17 +253,6 @@ public class AppSessionGatewayImpl implements AppSessionGateway {
 
     @Override
     public <T> void updateSession(String appId, String sessionId, T data, TypeToken<T> typeToken, long version) {
-        // First check version
-        Long currentVersion = getVersion(appId, sessionId);
-        if (currentVersion == null) {
-            log.warn("会话不存在: appId={}, sessionId={}", appId, sessionId);
-            return;
-        }
-        
-        if (currentVersion != version) {
-            throw new OptimisticLockException(version, currentVersion);
-        }
-
         String dataJson;
         try {
             dataJson = objectMapper.writeValueAsString(data);
@@ -291,7 +271,7 @@ public class AppSessionGatewayImpl implements AppSessionGateway {
         int updated = jdbcTemplate.update(sql, dataJson, now, appId, sessionId, version);
         
         if (updated == 0) {
-            throw new OptimisticLockException(version, currentVersion);
+            throw new OptimisticLockException(version, -1);
         }
         
         log.info("更新会话: sessionId={}, version={}", sessionId, version + 1);
@@ -299,19 +279,14 @@ public class AppSessionGatewayImpl implements AppSessionGateway {
 
     @Override
     public void updateState(String appId, String sessionId, SessionState state, long version) {
-        Long currentVersion = getVersion(appId, sessionId);
-        if (currentVersion == null) {
+        // Get current state for validation (read-only check, not a version gate)
+        SessionState oldState = getState(appId, sessionId);
+        if (oldState == null) {
             log.warn("会话不存在: appId={}, sessionId={}", appId, sessionId);
             return;
         }
-        
-        if (currentVersion != version) {
-            throw new OptimisticLockException(version, currentVersion);
-        }
 
-        // Get current state for validation
-        SessionState oldState = getState(appId, sessionId);
-        if (oldState != null && !oldState.canTransitionTo(state)) {
+        if (!oldState.canTransitionTo(state)) {
             throw new IllegalStateException(
                 String.format("Invalid state transition: %s -> %s", oldState, state)
             );
@@ -327,7 +302,7 @@ public class AppSessionGatewayImpl implements AppSessionGateway {
         int updated = jdbcTemplate.update(sql, state.name(), now, appId, sessionId, version);
         
         if (updated == 0) {
-            throw new OptimisticLockException(version, currentVersion);
+            throw new OptimisticLockException(version, -1);
         }
         
         log.info("更新会话状态: sessionId={}, {} -> {}", sessionId, oldState, state);

@@ -42,7 +42,11 @@ class AppSessionGatewayImplTest {
         sessionIdGenerator = appId -> "ses_" + idCounter.incrementAndGet() + "_" + System.currentTimeMillis();
         
         String dbPath = tempDir.resolve(DB_PATH).toString();
-        gateway = new AppSessionGatewayImpl(sessionIdGenerator, dbPath);
+        javax.sql.DataSource testDataSource = org.springframework.boot.jdbc.DataSourceBuilder.create()
+                .url("jdbc:sqlite:" + dbPath)
+                .driverClassName("org.sqlite.JDBC")
+                .build();
+        gateway = new AppSessionGatewayImpl(sessionIdGenerator, testDataSource, dbPath);
         gateway.init();
     }
     

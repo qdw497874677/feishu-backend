@@ -5,9 +5,9 @@ import com.qdw.feishu.domain.model.BindingResult;
 import com.qdw.feishu.domain.model.ImContextBinding;
 import com.qdw.feishu.domain.model.ImContextRef;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -52,10 +52,10 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
     private final String dbFilePath;
     private final DataSource dataSource;
 
-    public ImContextBindingGatewayImpl(
+    public ImContextBindingGatewayImpl(@Qualifier("sqliteDataSource") DataSource sqliteDataSource,
             @Value("${feishu.topic-mapping.sqlite.path:feishu-topic-mappings.db}") String dbFilePath) {
         this.dbFilePath = dbFilePath;
-        this.dataSource = createDataSource();
+        this.dataSource = sqliteDataSource;
         this.jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
@@ -82,16 +82,6 @@ public class ImContextBindingGatewayImpl implements ImContextBindingGateway {
                 log.warn("Failed to close SQLite datasource", e);
             }
         }
-    }
-
-    private DataSource createDataSource() {
-        String connectionString = "jdbc:sqlite:" + dbFilePath;
-        log.info("SQLite connection string: {}", connectionString);
-
-        return DataSourceBuilder.create()
-                .url(connectionString)
-                .driverClassName("org.sqlite.JDBC")
-                .build();
     }
 
     private void ensureDbDirectoryExists() {
