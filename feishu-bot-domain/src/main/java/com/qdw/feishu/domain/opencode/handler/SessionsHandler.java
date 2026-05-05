@@ -68,31 +68,36 @@ public class SessionsHandler implements SubCommandHandler {
     private AppExecutionResult trySendSessionListCard(String project, Message message, MessageContext messageContext) {
         try {
             List<SessionInfo> sessions = openCodeGateway.listRecentSessionsStructured(project, 10);
-            if (sessions.isEmpty()) {
-                return AppExecutionResult.text(
-                    "该项目暂无会话。使用 `/oc new " + project + " <问题>` 创建新会话。");
-            }
 
             CardActionContext actionCtx = CardActionContext.from(messageContext);
             List<CardElement> elements = new ArrayList<>();
-            elements.add(CardElement.markdown("**" + project + "** 的最近会话："));
 
-            List<CardButton> sessionButtons = new ArrayList<>();
-            for (SessionInfo session : sessions) {
-                String label = session.getTitle()
-                    + (session.getLastPrompt() != null && !session.getLastPrompt().isBlank()
-                        ? " — " + session.getLastPrompt() : "")
-                    + " (" + session.getRelativeTime() + ")";
-                if (label.length() > 40) {
-                    label = label.substring(0, 37) + "...";
+            if (sessions.isEmpty()) {
+                elements.add(CardElement.markdown(
+                    "**" + project + "** 暂无会话记录\n\n使用下方按钮创建新会话，或 `/oc new " + project + " <问题>` 直接开始"));
+                elements.add(CardElement.buttonGroup(
+                    CardButton.primary("+ 新建会话", "wizard_new_session:" + project)
+                ));
+            } else {
+                elements.add(CardElement.markdown("**" + project + "** 的最近会话："));
+
+                List<CardButton> sessionButtons = new ArrayList<>();
+                for (SessionInfo session : sessions) {
+                    String label = session.getTitle()
+                        + (session.getLastPrompt() != null && !session.getLastPrompt().isBlank()
+                            ? " — " + session.getLastPrompt() : "")
+                        + " (" + session.getRelativeTime() + ")";
+                    if (label.length() > 40) {
+                        label = label.substring(0, 37) + "...";
+                    }
+                    sessionButtons.add(CardButton.defaults(label, "sc " + session.getSessionId()));
                 }
-                sessionButtons.add(CardButton.defaults(label, "sc " + session.getSessionId()));
-            }
-            elements.add(CardElement.buttonGroup(sessionButtons));
+                elements.add(CardElement.buttonGroup(sessionButtons));
 
-            elements.add(CardElement.buttonGroup(
-                CardButton.primary("+ 新建会话", "wizard_new_session:" + project)
-            ));
+                elements.add(CardElement.buttonGroup(
+                    CardButton.primary("+ 新建会话", "wizard_new_session:" + project)
+                ));
+            }
 
             CardContent card = CardContent.builder()
                 .headerTitle("📋 会话列表 — " + project)
