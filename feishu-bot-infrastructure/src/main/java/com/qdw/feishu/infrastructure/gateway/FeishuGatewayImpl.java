@@ -441,9 +441,12 @@ public class FeishuGatewayImpl implements FeishuGateway {
                     } else {
                         return sendReplyToTopic(topicId, cardJson, "interactive");
                     }
-                } else {
+                } else if (message.getMessageId() != null && !message.getMessageId().isEmpty()) {
                     log.info("Creating new message with interactive card: messageId={}", message.getMessageId());
                     return sendReplyToMessage(message.getMessageId(), cardJson, "interactive");
+                } else {
+                    log.info("Sending interactive card to chat (no messageId): chatId={}", message.getChatId());
+                    return sendInteractiveToChat(message.getChatId(), cardJson);
                 }
             } catch (Exception e) {
                 log.error("Failed to send interactive message", e);
@@ -503,6 +506,41 @@ public class FeishuGatewayImpl implements FeishuGateway {
         log.info("Found thread root message: messageId={}", rootMessageId);
 
         return sendReplyToMessage(rootMessageId, content, msgType);
+    }
+
+    /**
+     * Send an interactive card directly to a chat (not as a reply).
+     * Used when messageId is unavailable (e.g., card button pseudo-messages).
+     */
+    private SendResult sendInteractiveToChat(String chatId, String cardJson) throws Exception {
+        log.info("Sending interactive card to chat: chatId={}", chatId);
+
+        return executeWithRetry("sendInteractiveToChat", () -> {
+            try {
+                CreateMessageReq req = CreateMessageReq.newBuilder()
+                    .receiveIdType("chat_id")
+                    .createMessageReqBody(CreateMessageReqBody.newBuilder()
+                        .receiveId(chatId)
+                        .msgType("interactive")
+                        .content(cardJson)
+                        .build())
+                    .build();
+
+                CreateMessageResp resp = httpClient.im().message().create(req);
+
+                if (resp.getCode() != 0) {
+                    log.error("Failed to send interactive card to chat: code={}, msg={}", resp.getCode(), resp.getMsg());
+                    throw new SysException("SEND_FAILED", resp.getMsg());
+                }
+
+                String returnedMessageId = resp.getData().getMessageId();
+                log.info("Interactive card sent to chat: messageId={}", returnedMessageId);
+                return SendResult.success(returnedMessageId);
+            } catch (Exception e) {
+                log.error("Exception sending interactive card to chat", e);
+                throw new SysException("SEND_ERROR", "send interactive card to chat failed", e);
+            }
+        });
     }
 
 }
