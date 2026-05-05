@@ -52,11 +52,9 @@ public class SessionsHandler implements SubCommandHandler {
             return AppExecutionResult.text(messageFormatter.buildNewCommandUsage(false));
         }
 
-        if (messageContext.isThreadContext()) {
-            AppExecutionResult cardResult = trySendSessionListCard(project, message, messageContext);
-            if (cardResult != null) {
-                return cardResult;
-            }
+        AppExecutionResult cardResult = trySendSessionListCard(project, message, messageContext);
+        if (cardResult != null) {
+            return cardResult;
         }
 
         return AppExecutionResult.text(sessionManager.handleSessionsCommand(parts));
