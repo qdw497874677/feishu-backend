@@ -76,7 +76,7 @@ public class SessionsHandler implements SubCommandHandler {
                 elements.add(CardElement.markdown(
                     "**" + project + "** 暂无会话记录\n\n使用下方按钮创建新会话，或 `/oc new " + project + " <问题>` 直接开始"));
                 elements.add(CardElement.buttonGroup(
-                    CardButton.primary("+ 新建会话", "wizard_new_session:" + project)
+                    CardButton.primary("+ 新建会话", "opencode wizard_new_session:" + project)
                 ));
             } else {
                 elements.add(CardElement.markdown("**" + project + "** 的最近会话："));
@@ -90,12 +90,12 @@ public class SessionsHandler implements SubCommandHandler {
                     if (label.length() > 40) {
                         label = label.substring(0, 37) + "...";
                     }
-                    sessionButtons.add(CardButton.defaults(label, "sc " + session.getSessionId()));
+                    sessionButtons.add(CardButton.defaults(label, "opencode sc " + session.getSessionId()));
                 }
                 elements.add(CardElement.buttonGroup(sessionButtons));
 
                 elements.add(CardElement.buttonGroup(
-                    CardButton.primary("+ 新建会话", "wizard_new_session:" + project)
+                    CardButton.primary("+ 新建会话", "opencode wizard_new_session:" + project)
                 ));
             }
 

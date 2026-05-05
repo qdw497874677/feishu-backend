@@ -968,6 +968,8 @@ class OpenCodeCommandHandlerTest {
 
         when(sessionManager.detectTopicState(any(MessageContext.class)))
             .thenReturn(ContextSessionState.UNBOUND);
+        when(openCodeGateway.listRecentSessionsStructured(eq("feishu-backend"), anyInt()))
+            .thenThrow(new RuntimeException("card not available"));
         when(sessionManager.handleSessionsCommand(any()))
             .thenReturn("📋 sessions text");
 
@@ -980,8 +982,7 @@ class OpenCodeCommandHandlerTest {
         );
 
         assertNotNull(result);
-        // non-topic: validator may block or fallback to text
-        // ensure sendInteractiveMessage was NOT called
+        // card rendering fails, ensure sendInteractiveMessage was NOT called
         verify(feishuGateway, never()).sendInteractiveMessage(any(), any(), any());
     }
 

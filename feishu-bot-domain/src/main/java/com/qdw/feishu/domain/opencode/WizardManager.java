@@ -153,7 +153,7 @@ public class WizardManager {
         List<CardButton> buttons = parseProjectsToButtons(projectsText);
 
         if (buttons.isEmpty()) {
-            buttons.add(CardButton.primary("feishu-backend", "wizard_select_project:feishu-backend"));
+            buttons.add(CardButton.primary("feishu-backend", "opencode wizard_select_project:feishu-backend"));
         }
 
         CardContent card = CardContent.builder()
@@ -162,7 +162,7 @@ public class WizardManager {
             .wideScreenMode(true)
             .addElement(CardElement.markdown("请选择一个项目开始："))
             .addElement(CardElement.buttonGroup(buttons))
-            .addElement(CardElement.buttonGroup(CardButton.defaults("❌ 取消", "wizard_cancel")))
+            .addElement(CardElement.buttonGroup(CardButton.defaults("❌ 取消", "opencode wizard_cancel")))
             .build();
 
         return WizardResult.of(card, WizardStep.SELECT_PROJECT);
@@ -174,6 +174,17 @@ public class WizardManager {
      * @return WizardResult，或 null 如果不是向导相关的 action
      */
     public WizardResult handleAction(String action, String chatId, String topicId) {
+        // wizard_new_session works with or without active wizard
+        if (action.startsWith("wizard_new_session:")) {
+            String project = action.substring("wizard_new_session:".length());
+            WizardState state = topicId != null ? activeWizards.get(topicId) : null;
+            if (state != null && state.isExpired(ttlMillis)) {
+                activeWizards.remove(topicId);
+                state = null;
+            }
+            return handleNewSession(state, project, chatId, topicId);
+        }
+
         WizardState state = activeWizards.get(topicId);
         if (state == null || state.isExpired(ttlMillis)) {
             activeWizards.remove(topicId);
@@ -215,6 +226,65 @@ public class WizardManager {
 
     // ============ 内部步骤处理 ============
 
+    /**
+     * 处理"新建会话"按钮：在指定项目中创建新会话。
+     *
+     * <p>两种场景：
+     * <ul>
+     *   <li>向导进行中：创建会话后跳转到确认步骤</li>
+     *   <li>无向导（直接从 sessions 卡片点击）：创建会话并自动绑定</li>
+     * </ul>
+     */
+    private WizardResult handleNewSession(WizardState state, String project, String chatId, String topicId) {
+        try {
+            String directory = "/root/workspace/" + project;
+            String sessionId = openCodeGateway.createSession(directory);
+
+            if (sessionId == null || sessionId.isEmpty()) {
+                return WizardResult.ofText("❌ 创建会话失败，请稍后重试。");
+            }
+
+            log.info("新建会话成功: project={}, sessionId={}, topicId={}", project, sessionId, topicId);
+
+            if (state != null) {
+                // Active wizard — set selected session and jump to confirm
+                state.selectedProject = project;
+                state.selectedSessionId = sessionId;
+                state.step = WizardStep.CONFIRM;
+
+                CardContent card = CardContent.builder()
+                    .headerTitle("✅ 第 3 步：确认绑定")
+                    .headerTemplate("green")
+                    .wideScreenMode(true)
+                    .addElement(CardElement.markdown(
+                        "已创建新会话，确认绑定到当前话题？\n\n"
+                        + "📁 **项目**: " + project + "\n"
+                        + "🆔 **新会话**: `" + sessionId + "`\n\n"
+                        + "绑定后，在此话题中输入任何文字都会发送给 OpenCode。"))
+                    .addElement(CardElement.buttonGroup(
+                        CardButton.primary("✅ 确认绑定", "opencode wizard_confirm"),
+                        CardButton.defaults("❌ 取消", "opencode wizard_cancel")
+                    ))
+                    .build();
+                return WizardResult.of(card, WizardStep.CONFIRM);
+            } else {
+                // No active wizard — bind directly
+                if (topicId != null && !topicId.isEmpty()) {
+                    ImContextRef contextRef = ImContextRef.feishuThread(topicId);
+                    sessionManager.saveSession(contextRef, sessionId);
+                    return WizardResult.completed(sessionId);
+                } else {
+                    return WizardResult.ofText(
+                        "✅ 已创建新会话 `" + sessionId + "`（项目: " + project + "）\n\n"
+                        + "💡 在话题中使用 `/oc sc " + sessionId + "` 绑定会话。");
+                }
+            }
+        } catch (Exception e) {
+            log.error("创建会话失败: project={}", project, e);
+            return WizardResult.ofText("❌ 创建会话失败：" + e.getMessage());
+        }
+    }
+
     private WizardResult handleSelectProject(WizardState state, String project) {
         state.selectedProject = project;
         state.step = WizardStep.SELECT_SESSION;
@@ -230,8 +300,8 @@ public class WizardManager {
             .addElement(CardElement.markdown("项目 **" + project + "** 的最近会话："))
             .addElement(CardElement.buttonGroup(buttons))
             .addElement(CardElement.buttonGroup(
-                CardButton.primary("+ 新建会话", "wizard_new_session:" + project),
-                CardButton.defaults("❌ 取消", "wizard_cancel")
+                CardButton.primary("+ 新建会话", "opencode wizard_new_session:" + project),
+                CardButton.defaults("❌ 取消", "opencode wizard_cancel")
             ))
             .build();
 
@@ -254,8 +324,8 @@ public class WizardManager {
                 + "绑定后，在此话题中输入任何文字都会发送给 OpenCode。"
             ))
             .addElement(CardElement.buttonGroup(
-                CardButton.primary("✅ 确认绑定", "wizard_confirm"),
-                CardButton.defaults("❌ 取消", "wizard_cancel")
+                CardButton.primary("✅ 确认绑定", "opencode wizard_confirm"),
+                CardButton.defaults("❌ 取消", "opencode wizard_cancel")
             ))
             .build();
 
@@ -297,7 +367,7 @@ public class WizardManager {
         while (matcher.find()) {
             String projectName = matcher.group(1).trim();
             if (!projectName.isEmpty() && !projectName.equals("OpenCode 项目列表")) {
-                buttons.add(CardButton.primary(projectName, "wizard_select_project:" + projectName));
+                buttons.add(CardButton.primary(projectName, "opencode wizard_select_project:" + projectName));
             }
         }
         return buttons;
@@ -318,7 +388,7 @@ public class WizardManager {
             String title = matcher.group(2).trim();
             String sessionId = matcher.group(3).trim();
             String label = title.length() > 30 ? title.substring(0, 27) + "..." : title;
-            buttons.add(CardButton.defaults(label, "wizard_select_session:" + sessionId));
+            buttons.add(CardButton.defaults(label, "opencode wizard_select_session:" + sessionId));
         }
         return buttons;
     }
