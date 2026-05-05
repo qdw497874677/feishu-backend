@@ -23,6 +23,7 @@ import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 import java.util.List;
 
@@ -36,11 +37,8 @@ import java.util.List;
 public class DomainServiceConfig {
 
     // ============ Config Properties ============
-
-    @Bean
-    public FeishuReplyProperties feishuReplyProperties() {
-        return new FeishuReplyPropertiesImpl();
-    }
+    // FeishuReplyProperties and CardProperties are registered via @Component
+    // on FeishuReplyPropertiesImpl / CardPropertiesImpl — no @Bean needed here.
 
     // ============ Core ============
 
@@ -129,7 +127,7 @@ public class DomainServiceConfig {
     }
 
     @Bean
-    public HelpApp helpApp(AppRegistry appRegistry,
+    public HelpApp helpApp(@Lazy AppRegistry appRegistry,
                             FeishuGateway feishuGateway,
                             CardRenderer cardRenderer) {
         return new HelpApp(appRegistry, feishuGateway, cardRenderer);

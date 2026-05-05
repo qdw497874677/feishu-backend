@@ -2,6 +2,7 @@ package com.qdw.feishu;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.data.jdbc.JdbcRepositoriesAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 
 /**
@@ -14,7 +15,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
  * - Infrastructure: 基础设施层，外部服务集成，数据访问
  */
 @SpringBootApplication(
-    exclude = {DataSourceAutoConfiguration.class},
+    exclude = {DataSourceAutoConfiguration.class, JdbcRepositoriesAutoConfiguration.class},
     scanBasePackages = {
         "com.qdw.feishu",
         "com.alibaba.cola",

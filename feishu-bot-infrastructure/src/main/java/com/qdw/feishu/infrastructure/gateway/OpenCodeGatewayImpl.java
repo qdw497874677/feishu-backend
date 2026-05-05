@@ -9,6 +9,7 @@ import com.qdw.feishu.infrastructure.gateway.opencode.OpenCodeHttpHelper;
 import com.qdw.feishu.infrastructure.gateway.opencode.ProjectApi;
 import com.qdw.feishu.infrastructure.gateway.opencode.SessionApi;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
@@ -30,6 +31,7 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     private final ChatApi chatApi;
     private final HealthApi healthApi;
 
+    @Autowired
     public OpenCodeGatewayImpl(OpenCodeProperties properties) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(properties.getConnectTimeout()))
