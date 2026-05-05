@@ -79,6 +79,13 @@ public class OpenCodeMessageAppService {
     }
 
     public boolean tryHandle(Message message, MessageContext messageContext) {
+        // Guard: In flat group chats (non-thread), only handle explicit /opencode commands.
+        // Plain text should NOT be intercepted — it should fall through to normal routing.
+        if (messageContext.isResolved() && messageContext.isChatContext()
+                && !isExplicitOpenCodeCommand(message)) {
+            return false;
+        }
+
         // UX-01: Synthesize plain text as /opencode chat command in initialized topics
         message = synthesizeCommandIfNeeded(message, messageContext);
 
