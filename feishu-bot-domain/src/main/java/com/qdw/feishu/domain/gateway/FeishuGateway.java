@@ -44,12 +44,12 @@ public interface FeishuGateway {
     SendResult sendInteractiveMessage(Message message, String cardJson, String topicId);
 
     /**
-     * 以话题回复方式发送卡片（replyInThread=true），创建新话题线程。
-     * 用于在扁平群聊中创建会话时自动建立话题。
+     * 发送交互式卡片作为新话题（不回复任何消息）。
+     * 在话题群中，新消息自动成为独立话题。
      *
-     * @param parentMessageId 要回复的父消息ID（卡片消息ID）
+     * @param chatId 群聊ID
      * @param cardJson 卡片JSON内容
      * @return 发送结果（含 threadId）
      */
-    SendResult sendCardAsThreadReply(String parentMessageId, String cardJson);
+    SendResult sendCardAsNewTopic(String chatId, String cardJson);
 }

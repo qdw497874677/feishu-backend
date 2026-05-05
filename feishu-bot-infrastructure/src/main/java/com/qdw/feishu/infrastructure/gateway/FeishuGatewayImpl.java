@@ -555,15 +555,34 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     @Override
-    public SendResult sendCardAsThreadReply(String parentMessageId, String cardJson) {
-        log.info("Sending card as thread reply (createTopic): parentMessageId={}", parentMessageId);
+    public SendResult sendCardAsNewTopic(String chatId, String cardJson) {
+        log.info("Sending card as new topic to chat: chatId={}", chatId);
 
-        return executeWithRetry("sendCardAsThreadReply", () -> {
+        return executeWithRetry("sendCardAsNewTopic", () -> {
             try {
-                return sendReplyToMessage(parentMessageId, cardJson, "interactive", true);
+                CreateMessageReq req = CreateMessageReq.newBuilder()
+                    .receiveIdType("chat_id")
+                    .createMessageReqBody(CreateMessageReqBody.newBuilder()
+                        .receiveId(chatId)
+                        .msgType("interactive")
+                        .content(cardJson)
+                        .build())
+                    .build();
+
+                CreateMessageResp resp = httpClient.im().message().create(req);
+
+                if (resp.getCode() != 0) {
+                    log.error("Failed to send card as new topic: code={}, msg={}", resp.getCode(), resp.getMsg());
+                    throw new SysException("SEND_FAILED", resp.getMsg());
+                }
+
+                String returnedMessageId = resp.getData().getMessageId();
+                String returnedThreadId = resp.getData().getThreadId();
+                log.info("Card sent as new topic: messageId={}, threadId={}", returnedMessageId, returnedThreadId);
+                return SendResult.success(returnedMessageId, returnedThreadId);
             } catch (Exception e) {
-                log.error("Failed to send card as thread reply", e);
-                throw new SysException("SEND_ERROR", "send card as thread reply failed", e);
+                log.error("Exception sending card as new topic", e);
+                throw new SysException("SEND_ERROR", "send card as new topic failed", e);
             }
         });
     }

@@ -106,8 +106,8 @@ public class DefaultHandler implements SubCommandHandler {
                 String cardJson = cardRenderer.render(wizardResult.getCardContent(), actionCtx);
 
                 if (topicId == null && message.getMessageId() != null) {
-                    // 扁平群聊 + 有卡片消息ID → 创建话题线程，自动绑定会话
-                    return createTopicAndBind(message.getMessageId(), cardJson, sessionId);
+                    // 扁平群聊 → 发送新卡片到群聊（话题群自动创建独立话题）
+                    return createTopicAndBind(message.getChatId(), cardJson, sessionId);
                 }
 
                 feishuGateway.sendInteractiveMessage(message, cardJson, topicId);
@@ -122,28 +122,28 @@ public class DefaultHandler implements SubCommandHandler {
     }
 
     /**
-     * 创建话题线程并绑定会话。
+     * 发送卡片到群聊创建新话题，并绑定会话。
      *
-     * <p>通过 replyInThread=true 回复卡片消息来创建话题，
-     * 然后将新会话绑定到创建的话题。
+     * <p>在话题群中，发送新消息自动创建独立话题（不回复任何卡片）。
+     * 如果响应包含 threadId，自动绑定会话到该话题。
      */
-    private AppExecutionResult createTopicAndBind(String parentMessageId, String cardJson, String sessionId) {
+    private AppExecutionResult createTopicAndBind(String chatId, String cardJson, String sessionId) {
         try {
-            log.info("创建话题线程并绑定会话: parentMessageId={}, sessionId={}", parentMessageId, sessionId);
-            SendResult result = feishuGateway.sendCardAsThreadReply(parentMessageId, cardJson);
+            log.info("发送卡片到群聊创建话题: chatId={}, sessionId={}", chatId, sessionId);
+            SendResult result = feishuGateway.sendCardAsNewTopic(chatId, cardJson);
 
             if (result.isSuccess() && result.getThreadId() != null) {
                 String newTopicId = result.getThreadId();
-                log.info("话题线程创建成功: threadId={}, 绑定会话: {}", newTopicId, sessionId);
+                log.info("话题创建成功: threadId={}, 绑定会话: {}", newTopicId, sessionId);
                 ImContextRef contextRef = ImContextRef.feishuThread(newTopicId);
                 sessionManager.saveSession(contextRef, sessionId);
                 return AppExecutionResult.withSession(null, sessionId, false);
             }
 
-            log.warn("话题创建返回 threadId 为空，降级为普通卡片发送: messageId={}", result.getMessageId());
+            log.info("群聊非话题模式或 threadId 为空，卡片已发送: messageId={}", result.getMessageId());
             return AppExecutionResult.withSession(null, sessionId, false);
         } catch (Exception e) {
-            log.error("创建话题线程失败，降级: {}", e.getMessage());
+            log.error("发送卡片创建话题失败: {}", e.getMessage());
             return AppExecutionResult.withSession(null, sessionId, false);
         }
     }

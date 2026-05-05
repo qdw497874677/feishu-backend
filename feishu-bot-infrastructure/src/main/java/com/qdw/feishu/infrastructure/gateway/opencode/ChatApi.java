@@ -174,6 +174,19 @@ public class ChatApi {
 
         try {
             JsonNode json = httpHelper.getObjectMapper().readTree(jsonResponse);
+
+            // 检查 OpenCode 服务端错误（如 info.error）
+            if (json.has("info") && json.get("info").has("error")) {
+                JsonNode error = json.get("info").get("error");
+                String errorName = error.has("name") ? error.get("name").asText() : "UnknownError";
+                String errorMsg = "";
+                if (error.has("data") && error.get("data").has("message")) {
+                    errorMsg = error.get("data").get("message").asText();
+                }
+                log.warn("OpenCode 服务返回错误: {} - {}", errorName, errorMsg);
+                return "⚠️ OpenCode 处理失败: " + (errorMsg.isEmpty() ? errorName : errorMsg);
+            }
+
             StringBuilder textContent = new StringBuilder();
 
             if (json.has("parts") && json.get("parts").isArray()) {
@@ -203,8 +216,8 @@ public class ChatApi {
 
             String result = textContent.toString().trim();
             if (result.isEmpty()) {
-                log.warn("响应解析成功，但无文本内容");
-                return "✅ 命令已执行，但无返回内容";
+                log.warn("响应解析成功，但无文本内容: parts={}", json.has("parts") ? json.get("parts").size() : "none");
+                return "⚠️ OpenCode 返回空内容，请稍后重试";
             }
 
             log.info("成功提取文本内容，长度: {}", result.length());
