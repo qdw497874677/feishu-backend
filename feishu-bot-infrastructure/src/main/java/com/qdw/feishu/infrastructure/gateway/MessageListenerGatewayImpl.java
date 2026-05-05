@@ -193,12 +193,19 @@ public class MessageListenerGatewayImpl implements MessageListenerGateway {
             String topicId = context.getTopicId();
             message.setTopicId(topicId);
 
+            // messageId：从 event context 提取卡片消息 ID（用于创建话题线程）
+            String cardMessageId = null;
+            if (event.getEvent().getContext() != null) {
+                cardMessageId = event.getEvent().getContext().getOpenMessageId();
+            }
+            message.setMessageId(cardMessageId);
+
             // cardToken：从 event header 提取（用于更新原卡片）
             String cardToken = extractCardToken(event);
             message.setCardToken(cardToken);
 
-            log.info("卡片伪消息构造完成: chatId={}, topicId={}, cardToken={}",
-                chatId, topicId, cardToken != null ? "present" : "null");
+            log.info("卡片伪消息构造完成: chatId={}, topicId={}, messageId={}, cardToken={}",
+                chatId, topicId, cardMessageId, cardToken != null ? "present" : "null");
 
             if (messageHandler != null) {
                 messageHandler.accept(message);

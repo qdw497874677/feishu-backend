@@ -56,7 +56,7 @@ public class OpenCodeCommandHandler {
 
         this.handlers = buildHandlerMap(openCodeGateway, taskExecutor, sessionManager, messageFormatter,
             cardRenderer, feishuGateway, wizardManager);
-        this.defaultHandler = new DefaultHandler(messageFormatter, wizardManager, cardRenderer, feishuGateway);
+        this.defaultHandler = new DefaultHandler(messageFormatter, wizardManager, cardRenderer, feishuGateway, sessionManager);
     }
 
     private static Map<String, SubCommandHandler> buildHandlerMap(

@@ -554,4 +554,18 @@ public class FeishuGatewayImpl implements FeishuGateway {
         });
     }
 
+    @Override
+    public SendResult sendCardAsThreadReply(String parentMessageId, String cardJson) {
+        log.info("Sending card as thread reply (createTopic): parentMessageId={}", parentMessageId);
+
+        return executeWithRetry("sendCardAsThreadReply", () -> {
+            try {
+                return sendReplyToMessage(parentMessageId, cardJson, "interactive", true);
+            } catch (Exception e) {
+                log.error("Failed to send card as thread reply", e);
+                throw new SysException("SEND_ERROR", "send card as thread reply failed", e);
+            }
+        });
+    }
+
 }
