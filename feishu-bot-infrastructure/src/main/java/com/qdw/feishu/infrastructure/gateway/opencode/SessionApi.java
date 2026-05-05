@@ -22,9 +22,15 @@ import java.util.List;
 public class SessionApi {
 
     private final OpenCodeHttpHelper httpHelper;
+    private final ProjectApi projectApi;
 
     public SessionApi(OpenCodeHttpHelper httpHelper) {
+        this(httpHelper, null);
+    }
+
+    public SessionApi(OpenCodeHttpHelper httpHelper, ProjectApi projectApi) {
         this.httpHelper = httpHelper;
+        this.projectApi = projectApi;
     }
 
     /**
@@ -155,6 +161,9 @@ public class SessionApi {
      * 获取项目的最近会话列表（结构化数据）
      */
     public List<SessionInfo> listRecentSessionsStructured(String project, int limit) {
+        // Resolve project name → projectID for accurate matching
+        String projectId = resolveProjectId(project);
+
         return httpHelper.executeWithRetry("listRecentSessionsStructured", () -> {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
@@ -167,7 +176,7 @@ public class SessionApi {
                         HttpResponse.BodyHandlers.ofString());
 
                 if (response.statusCode() == 200) {
-                    return parseSessionsStructured(response.body(), project, limit);
+                    return parseSessionsStructured(response.body(), project, projectId, limit);
                 } else {
                     log.error("获取会话列表失败: status={}", response.statusCode());
                     return List.of();
@@ -210,7 +219,7 @@ public class SessionApi {
 
     // ============ 私有格式化方法 ============
 
-    private List<SessionInfo> parseSessionsStructured(String jsonResponse, String project, int limit) {
+    private List<SessionInfo> parseSessionsStructured(String jsonResponse, String project, String projectId, int limit) {
         try {
             JsonNode json = httpHelper.getObjectMapper().readTree(jsonResponse);
             if (!json.isArray() || json.size() == 0) {
@@ -219,7 +228,7 @@ public class SessionApi {
 
             List<SessionInfo> result = new ArrayList<>();
             for (JsonNode session : json) {
-                if (!isSessionBelongToProject(session, project)) {
+                if (!isSessionBelongToProject(session, project, projectId)) {
                     continue;
                 }
 
@@ -340,29 +349,105 @@ public class SessionApi {
         }
     }
 
-    private boolean isSessionBelongToProject(JsonNode session, String project) {
-        if (session.has("title") && !session.get("title").isNull()) {
-            String title = session.get("title").asText().toLowerCase();
-            if (title.contains(project.toLowerCase())) {
+    /**
+     * Match session to project using projectID (exact) or directory/worktree/title (fuzzy).
+     * OpenCode session API returns: projectID, directory, path — NOT worktree/project.
+     */
+    private boolean isSessionBelongToProject(JsonNode session, String projectName, String projectId) {
+        // 1. Exact projectID match (most accurate)
+        if (projectId != null && session.has("projectID")) {
+            if (projectId.equals(session.get("projectID").asText())) {
                 return true;
             }
         }
 
-        if (session.has("project")) {
-            String sessionProject = session.get("project").asText();
-            if (sessionProject.equalsIgnoreCase(project)) {
+        // 2. Directory field match (sessions use "directory", not "worktree")
+        if (session.has("directory")) {
+            String directory = session.get("directory").asText();
+            if (directory.toLowerCase().contains(projectName.toLowerCase())) {
                 return true;
             }
         }
 
+        // 3. Worktree field match (for backwards compatibility)
         if (session.has("worktree")) {
             String worktree = session.get("worktree").asText();
-            if (worktree.toLowerCase().contains(project.toLowerCase())) {
+            if (worktree.toLowerCase().contains(projectName.toLowerCase())) {
+                return true;
+            }
+        }
+
+        // 4. Project field match
+        if (session.has("project")) {
+            String sessionProject = session.get("project").asText();
+            if (sessionProject.equalsIgnoreCase(projectName)) {
+                return true;
+            }
+        }
+
+        // 5. Title fuzzy match
+        if (session.has("title") && !session.get("title").isNull()) {
+            String title = session.get("title").asText().toLowerCase();
+            if (title.contains(projectName.toLowerCase())) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Resolve project name to projectID via project API.
+     */
+    private String resolveProjectId(String projectName) {
+        if (projectApi == null) {
+            return null;
+        }
+        try {
+            return projectApi.listProjectsStructured().stream()
+                    .filter(p -> p.getName().equalsIgnoreCase(projectName)
+                            || p.getPath().toLowerCase().endsWith("/" + projectName.toLowerCase()))
+                    .map(p -> {
+                        // Fetch project list raw to get ID — use structured data
+                        // ProjectInfo doesn't have ID, need to get it from raw API
+                        return resolveProjectIdFromRaw(projectName);
+                    })
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception e) {
+            log.debug("Failed to resolve projectID for {}: {}", projectName, e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveProjectIdFromRaw(String projectName) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(httpHelper.getServerUrl() + "/project"))
+                    .header("Authorization", httpHelper.getAuthHeader())
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpHelper.getHttpClient().send(request,
+                    HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                JsonNode json = httpHelper.getObjectMapper().readTree(response.body());
+                if (json.isArray()) {
+                    for (JsonNode project : json) {
+                        String worktree = project.has("worktree") ? project.get("worktree").asText() : "";
+                        String name = worktree.isEmpty() ? "" : worktree.substring(worktree.lastIndexOf('/') + 1);
+                        if (name.equalsIgnoreCase(projectName)) {
+                            return project.has("id") ? project.get("id").asText() : null;
+                        }
+                    }
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            log.debug("Failed to resolve projectID from raw API: {}", e.getMessage());
+            return null;
+        }
     }
 
     private String formatTimestamp(long timestamp) {

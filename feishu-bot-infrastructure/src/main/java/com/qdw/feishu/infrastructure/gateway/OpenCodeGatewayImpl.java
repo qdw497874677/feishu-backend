@@ -40,8 +40,8 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
 
         OpenCodeHttpHelper httpHelper = new OpenCodeHttpHelper(properties, httpClient);
 
-        this.sessionApi = new SessionApi(httpHelper);
         this.projectApi = new ProjectApi(httpHelper);
+        this.sessionApi = new SessionApi(httpHelper, projectApi);
         this.chatApi = new ChatApi(httpHelper);
         this.healthApi = new HealthApi(httpHelper);
 
