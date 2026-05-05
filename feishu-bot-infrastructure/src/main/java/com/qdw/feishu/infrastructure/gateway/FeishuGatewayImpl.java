@@ -456,7 +456,18 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     private SendResult sendReplyToMessage(String messageId, String content, String msgType) throws Exception {
-        log.info("Replying to message: {} with msgType: {}", messageId, msgType);
+        return sendReplyToMessage(messageId, content, msgType, false);
+    }
+
+    /**
+     * Reply to a message with specified msgType and replyInThread flag.
+     *
+     * @param replyInThread true to reply inside the topic thread (visible in thread view),
+     *                      false to reply under the root message only
+     */
+    private SendResult sendReplyToMessage(String messageId, String content, String msgType,
+                                           boolean replyInThread) throws Exception {
+        log.info("Replying to message: {} with msgType: {}, replyInThread: {}", messageId, msgType, replyInThread);
         if ("interactive".equals(msgType)) {
             log.info("Interactive card JSON: {}", content);
         }
@@ -468,7 +479,7 @@ public class FeishuGatewayImpl implements FeishuGateway {
                     .replyMessageReqBody(ReplyMessageReqBody.newBuilder()
                         .content(content)
                         .msgType(msgType)
-                        .replyInThread(false)
+                        .replyInThread(replyInThread)
                         .build())
                     .build();
 
@@ -505,7 +516,7 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
         log.info("Found thread root message: messageId={}", rootMessageId);
 
-        return sendReplyToMessage(rootMessageId, content, msgType);
+        return sendReplyToMessage(rootMessageId, content, msgType, true);
     }
 
     /**
