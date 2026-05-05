@@ -67,11 +67,16 @@ public class BotMessageService {
 
     private BotRoutingDecision routeImplicitMessage(MessageContext messageContext) {
         if (!messageContext.isResolved()) {
-            // Fallback: try resolving from scratch (unresolved context)
             return routeToHelp();
         }
 
         if (!messageContext.isBound()) {
+            return routeToHelp();
+        }
+
+        // Chat-level (flat group) context: plain text should show help, not route to bound app.
+        // Only thread/topic contexts use binding for implicit routing.
+        if (messageContext.isChatContext()) {
             return routeToHelp();
         }
 
