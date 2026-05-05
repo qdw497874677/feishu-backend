@@ -2,6 +2,7 @@ package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
+import com.qdw.feishu.domain.card.CardActionContext;
 import com.qdw.feishu.domain.card.CardButton;
 import com.qdw.feishu.domain.card.CardContent;
 import com.qdw.feishu.domain.card.CardElement;
@@ -255,7 +256,11 @@ public class OpenCodeApp implements FishuAppI {
                 return AppExecutionResult.text("📁 暂无项目记录");
             }
 
-            String cardJson = buildProjectsCardJson(projects);
+            CardActionContext ctx = CardActionContext.builder()
+                    .chatId(message.getChatId())
+                    .topicId(message.getTopicId())
+                    .build();
+            String cardJson = buildProjectsCardJson(projects, ctx);
             feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
             return AppExecutionResult.text(null);  // 卡片已发送，跳过文本回复
         } catch (Exception e) {
@@ -268,7 +273,7 @@ public class OpenCodeApp implements FishuAppI {
      * 构建项目列表卡片 JSON。
      * 每个项目一个按钮，点击触发 `/opencode sessions <项目名>`。
      */
-    private String buildProjectsCardJson(List<ProjectInfo> projects) {
+    private String buildProjectsCardJson(List<ProjectInfo> projects, CardActionContext context) {
         List<CardButton> buttons = projects.stream()
                 .map(p -> CardButton.builder()
                         .label("📁 " + p.getName())
@@ -286,6 +291,6 @@ public class OpenCodeApp implements FishuAppI {
                 .addElement(CardElement.buttonGroup(buttons))
                 .build();
 
-        return cardRenderer.render(card, null);
+        return cardRenderer.render(card, context);
     }
 }
