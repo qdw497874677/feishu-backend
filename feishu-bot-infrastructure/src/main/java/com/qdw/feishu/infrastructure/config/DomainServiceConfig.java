@@ -213,7 +213,9 @@ public class DomainServiceConfig {
     @Bean
     public OpenCodeApp openCodeApp(OpenCodeGateway openCodeGateway,
                                     OpenCodeCommandHandler commandHandler,
-                                    OpenCodeSessionManager sessionManager) {
-        return new OpenCodeApp(openCodeGateway, commandHandler, sessionManager);
+                                    OpenCodeSessionManager sessionManager,
+                                    FeishuGateway feishuGateway,
+                                    CardRenderer cardRenderer) {
+        return new OpenCodeApp(openCodeGateway, commandHandler, sessionManager, feishuGateway, cardRenderer);
     }
 }

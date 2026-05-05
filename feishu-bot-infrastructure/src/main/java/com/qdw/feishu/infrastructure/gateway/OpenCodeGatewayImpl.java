@@ -1,6 +1,7 @@
 package com.qdw.feishu.infrastructure.gateway;
 
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
+import com.qdw.feishu.domain.opencode.ProjectInfo;
 import com.qdw.feishu.domain.opencode.SessionInfo;
 import com.qdw.feishu.infrastructure.config.OpenCodeProperties;
 import com.qdw.feishu.infrastructure.gateway.opencode.ChatApi;
@@ -89,6 +90,11 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     @Override
     public String listProjects() {
         return projectApi.listProjects();
+    }
+
+    @Override
+    public List<ProjectInfo> listProjectsStructured() {
+        return projectApi.listProjectsStructured();
     }
 
     @Override

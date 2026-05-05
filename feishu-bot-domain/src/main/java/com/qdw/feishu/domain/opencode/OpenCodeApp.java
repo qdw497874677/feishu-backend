@@ -2,12 +2,17 @@ package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
 import com.qdw.feishu.domain.app.FishuAppI;
+import com.qdw.feishu.domain.card.CardButton;
+import com.qdw.feishu.domain.card.CardContent;
+import com.qdw.feishu.domain.card.CardElement;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.core.ReplyMode;
+import com.qdw.feishu.domain.gateway.CardRenderer;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.model.MessageContext;
+import com.qdw.feishu.domain.opencode.ProjectInfo;
 import com.qdw.feishu.domain.topic.TopicCommandValidator;
 import com.qdw.feishu.domain.session.ContextSessionState;
 import lombok.extern.slf4j.Slf4j;
@@ -26,13 +31,19 @@ public class OpenCodeApp implements FishuAppI {
     private final OpenCodeGateway openCodeGateway;
     private final OpenCodeCommandHandler commandHandler;
     private final OpenCodeSessionManager sessionManager;
+    private final FeishuGateway feishuGateway;
+    private final CardRenderer cardRenderer;
 
     public OpenCodeApp(OpenCodeGateway openCodeGateway,
                        OpenCodeCommandHandler commandHandler,
-                       OpenCodeSessionManager sessionManager) {
+                       OpenCodeSessionManager sessionManager,
+                       FeishuGateway feishuGateway,
+                       CardRenderer cardRenderer) {
         this.openCodeGateway = openCodeGateway;
         this.commandHandler = commandHandler;
         this.sessionManager = sessionManager;
+        this.feishuGateway = feishuGateway;
+        this.cardRenderer = cardRenderer;
     }
 
     @Override
@@ -216,6 +227,11 @@ public class OpenCodeApp implements FishuAppI {
             return AppExecutionResult.text(getHelp());
         }
 
+        // projects 命令：尝试发送卡片，降级为文本
+        if (subCommand.equals("projects") || subCommand.equals("p")) {
+            return trySendProjectsCard(message);
+        }
+
         // 委托给命令处理器（传递白名单确保一致性）— use MessageContext overloads
         ContextSessionState state = sessionManager.detectTopicState(messageContext);
         CommandWhitelist whitelist = getCommandWhitelist(state);
@@ -227,5 +243,49 @@ public class OpenCodeApp implements FishuAppI {
         // 如果处理器返回 null，说明是需要进一步处理的情况
         log.warn("命令处理器返回 null: subCommand={}", subCommand);
         return AppExecutionResult.text(getHelp());
+    }
+
+    /**
+     * 尝试发送项目列表卡片。失败时降级为纯文本。
+     */
+    private AppExecutionResult trySendProjectsCard(Message message) {
+        try {
+            List<ProjectInfo> projects = openCodeGateway.listProjectsStructured();
+            if (projects.isEmpty()) {
+                return AppExecutionResult.text("📁 暂无项目记录");
+            }
+
+            String cardJson = buildProjectsCardJson(projects);
+            feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
+            return AppExecutionResult.text(null);  // 卡片已发送，跳过文本回复
+        } catch (Exception e) {
+            log.warn("项目卡片发送失败，降级为文本: {}", e.getMessage());
+            return AppExecutionResult.text(openCodeGateway.listProjects());
+        }
+    }
+
+    /**
+     * 构建项目列表卡片 JSON。
+     * 每个项目一个按钮，点击触发 `/opencode sessions <项目名>`。
+     */
+    private String buildProjectsCardJson(List<ProjectInfo> projects) {
+        List<CardButton> buttons = projects.stream()
+                .map(p -> CardButton.builder()
+                        .label("📁 " + p.getName())
+                        .action("opencode sessions " + p.getName())
+                        .style("default")
+                        .build())
+                .collect(java.util.stream.Collectors.toList());
+
+        CardContent card = CardContent.builder()
+                .headerTitle("📁 OpenCode 项目列表")
+                .headerTemplate("turquoise")
+                .wideScreenMode(true)
+                .addElement(CardElement.markdown(
+                        "共 " + projects.size() + " 个项目，点击查看会话列表"))
+                .addElement(CardElement.buttonGroup(buttons))
+                .build();
+
+        return cardRenderer.render(card, null);
     }
 }

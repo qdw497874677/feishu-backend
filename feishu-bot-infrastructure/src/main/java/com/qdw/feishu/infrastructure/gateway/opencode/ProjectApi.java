@@ -1,6 +1,7 @@
 package com.qdw.feishu.infrastructure.gateway.opencode;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qdw.feishu.domain.opencode.ProjectInfo;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
@@ -47,6 +48,31 @@ public class ProjectApi {
                 return "❌ 获取项目列表失败: " + e.getMessage();
             }
         });
+    }
+
+    /**
+     * 列出所有项目（结构化数据，用于卡片渲染）
+     */
+    public java.util.List<ProjectInfo> listProjectsStructured() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(httpHelper.getServerUrl() + "/project"))
+                    .header("Authorization", httpHelper.getAuthHeader())
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpHelper.getHttpClient().send(request,
+                    HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                return parseProjectList(response.body());
+            }
+            log.warn("获取项目列表失败: status={}", response.statusCode());
+            return java.util.Collections.emptyList();
+        } catch (Exception e) {
+            log.error("列出项目失败", e);
+            return java.util.Collections.emptyList();
+        }
     }
 
     /**
@@ -129,6 +155,33 @@ public class ProjectApi {
         }
 
         return "未命名项目";
+    }
+
+    private java.util.List<ProjectInfo> parseProjectList(String jsonResponse) {
+        try {
+            JsonNode json = httpHelper.getObjectMapper().readTree(jsonResponse);
+            if (!json.isArray()) {
+                return java.util.Collections.emptyList();
+            }
+
+            java.util.List<ProjectInfo> projects = new java.util.ArrayList<>();
+            for (int i = 0; i < json.size() && i < 15; i++) {
+                JsonNode project = json.get(i);
+                String worktree = project.has("worktree") ? project.get("worktree").asText() : "";
+                String vcs = project.has("vcs") ? project.get("vcs").asText() : null;
+                String name = extractProjectName(worktree);
+
+                projects.add(ProjectInfo.builder()
+                        .name(name)
+                        .path(worktree)
+                        .vcs(vcs)
+                        .build());
+            }
+            return projects;
+        } catch (Exception e) {
+            log.error("解析项目列表失败", e);
+            return java.util.Collections.emptyList();
+        }
     }
 
     private String formatCommandList(String jsonResponse) {

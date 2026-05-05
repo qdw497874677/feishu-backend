@@ -1,12 +1,15 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
+import com.qdw.feishu.domain.gateway.CardRenderer;
+import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.Sender;
 import com.qdw.feishu.domain.core.ReplyMode;
 import com.qdw.feishu.domain.command.CommandWhitelist;
 import com.qdw.feishu.domain.model.MessageContext;
+import com.qdw.feishu.domain.opencode.ProjectInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +22,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import com.qdw.feishu.domain.session.ContextSessionState;
@@ -39,11 +43,17 @@ class OpenCodeAppTest {
     @Mock
     private OpenCodeSessionManager sessionManager;
 
+    @Mock
+    private FeishuGateway feishuGateway;
+
+    @Mock
+    private CardRenderer cardRenderer;
+
     private OpenCodeApp app;
 
     @BeforeEach
     void setUp() {
-        app = new OpenCodeApp(openCodeGateway, commandHandler, sessionManager);
+        app = new OpenCodeApp(openCodeGateway, commandHandler, sessionManager, feishuGateway, cardRenderer);
 
         // 默认 mock 设置 - detectTopicState 返回 INITIALIZED 状态 (both overloads)
         when(sessionManager.detectTopicState(any(Message.class)))
@@ -243,19 +253,21 @@ class OpenCodeAppTest {
     }
 
     @Test
-    @DisplayName("execute - projects 命令应委托给 handler")
-    void execute_projectsCommand_delegatesToHandler() {
+    @DisplayName("execute - projects 命令应发送卡片")
+    void execute_projectsCommand_sendsCard() {
         String topicId = "test-topic";
-        String expectedResponse = "项目列表";
         Message message = createTestMessage("/opencode projects", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any(), any(), any(MessageContext.class)))
-            .thenReturn(AppExecutionResult.text(expectedResponse));
+        List<ProjectInfo> projects = List.of(
+                ProjectInfo.builder().name("test-project").path("/tmp/test-project").build()
+        );
+        when(openCodeGateway.listProjectsStructured()).thenReturn(projects);
+        when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
 
-        String result = app.execute(message).getReplyContent();
+        AppExecutionResult result = app.execute(message);
 
-        assertEquals(expectedResponse, result);
-        verify(commandHandler).handle(eq(message), eq("projects"), any(), any(), any(MessageContext.class));
+        assertNull(result.getReplyContent(), "卡片已直接发送，文本回复应为 null");
+        verify(feishuGateway).sendInteractiveMessage(eq(message), anyString(), eq(topicId));
     }
 
     @Test
@@ -322,31 +334,36 @@ class OpenCodeAppTest {
     @DisplayName("execute - 命令大小写不敏感")
     void execute_commandCaseInsensitive() {
         String topicId = "test-topic";
-        String expectedResponse = "响应";
         Message message = createTestMessage("/opencode PROJECTS", topicId);
 
-        when(commandHandler.handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class), any(MessageContext.class)))
-            .thenReturn(AppExecutionResult.text(expectedResponse));
+        List<ProjectInfo> projects = List.of(
+                ProjectInfo.builder().name("test-project").path("/tmp/test").build()
+        );
+        when(openCodeGateway.listProjectsStructured()).thenReturn(projects);
+        when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
 
-        String result = app.execute(message).getReplyContent();
+        AppExecutionResult result = app.execute(message);
 
-        assertEquals(expectedResponse, result);
-        verify(commandHandler).handle(any(Message.class), eq("projects"), any(String[].class), any(CommandWhitelist.class), any(MessageContext.class));
+        assertNull(result.getReplyContent(), "PROJECTS 降级为 projects，应发送卡片");
+        verify(feishuGateway).sendInteractiveMessage(eq(message), anyString(), eq(topicId));
     }
 
     @Test
     @DisplayName("execute - 多余空格应被正确处理")
     void execute_extraSpacesHandled() {
         String topicId = "test-topic";
-        String expectedResponse = "响应";
         Message message = createTestMessage("/opencode   projects   ", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any(), any(), any(MessageContext.class)))
-            .thenReturn(AppExecutionResult.text(expectedResponse));
+        List<ProjectInfo> projects = List.of(
+                ProjectInfo.builder().name("test-project").path("/tmp/test").build()
+        );
+        when(openCodeGateway.listProjectsStructured()).thenReturn(projects);
+        when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
 
-        String result = app.execute(message).getReplyContent();
+        AppExecutionResult result = app.execute(message);
 
-        assertEquals(expectedResponse, result);
+        assertNull(result.getReplyContent(), "多余空格的 projects 应发送卡片");
+        verify(feishuGateway).sendInteractiveMessage(eq(message), anyString(), eq(topicId));
     }
 
     @Test
@@ -373,14 +390,17 @@ class OpenCodeAppTest {
     @DisplayName("execute - 内容应被 trim")
     void execute_contentIsTrimmed() {
         String topicId = "test-topic";
-        String expectedResponse = "响应";
         Message message = createTestMessage("  /opencode projects  ", topicId);
 
-        when(commandHandler.handle(eq(message), eq("projects"), any(), any(), any(MessageContext.class)))
-            .thenReturn(AppExecutionResult.text(expectedResponse));
+        List<ProjectInfo> projects = List.of(
+                ProjectInfo.builder().name("test-project").path("/tmp/test").build()
+        );
+        when(openCodeGateway.listProjectsStructured()).thenReturn(projects);
+        when(cardRenderer.render(any(), any())).thenReturn("{\"schema\":\"2.0\"}");
 
-        String result = app.execute(message).getReplyContent();
+        AppExecutionResult result = app.execute(message);
 
-        assertEquals(expectedResponse, result);
+        assertNull(result.getReplyContent(), "trim 后的 projects 应发送卡片");
+        verify(feishuGateway).sendInteractiveMessage(eq(message), anyString(), eq(topicId));
     }
 }

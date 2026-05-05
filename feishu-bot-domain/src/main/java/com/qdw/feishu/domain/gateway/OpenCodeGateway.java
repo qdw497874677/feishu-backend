@@ -1,5 +1,6 @@
 package com.qdw.feishu.domain.gateway;
 
+import com.qdw.feishu.domain.opencode.ProjectInfo;
 import com.qdw.feishu.domain.opencode.SessionInfo;
 
 import java.util.List;
@@ -72,6 +73,15 @@ public interface OpenCodeGateway {
      * @return 格式化的项目列表
      */
     String listProjects();
+
+    /**
+     * 获取项目列表（结构化数据）。
+     *
+     * 用于卡片渲染，返回解析后的项目对象列表而非纯文本。
+     *
+     * @return 结构化项目列表（空列表表示无项目）
+     */
+    List<ProjectInfo> listProjectsStructured();
 
     /**
      * 列出所有斜杠命令
