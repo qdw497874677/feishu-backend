@@ -69,7 +69,7 @@ public class SessionsHandler implements SubCommandHandler {
         try {
             List<SessionInfo> sessions = openCodeGateway.listRecentSessionsStructured(project, 10);
 
-            CardActionContext actionCtx = CardActionContext.from(messageContext);
+            CardActionContext actionCtx = buildActionContext(message, messageContext);
             List<CardElement> elements = new ArrayList<>();
 
             if (sessions.isEmpty()) {
@@ -114,5 +114,23 @@ public class SessionsHandler implements SubCommandHandler {
             log.warn("卡片会话列表渲染失败，降级为文本: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 构建卡片按钮上下文，确保 topicId 和 chatId 都被正确设置。
+     *
+     * <p>CardActionContext.from(messageContext) 在某些场景下可能丢失 topicId
+     * （例如 contextRef 类型判断逻辑），此方法显式从 message 补充。
+     */
+    private CardActionContext buildActionContext(Message message, MessageContext messageContext) {
+        CardActionContext ctx = CardActionContext.from(messageContext);
+        String chatId = ctx.getChatId() != null ? ctx.getChatId() : message.getChatId();
+        String topicId = ctx.getTopicId() != null ? ctx.getTopicId() : message.getTopicId();
+        String sessionId = ctx.getSessionId();
+        return CardActionContext.builder()
+            .chatId(chatId)
+            .topicId(topicId)
+            .sessionId(sessionId)
+            .build();
     }
 }

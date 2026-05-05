@@ -234,6 +234,9 @@ public class WizardManager {
      *   <li>向导进行中：创建会话后跳转到确认步骤</li>
      *   <li>无向导（直接从 sessions 卡片点击）：创建会话并自动绑定</li>
      * </ul>
+     *
+     * <p>所有场景都返回卡片（CardContent），不返回纯文本，
+     * 以避免 prependStatusIndicator 追加"未绑定会话"状态行。
      */
     private WizardResult handleNewSession(WizardState state, String project, String chatId, String topicId) {
         try {
@@ -241,7 +244,7 @@ public class WizardManager {
             String sessionId = openCodeGateway.createSession(directory);
 
             if (sessionId == null || sessionId.isEmpty()) {
-                return WizardResult.ofText("❌ 创建会话失败，请稍后重试。");
+                return WizardResult.of(buildErrorCard("创建会话失败", "请稍后重试。"), WizardStep.INACTIVE);
             }
 
             log.info("新建会话成功: project={}, sessionId={}, topicId={}", project, sessionId, topicId);
@@ -267,22 +270,37 @@ public class WizardManager {
                     ))
                     .build();
                 return WizardResult.of(card, WizardStep.CONFIRM);
+            } else if (topicId != null && !topicId.isEmpty()) {
+                // Has topic — auto-bind and show success card
+                ImContextRef contextRef = ImContextRef.feishuThread(topicId);
+                sessionManager.saveSession(contextRef, sessionId);
+                return WizardResult.completed(sessionId);
             } else {
-                // No active wizard — bind directly
-                if (topicId != null && !topicId.isEmpty()) {
-                    ImContextRef contextRef = ImContextRef.feishuThread(topicId);
-                    sessionManager.saveSession(contextRef, sessionId);
-                    return WizardResult.completed(sessionId);
-                } else {
-                    return WizardResult.ofText(
-                        "✅ 已创建新会话 `" + sessionId + "`（项目: " + project + "）\n\n"
-                        + "💡 在话题中使用 `/oc sc " + sessionId + "` 绑定会话。");
-                }
+                // No topic — show info card (no binding hint)
+                CardContent card = CardContent.builder()
+                    .headerTitle("✅ 会话已创建")
+                    .headerTemplate("green")
+                    .wideScreenMode(true)
+                    .addElement(CardElement.markdown(
+                        "已在项目 **" + project + "** 创建新会话\n\n"
+                        + "🆔 **会话ID**: `" + sessionId + "`\n\n"
+                        + "💬 在话题中使用 `/oc chatnow <问题>` 开始对话"))
+                    .build();
+                return new WizardResult(card, null, WizardStep.COMPLETED, true, sessionId);
             }
         } catch (Exception e) {
             log.error("创建会话失败: project={}", project, e);
-            return WizardResult.ofText("❌ 创建会话失败：" + e.getMessage());
+            return WizardResult.of(buildErrorCard("创建会话失败", e.getMessage()), WizardStep.INACTIVE);
         }
+    }
+
+    private static CardContent buildErrorCard(String title, String detail) {
+        return CardContent.builder()
+            .headerTitle("❌ " + title)
+            .headerTemplate("red")
+            .wideScreenMode(true)
+            .addElement(CardElement.markdown(detail != null ? detail : "请稍后重试。"))
+            .build();
     }
 
     private WizardResult handleSelectProject(WizardState state, String project) {
