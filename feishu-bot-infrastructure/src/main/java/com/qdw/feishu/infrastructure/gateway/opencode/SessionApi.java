@@ -166,8 +166,11 @@ public class SessionApi {
 
         return httpHelper.executeWithRetry("listRecentSessionsStructured", () -> {
             try {
+                String directory = "/root/workspace/" + project;
+                String url = httpHelper.getServerUrl() + "/session?directory="
+                        + URLEncoder.encode(directory, StandardCharsets.UTF_8);
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(httpHelper.getServerUrl() + "/session"))
+                        .uri(URI.create(url))
                         .header("Authorization", httpHelper.getAuthHeader())
                         .GET()
                         .build();
@@ -254,12 +257,18 @@ public class SessionApi {
                     relativeTime = formatTimestamp(session.get("updatedAt").asLong());
                 }
 
+                String directory = null;
+                if (session.has("directory") && !session.get("directory").isNull()) {
+                    directory = session.get("directory").asText();
+                }
+
                 result.add(SessionInfo.builder()
                     .sessionId(sessionId)
                     .title(title)
                     .lastPrompt(lastPrompt)
                     .relativeTime(relativeTime)
                     .projectName(project)
+                    .projectDirectory(directory)
                     .build());
 
                 if (result.size() >= limit) {

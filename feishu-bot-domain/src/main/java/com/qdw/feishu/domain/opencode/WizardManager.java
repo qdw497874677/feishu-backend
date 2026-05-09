@@ -69,22 +69,27 @@ public class WizardManager {
         private final WizardStep step;
         private final boolean completed;
         private final String openCodeSessionId;
+        private final boolean requiresNewTopic;
+        private final String projectDirectory;
 
         private WizardResult(CardContent cardContent, String textContent, WizardStep step,
-                             boolean completed, String openCodeSessionId) {
+                             boolean completed, String openCodeSessionId,
+                             boolean requiresNewTopic, String projectDirectory) {
             this.cardContent = cardContent;
             this.textContent = textContent;
             this.step = step;
             this.completed = completed;
             this.openCodeSessionId = openCodeSessionId;
+            this.requiresNewTopic = requiresNewTopic;
+            this.projectDirectory = projectDirectory;
         }
 
         public static WizardResult of(CardContent cardContent, WizardStep step) {
-            return new WizardResult(cardContent, null, step, false, null);
+            return new WizardResult(cardContent, null, step, false, null, false, null);
         }
 
         public static WizardResult ofText(String text) {
-            return new WizardResult(null, text, WizardStep.INACTIVE, false, null);
+            return new WizardResult(null, text, WizardStep.INACTIVE, false, null, false, null);
         }
 
         public static WizardResult completed(String openCodeSessionId) {
@@ -95,7 +100,13 @@ public class WizardManager {
                 .addElement(CardElement.markdown("已成功绑定会话 `" + openCodeSessionId + "`\n\n"
                     + "💬 现在可以直接在话题中输入问题开始对话！"))
                 .build();
-            return new WizardResult(successCard, null, WizardStep.COMPLETED, true, openCodeSessionId);
+            return new WizardResult(successCard, null, WizardStep.COMPLETED, true, openCodeSessionId, false, null);
+        }
+
+        public static WizardResult completedWithNewTopic(CardContent cardContent, String openCodeSessionId,
+                                                         String projectDirectory) {
+            return new WizardResult(cardContent, null, WizardStep.COMPLETED, true, openCodeSessionId, true,
+                projectDirectory);
         }
 
         public CardContent getCardContent() { return cardContent; }
@@ -103,6 +114,8 @@ public class WizardManager {
         public WizardStep getStep() { return step; }
         public boolean isCompleted() { return completed; }
         public String getOpenCodeSessionId() { return openCodeSessionId; }
+        public boolean isRequiresNewTopic() { return requiresNewTopic; }
+        public String getProjectDirectory() { return projectDirectory; }
     }
 
     // 10 分钟 TTL（默认）
@@ -271,10 +284,17 @@ public class WizardManager {
                     .build();
                 return WizardResult.of(card, WizardStep.CONFIRM);
             } else if (topicId != null && !topicId.isEmpty()) {
-                // Has topic — auto-bind and show success card
-                ImContextRef contextRef = ImContextRef.feishuThread(topicId);
-                sessionManager.saveSession(contextRef, sessionId);
-                return WizardResult.completed(sessionId);
+                // Has topic — create a new independent topic instead of binding to current topic
+                CardContent card = CardContent.builder()
+                    .headerTitle("✅ 会话已创建")
+                    .headerTemplate("green")
+                    .wideScreenMode(true)
+                    .addElement(CardElement.markdown(
+                        "已在项目 **" + project + "** 创建新会话\n\n"
+                        + "🆔 **会话ID**: `" + sessionId + "`\n\n"
+                        + "💬 在新话题中直接输入问题开始对话！"))
+                    .build();
+                return WizardResult.completedWithNewTopic(card, sessionId, directory);
             } else {
                 // No topic — show info card (no binding hint)
                 CardContent card = CardContent.builder()
@@ -286,7 +306,7 @@ public class WizardManager {
                         + "🆔 **会话ID**: `" + sessionId + "`\n\n"
                         + "💬 在话题中使用 `/oc chatnow <问题>` 开始对话"))
                     .build();
-                return new WizardResult(card, null, WizardStep.COMPLETED, true, sessionId);
+                return WizardResult.completedWithNewTopic(card, sessionId, directory);
             }
         } catch (Exception e) {
             log.error("创建会话失败: project={}", project, e);
@@ -357,7 +377,8 @@ public class WizardManager {
         try {
             // 构造 ImContextRef 并绑定会话（Feishu 话题 = thread context）
             ImContextRef contextRef = ImContextRef.feishuThread(state.topicId);
-            sessionManager.saveSession(contextRef, sessionId);
+            String projectDirectory = state.selectedProject == null ? null : "/root/workspace/" + state.selectedProject;
+            sessionManager.saveSession(contextRef, sessionId, projectDirectory);
 
             state.step = WizardStep.COMPLETED;
             activeWizards.remove(state.topicId);

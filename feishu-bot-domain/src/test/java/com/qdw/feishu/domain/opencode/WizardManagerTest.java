@@ -153,7 +153,7 @@ class WizardManagerTest {
         assertNotNull(result);
         assertTrue(result.isCompleted());
         assertEquals(SESSION_ID, result.getOpenCodeSessionId());
-        verify(sessionManager).saveSession(any(ImContextRef.class), eq(SESSION_ID));
+        verify(sessionManager).saveSession(any(ImContextRef.class), eq(SESSION_ID), eq("/root/workspace/feishu-backend"));
     }
 
     @Test

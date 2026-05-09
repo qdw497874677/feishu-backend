@@ -100,14 +100,15 @@ public class DefaultHandler implements SubCommandHandler {
                                                       Message message, MessageContext messageContext,
                                                       String topicId) {
         String sessionId = wizardResult.getOpenCodeSessionId();
+        String projectDirectory = wizardResult.getProjectDirectory();
         if (wizardResult.getCardContent() != null && cardRenderer != null) {
             try {
                 CardActionContext actionCtx = CardActionContext.from(messageContext);
                 String cardJson = cardRenderer.render(wizardResult.getCardContent(), actionCtx);
 
-                if (topicId == null && message.getMessageId() != null) {
-                    // 扁平群聊 → 发送新卡片到群聊（话题群自动创建独立话题）
-                    return createTopicAndBind(message.getChatId(), cardJson, sessionId);
+                if (wizardResult.isRequiresNewTopic() && message.getChatId() != null) {
+                    // 发送根卡片到群聊：话题群会自动创建独立话题，不挂在会话列表卡片下
+                    return createTopicAndBind(message.getChatId(), cardJson, sessionId, projectDirectory);
                 }
 
                 feishuGateway.sendInteractiveMessage(message, cardJson, topicId);
@@ -122,21 +123,23 @@ public class DefaultHandler implements SubCommandHandler {
     }
 
     /**
-     * 发送卡片到群聊创建新话题，并绑定会话。
+     * 发送卡片到群聊创建独立话题，并绑定会话。
      *
-     * <p>在话题群中，发送新消息自动创建独立话题（不回复任何卡片）。
-     * 如果响应包含 threadId，自动绑定会话到该话题。
+     * <p>使用 CreateMessage 发送新消息到群聊（不回复任何已有消息），
+     * 在话题群中自动创建独立话题并返回 threadId。
+     * 非话题群下 threadId 为空，会话不自动绑定（用户可手动绑定）。
      */
-    private AppExecutionResult createTopicAndBind(String chatId, String cardJson, String sessionId) {
+    private AppExecutionResult createTopicAndBind(String chatId, String cardJson, String sessionId,
+                                                  String projectDirectory) {
         try {
-            log.info("发送卡片到群聊创建话题: chatId={}, sessionId={}", chatId, sessionId);
-            SendResult result = feishuGateway.sendCardAsNewTopic(chatId, cardJson);
+            log.info("发送根卡片到群聊创建独立话题: chatId={}, sessionId={}", chatId, sessionId);
+            SendResult result = feishuGateway.sendCardAsNewTopic(chatId, cardJson, null);
 
             if (result.isSuccess() && result.getThreadId() != null) {
                 String newTopicId = result.getThreadId();
                 log.info("话题创建成功: threadId={}, 绑定会话: {}", newTopicId, sessionId);
                 ImContextRef contextRef = ImContextRef.feishuThread(newTopicId);
-                sessionManager.saveSession(contextRef, sessionId);
+                sessionManager.saveSession(contextRef, sessionId, projectDirectory);
                 return AppExecutionResult.withSession(null, sessionId, false);
             }
 

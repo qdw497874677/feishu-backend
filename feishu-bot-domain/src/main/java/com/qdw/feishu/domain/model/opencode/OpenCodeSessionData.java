@@ -13,6 +13,9 @@ public class OpenCodeSessionData implements AppSessionData {
     
     /** OpenCode 会话 ID */
     private String openCodeSessionId;
+
+    /** OpenCode 会话对应的项目工作目录 */
+    private String projectDirectory;
     
     /** 最后执行的命令 */
     private String lastCommand;
@@ -24,8 +27,13 @@ public class OpenCodeSessionData implements AppSessionData {
     private boolean explicitlyInitialized;
     
     public static OpenCodeSessionData create(String openCodeSessionId) {
+        return create(openCodeSessionId, null);
+    }
+
+    public static OpenCodeSessionData create(String openCodeSessionId, String projectDirectory) {
         OpenCodeSessionData data = new OpenCodeSessionData();
         data.setOpenCodeSessionId(openCodeSessionId);
+        data.setProjectDirectory(projectDirectory);
         data.setCommandCount(0);
         data.setExplicitlyInitialized(false);
         return data;

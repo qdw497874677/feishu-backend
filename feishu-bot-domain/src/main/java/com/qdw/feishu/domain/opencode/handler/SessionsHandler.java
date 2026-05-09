@@ -90,7 +90,8 @@ public class SessionsHandler implements SubCommandHandler {
                     if (label.length() > 40) {
                         label = label.substring(0, 37) + "...";
                     }
-                    sessionButtons.add(CardButton.defaults(label, "opencode sc " + session.getSessionId()));
+                    sessionButtons.add(CardButton.defaults(label,
+                        "opencode sc " + session.getSessionId() + " " + project));
                 }
                 elements.add(CardElement.buttonGroup(sessionButtons));
 

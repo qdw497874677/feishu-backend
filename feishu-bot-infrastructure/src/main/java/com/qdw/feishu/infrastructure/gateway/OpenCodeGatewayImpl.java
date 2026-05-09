@@ -63,6 +63,11 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     @Override
+    public String executeCommand(String prompt, String sessionId, int timeoutSeconds, String directory) throws Exception {
+        return chatApi.executeCommand(prompt, sessionId, timeoutSeconds, directory);
+    }
+
+    @Override
     public String createSession() throws Exception {
         return sessionApi.createSession();
     }

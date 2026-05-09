@@ -231,14 +231,22 @@ public class OpenCodeSessionManager {
         resolveContext(message).ifPresent(contextRef -> saveSession(contextRef, openCodeSessionId));
     }
 
+    public void saveSession(Message message, String openCodeSessionId, String projectDirectory) {
+        resolveContext(message).ifPresent(contextRef -> saveSession(contextRef, openCodeSessionId, projectDirectory));
+    }
+
     public void saveSession(ImContextRef contextRef, String openCodeSessionId) {
+        saveSession(contextRef, openCodeSessionId, null);
+    }
+
+    public void saveSession(ImContextRef contextRef, String openCodeSessionId, String projectDirectory) {
         Optional<ImContextBinding> existingBinding = bindingGateway.findBinding(contextRef)
             .filter(binding -> binding.isForApp(APP_ID));
 
         if (existingBinding.isPresent()) {
             String sessionId = existingBinding.get().getSessionId();
             if (sessionId == null) {
-                OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+                OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId, projectDirectory);
                 String newSessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
                 BindingResult result = bindingGateway.bind(contextRef, APP_ID, newSessionId);
                 log.info("升级会话绑定: contextRef={}, null -> sessionId={}, result={}",
@@ -251,20 +259,43 @@ public class OpenCodeSessionManager {
             if (sessionOpt.isPresent()) {
                 AppSession<OpenCodeSessionData> session = sessionOpt.get();
                 OpenCodeSessionData data = session.getData();
+                boolean changed = false;
                 if (!data.getOpenCodeSessionId().equals(openCodeSessionId)) {
                     data.setOpenCodeSessionId(openCodeSessionId);
+                    changed = true;
+                }
+                if (projectDirectory != null && !projectDirectory.isEmpty()
+                        && !projectDirectory.equals(data.getProjectDirectory())) {
+                    data.setProjectDirectory(projectDirectory);
+                    changed = true;
+                }
+                if (changed) {
                     appSessionGateway.updateSession(APP_ID, sessionId, data, TYPE_TOKEN, session.getVersion());
-                    log.info("更新会话数据: contextRef={}, sessionId={}", contextRef.toStorageKey(), sessionId);
+                    log.info("更新会话数据: contextRef={}, sessionId={}, directory={}",
+                        contextRef.toStorageKey(), sessionId, data.getProjectDirectory());
                 }
             }
             return;
         }
 
-        OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId);
+        OpenCodeSessionData data = OpenCodeSessionData.create(openCodeSessionId, projectDirectory);
         String sessionId = appSessionGateway.createSession(APP_ID, data, TYPE_TOKEN);
         BindingResult result = bindingGateway.bind(contextRef, APP_ID, sessionId);
-        log.info("创建并绑定会话: contextRef={}, sessionId={}, result={}",
-            contextRef.toStorageKey(), sessionId, result);
+        log.info("创建并绑定会话: contextRef={}, sessionId={}, directory={}, result={}",
+            contextRef.toStorageKey(), sessionId, projectDirectory, result);
+    }
+
+    public Optional<String> getProjectDirectory(Message message) {
+        return resolveContext(message).flatMap(this::getProjectDirectory);
+    }
+
+    public Optional<String> getProjectDirectory(ImContextRef contextRef) {
+        return bindingGateway.findBinding(contextRef)
+            .filter(binding -> binding.isForApp(APP_ID))
+            .filter(binding -> binding.getSessionId() != null)
+            .flatMap(binding -> appSessionGateway.getSession(APP_ID, binding.getSessionId(), TYPE_TOKEN))
+            .map(session -> session.getData().getProjectDirectory())
+            .filter(directory -> directory != null && !directory.isEmpty());
     }
 
     public void clearSession(Message message) {

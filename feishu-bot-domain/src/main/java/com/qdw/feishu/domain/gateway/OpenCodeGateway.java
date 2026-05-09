@@ -24,6 +24,18 @@ public interface OpenCodeGateway {
     String executeCommand(String prompt, String sessionId, int timeoutSeconds) throws Exception;
 
     /**
+      * 在指定项目目录上下文中执行 OpenCode 命令。
+      *
+      * @param prompt 提示词
+      * @param sessionId 会话 ID（可为 null）
+      * @param timeoutSeconds 超时时间（秒）
+      * @param directory 项目工作目录（可为 null；null 表示不覆盖 OpenCode session 自身目录）
+      * @return 执行结果，如果超时返回 null
+      * @throws Exception 执行异常
+      */
+    String executeCommand(String prompt, String sessionId, int timeoutSeconds, String directory) throws Exception;
+
+    /**
       * 创建新会话（不执行任务）
       *
       * @return 新创建的会话 ID

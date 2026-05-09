@@ -27,4 +27,7 @@ public class SessionInfo {
 
     /** 所属项目名称 */
     private final String projectName;
+
+    /** 会话所属项目目录 */
+    private final String projectDirectory;
 }

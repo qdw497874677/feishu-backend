@@ -449,6 +449,12 @@ Step 3 — 确认绑定:
 ```
 /opencode session continue <会话ID>
 ```
+可选带项目名，确保 OpenCode API 使用对应工作目录：
+```
+/opencode session continue <会话ID> <项目名称>
+/opencode sc <会话ID> <项目名称>
+```
+通过 `/opencode sessions <项目名称>` 卡片按钮选择会话时，会自动携带项目名。
 
 **重置话题**
 ```

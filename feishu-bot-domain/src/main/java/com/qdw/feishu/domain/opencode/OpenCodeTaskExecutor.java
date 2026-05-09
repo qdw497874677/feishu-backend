@@ -63,16 +63,15 @@ public class OpenCodeTaskExecutor {
 
     public AppExecutionResult executeWithNewSession(Message message, String prompt, String project) {
         sessionManager.clearSession(message);
-        String enhancedPrompt = enhancePromptWithWorkDirectory(prompt, project);
-        return executeTask(message, enhancedPrompt, null);
+        String projectDirectory = resolveProjectDirectory(project);
+        return executeTask(message, prompt, null, projectDirectory);
     }
 
-    private String enhancePromptWithWorkDirectory(String prompt, String project) {
+    private String resolveProjectDirectory(String project) {
         if (project == null || project.isEmpty()) {
-            String projectRoot = getProjectRoot();
-            return String.format("[工作目录: %s]\n\n%s", projectRoot, prompt);
+            return getProjectRoot();
         }
-        return String.format("[工作目录: /root/workspace/%s]\n\n%s", project, prompt);
+        return "/root/workspace/" + project;
     }
 
     private String getProjectRoot() {
@@ -80,9 +79,15 @@ public class OpenCodeTaskExecutor {
     }
 
     public AppExecutionResult executeWithSpecificSession(Message message, String prompt, String sessionId) {
-        log.info("使用指定会话执行: sessionId={}", sessionId);
-        sessionManager.saveSession(message, sessionId);
-        return executeTask(message, prompt, sessionId);
+        return executeWithSpecificSession(message, prompt, sessionId, null);
+    }
+
+    public AppExecutionResult executeWithSpecificSession(Message message, String prompt, String sessionId,
+                                                         String project) {
+        String projectDirectory = (project == null || project.isEmpty()) ? null : resolveProjectDirectory(project);
+        log.info("使用指定会话执行: sessionId={}, directory={}", sessionId, projectDirectory);
+        sessionManager.saveSession(message, sessionId, projectDirectory);
+        return executeTask(message, prompt, sessionId, projectDirectory);
     }
 
     public String createSessionOnly(Message message) throws Exception {
@@ -130,8 +135,16 @@ public class OpenCodeTaskExecutor {
     }
 
     public AppExecutionResult executeTask(Message message, String prompt, String sessionId) {
+        String projectDirectory = null;
+        if (sessionId != null && !sessionId.isEmpty()) {
+            projectDirectory = sessionManager.getProjectDirectory(message).orElse(null);
+        }
+        return executeTask(message, prompt, sessionId, projectDirectory);
+    }
+
+    public AppExecutionResult executeTask(Message message, String prompt, String sessionId, String projectDirectory) {
         String messageId = message.getMessageId();
-        log.info("提交异步任务: sessionId={}, prompt='{}'", sessionId, prompt);
+        log.info("提交异步任务: sessionId={}, directory={}, prompt='{}'", sessionId, projectDirectory, prompt);
         
         if (sessionId != null && !sessionId.isEmpty()) {
             streamingHandler.registerSession(sessionId, message);
@@ -141,19 +154,24 @@ public class OpenCodeTaskExecutor {
         if (!reactionAdded) {
             log.debug("表情添加失败，但不影响主流程");
         }
-        executeAsync(message, prompt, sessionId);
+        executeAsync(message, prompt, sessionId, projectDirectory);
         return AppExecutionResult.noReply();
     }
 
     public void executeAsync(Message message, String prompt, String sessionId) {
+        String projectDirectory = sessionId == null ? null : sessionManager.getProjectDirectory(message).orElse(null);
+        executeAsync(message, prompt, sessionId, projectDirectory);
+    }
+
+    public void executeAsync(Message message, String prompt, String sessionId, String projectDirectory) {
         String messageId = message.getMessageId();
-        log.info("异步执行开始: messageId={}, sessionId={}", messageId, sessionId);
+        log.info("异步执行开始: messageId={}, sessionId={}, directory={}", messageId, sessionId, projectDirectory);
 
         String actualSessionId = sessionId;
         String cardId = null;
         
         try {
-            String result = openCodeGateway.executeCommand(prompt, sessionId, EXECUTE_TIMEOUT);
+            String result = openCodeGateway.executeCommand(prompt, sessionId, EXECUTE_TIMEOUT, projectDirectory);
 
             if (result == null) {
                 log.warn("异步执行超时（{}秒）", EXECUTE_TIMEOUT);
@@ -171,7 +189,7 @@ public class OpenCodeTaskExecutor {
 
             String extractedSessionId = responseFormatter.extractSessionId(result);
             if (extractedSessionId != null && message.getTopicId() != null) {
-                sessionManager.saveSession(message, extractedSessionId);
+                sessionManager.saveSession(message, extractedSessionId, projectDirectory);
                 actualSessionId = extractedSessionId;
             }
 

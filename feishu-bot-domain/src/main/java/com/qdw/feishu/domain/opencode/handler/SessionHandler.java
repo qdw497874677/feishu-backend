@@ -37,7 +37,11 @@ public class SessionHandler implements SubCommandHandler {
                     "❌ 用法：`/opencode sc <session_id>`\n\n示例：`/opencode sc ses_abc123`");
             }
             String sessionId = parts[2].trim();
-            return taskExecutor.executeWithSpecificSession(message, null, sessionId);
+            String project = parts.length >= 4 ? parts[3].trim() : null;
+            if (project == null || project.isEmpty()) {
+                return taskExecutor.executeWithSpecificSession(message, null, sessionId);
+            }
+            return taskExecutor.executeWithSpecificSession(message, null, sessionId, project);
         }
 
         if (parts.length < 3) {
@@ -66,6 +70,10 @@ public class SessionHandler implements SubCommandHandler {
                 "或使用简写：`/opencode sc <session_id>`");
         }
         String sessionId = parts[3].trim();
-        return taskExecutor.executeWithSpecificSession(message, null, sessionId);
+        String project = parts.length >= 5 ? parts[4].trim() : null;
+        if (project == null || project.isEmpty()) {
+            return taskExecutor.executeWithSpecificSession(message, null, sessionId);
+        }
+        return taskExecutor.executeWithSpecificSession(message, null, sessionId, project);
     }
 }

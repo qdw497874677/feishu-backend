@@ -555,8 +555,19 @@ public class FeishuGatewayImpl implements FeishuGateway {
     }
 
     @Override
-    public SendResult sendCardAsNewTopic(String chatId, String cardJson) {
-        log.info("Sending card as new topic to chat: chatId={}", chatId);
+    public SendResult sendCardAsNewTopic(String chatId, String cardJson, String parentMessageId) {
+        log.info("Sending card as new topic: chatId={}, parentMessageId={}", chatId, parentMessageId);
+
+        if (parentMessageId != null && !parentMessageId.isEmpty()) {
+            return executeWithRetry("sendCardAsNewTopicReply", () -> {
+                try {
+                    return sendReplyToMessage(parentMessageId, cardJson, "interactive", true);
+                } catch (Exception e) {
+                    log.error("Exception sending card as thread reply", e);
+                    throw new SysException("SEND_ERROR", "send card as thread reply failed", e);
+                }
+            });
+        }
 
         return executeWithRetry("sendCardAsNewTopic", () -> {
             try {
@@ -578,7 +589,21 @@ public class FeishuGatewayImpl implements FeishuGateway {
 
                 String returnedMessageId = resp.getData().getMessageId();
                 String returnedThreadId = resp.getData().getThreadId();
-                log.info("Card sent as new topic: messageId={}, threadId={}", returnedMessageId, returnedThreadId);
+                log.info("Card sent to chat without parent message: messageId={}, threadId={}", returnedMessageId, returnedThreadId);
+
+                if ((returnedThreadId == null || returnedThreadId.isEmpty())
+                        && returnedMessageId != null && !returnedMessageId.isEmpty()) {
+                    log.info("CreateMessage did not return threadId; creating thread from new root card: messageId={}",
+                        returnedMessageId);
+                    Map<String, String> textContent = new HashMap<>();
+                    textContent.put("text", "💬 已创建 OpenCode 会话，请在本话题中直接输入问题开始对话。");
+                    String guideJson = objectMapper.writeValueAsString(textContent);
+                    SendResult threadResult = sendReplyToMessage(returnedMessageId, guideJson, "text", true);
+                    log.info("Thread created from new root card: rootMessageId={}, threadId={}",
+                        returnedMessageId, threadResult.getThreadId());
+                    return SendResult.success(returnedMessageId, threadResult.getThreadId());
+                }
+
                 return SendResult.success(returnedMessageId, returnedThreadId);
             } catch (Exception e) {
                 log.error("Exception sending card as new topic", e);

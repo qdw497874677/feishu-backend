@@ -28,10 +28,15 @@ public class ChatApi {
      * 执行命令：根据是否有 sessionId 选择新建或继续会话
      */
     public String executeCommand(String prompt, String sessionId, int timeoutSeconds) throws Exception {
+        return executeCommand(prompt, sessionId, timeoutSeconds, null);
+    }
+
+    public String executeCommand(String prompt, String sessionId, int timeoutSeconds, String directory) throws Exception {
         if (sessionId == null || sessionId.isEmpty()) {
-            return executeInNewSession(prompt, timeoutSeconds);
+            String initialDirectory = directory != null ? directory : httpHelper.getDefaultDirectory();
+            return executeInNewSession(prompt, timeoutSeconds, initialDirectory);
         } else {
-            return executeInExistingSession(sessionId, prompt, timeoutSeconds);
+            return executeInExistingSession(sessionId, prompt, timeoutSeconds, directory);
         }
     }
 
@@ -125,27 +130,28 @@ public class ChatApi {
 
     // ============ 私有方法 ============
 
-    private String executeInNewSession(String prompt, int timeoutSeconds) throws Exception {
-        log.info("创建新会话并执行命令: {}", prompt);
+    private String executeInNewSession(String prompt, int timeoutSeconds, String directory) throws Exception {
+        log.info("创建新会话并执行命令: directory={}, prompt={}", directory, prompt);
 
         SessionApi sessionApi = new SessionApi(httpHelper);
-        String sessionId = sessionApi.createSession(null);
+        String sessionId = sessionApi.createSession(directory);
         if (sessionId == null) {
             return "❌ 创建会话失败";
         }
 
-        return sendMessageSync(sessionId, prompt, timeoutSeconds, true, httpHelper.getDefaultDirectory());
+        return sendMessageSync(sessionId, prompt, timeoutSeconds, true, directory);
     }
 
-    private String executeInExistingSession(String sessionId, String prompt, int timeoutSeconds) throws Exception {
-        log.info("在会话 {} 中执行命令: {}", sessionId, prompt);
+    private String executeInExistingSession(String sessionId, String prompt, int timeoutSeconds,
+                                            String directory) throws Exception {
+        log.info("在会话 {} 中执行命令: directory={}, prompt={}", sessionId, directory, prompt);
 
         if (prompt == null || prompt.isEmpty()) {
             SessionApi sessionApi = new SessionApi(httpHelper);
             return sessionApi.getSessionDetails(sessionId);
         }
 
-        return sendMessageSync(sessionId, prompt, timeoutSeconds, true, httpHelper.getDefaultDirectory());
+        return sendMessageSync(sessionId, prompt, timeoutSeconds, true, directory);
     }
 
     /**
