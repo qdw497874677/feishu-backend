@@ -182,11 +182,13 @@ public class DomainServiceConfig {
 
     @Bean
     public OpenCodeTaskExecutor openCodeTaskExecutor(OpenCodeGateway openCodeGateway,
-                                                      FeishuGateway feishuGateway,
-                                                      OpenCodeResponseFormatter responseFormatter,
-                                                      OpenCodeSessionManager sessionManager,
-                                                      OpenCodeStreamingHandler streamingHandler) {
-        return new OpenCodeTaskExecutor(openCodeGateway, feishuGateway, responseFormatter, sessionManager, streamingHandler);
+                                                       FeishuGateway feishuGateway,
+                                                       OpenCodeResponseFormatter responseFormatter,
+                                                       OpenCodeSessionManager sessionManager,
+                                                       OpenCodeStreamingHandler streamingHandler,
+                                                       CardRenderer cardRenderer) {
+        return new OpenCodeTaskExecutor(openCodeGateway, feishuGateway, responseFormatter, sessionManager,
+            streamingHandler, cardRenderer);
     }
 
     @Bean

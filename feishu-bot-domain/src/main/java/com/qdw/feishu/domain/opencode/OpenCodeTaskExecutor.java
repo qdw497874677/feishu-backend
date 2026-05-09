@@ -1,10 +1,13 @@
 package com.qdw.feishu.domain.opencode;
 
 import com.qdw.feishu.domain.app.AppExecutionResult;
+import com.qdw.feishu.domain.card.CardContent;
+import com.qdw.feishu.domain.gateway.CardRenderer;
 import com.qdw.feishu.domain.gateway.FeishuGateway;
 import com.qdw.feishu.domain.gateway.OpenCodeGateway;
 import com.qdw.feishu.domain.message.Message;
 import com.qdw.feishu.domain.message.ReactionEmoji;
+import com.qdw.feishu.domain.message.SendResult;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -24,17 +27,20 @@ public class OpenCodeTaskExecutor {
     private final OpenCodeResponseFormatter responseFormatter;
     private final OpenCodeSessionManager sessionManager;
     private final OpenCodeStreamingHandler streamingHandler;
+    private final CardRenderer cardRenderer;
 
     public OpenCodeTaskExecutor(OpenCodeGateway openCodeGateway,
                                  FeishuGateway feishuGateway,
                                  OpenCodeResponseFormatter responseFormatter,
                                  OpenCodeSessionManager sessionManager,
-                                 OpenCodeStreamingHandler streamingHandler) {
+                                 OpenCodeStreamingHandler streamingHandler,
+                                 CardRenderer cardRenderer) {
         this.openCodeGateway = openCodeGateway;
         this.feishuGateway = feishuGateway;
         this.responseFormatter = responseFormatter;
         this.sessionManager = sessionManager;
         this.streamingHandler = streamingHandler;
+        this.cardRenderer = cardRenderer;
     }
 
     public AppExecutionResult executeWithAutoSession(Message message, String prompt) {
@@ -71,7 +77,7 @@ public class OpenCodeTaskExecutor {
         if (project == null || project.isEmpty()) {
             return getProjectRoot();
         }
-        return "/root/workspace/" + project;
+        return openCodeGateway.resolveProjectPath(project);
     }
 
     private String getProjectRoot() {
@@ -194,7 +200,7 @@ public class OpenCodeTaskExecutor {
             }
 
             String formatted = responseFormatter.format(result, extractedSessionId);
-            feishuGateway.sendMessage(message, formatted, message.getTopicId());
+            sendMarkdownReply(message, formatted);
 
             if (actualSessionId != null) {
                 streamingHandler.unregisterSession(actualSessionId);
@@ -206,6 +212,26 @@ public class OpenCodeTaskExecutor {
             if (actualSessionId != null) {
                 streamingHandler.unregisterSession(actualSessionId);
             }
+        }
+    }
+
+    private void sendMarkdownReply(Message message, String markdown) {
+        try {
+            CardContent cardContent = CardContent.builder()
+                .headerTitle("🤖 OpenCode 回复")
+                .headerTemplate("blue")
+                .wideScreenMode(true)
+                .build()
+                .addMarkdown(markdown);
+            String cardJson = cardRenderer.render(cardContent, null);
+            SendResult sendResult = feishuGateway.sendInteractiveMessage(message, cardJson, message.getTopicId());
+            if (!sendResult.isSuccess()) {
+                log.warn("Markdown 卡片发送失败，降级为文本: {}", sendResult.getErrorMessage());
+                feishuGateway.sendMessage(message, markdown, message.getTopicId());
+            }
+        } catch (Exception e) {
+            log.warn("Markdown 卡片渲染或发送异常，降级为文本: {}", e.getMessage());
+            feishuGateway.sendMessage(message, markdown, message.getTopicId());
         }
     }
 

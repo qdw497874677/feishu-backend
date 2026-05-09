@@ -1,6 +1,7 @@
 package com.qdw.feishu.infrastructure.gateway.opencode;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qdw.feishu.domain.opencode.ProjectInfo;
 import com.qdw.feishu.domain.opencode.SessionInfo;
 import lombok.extern.slf4j.Slf4j;
 
@@ -166,7 +167,7 @@ public class SessionApi {
 
         return httpHelper.executeWithRetry("listRecentSessionsStructured", () -> {
             try {
-                String directory = "/root/workspace/" + project;
+                String directory = resolveProjectPath(project);
                 String url = httpHelper.getServerUrl() + "/session?directory="
                         + URLEncoder.encode(directory, StandardCharsets.UTF_8);
                 HttpRequest request = HttpRequest.newBuilder()
@@ -307,6 +308,20 @@ public class SessionApi {
 
         sb.append("💡 选择会话:\n   `/opencode session continue <ID>`\n");
         return sb.toString();
+    }
+
+    private String resolveProjectPath(String projectName) {
+        if (projectApi == null || projectName == null || projectName.isBlank()) {
+            return "/root/workspace/" + projectName;
+        }
+        return projectApi.listProjectsStructured().stream()
+                .filter(project -> project.getName().equalsIgnoreCase(projectName)
+                        || (project.getPath() != null
+                        && project.getPath().toLowerCase().endsWith("/" + projectName.toLowerCase())))
+                .map(ProjectInfo::getPath)
+                .filter(path -> path != null && !path.isBlank())
+                .findFirst()
+                .orElse("/root/workspace/" + projectName);
     }
 
     private String formatSessionList(String jsonResponse) {

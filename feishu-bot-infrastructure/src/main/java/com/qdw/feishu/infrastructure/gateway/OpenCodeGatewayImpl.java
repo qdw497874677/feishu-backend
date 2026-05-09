@@ -103,6 +103,21 @@ public class OpenCodeGatewayImpl implements OpenCodeGateway {
     }
 
     @Override
+    public String resolveProjectPath(String projectName) {
+        if (projectName == null || projectName.isBlank()) {
+            return null;
+        }
+        return projectApi.listProjectsStructured().stream()
+                .filter(project -> project.getName().equalsIgnoreCase(projectName)
+                        || (project.getPath() != null
+                        && project.getPath().toLowerCase().endsWith("/" + projectName.toLowerCase())))
+                .map(ProjectInfo::getPath)
+                .filter(path -> path != null && !path.isBlank())
+                .findFirst()
+                .orElse("/root/workspace/" + projectName);
+    }
+
+    @Override
     public String listCommands() {
         return projectApi.listCommands();
     }

@@ -96,6 +96,14 @@ public interface OpenCodeGateway {
     List<ProjectInfo> listProjectsStructured();
 
     /**
+     * 根据项目名解析 OpenCode 返回的真实工作目录。
+     *
+     * @param projectName 项目名
+     * @return 真实项目路径；找不到时回退到 /root/workspace/{projectName}
+     */
+    String resolveProjectPath(String projectName);
+
+    /**
      * 列出所有斜杠命令
      *
      * @return 格式化的命令列表

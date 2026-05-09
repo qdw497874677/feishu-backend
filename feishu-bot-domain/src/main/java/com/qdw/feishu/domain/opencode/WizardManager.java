@@ -253,7 +253,7 @@ public class WizardManager {
      */
     private WizardResult handleNewSession(WizardState state, String project, String chatId, String topicId) {
         try {
-            String directory = "/root/workspace/" + project;
+            String directory = openCodeGateway.resolveProjectPath(project);
             String sessionId = openCodeGateway.createSession(directory);
 
             if (sessionId == null || sessionId.isEmpty()) {
@@ -377,7 +377,9 @@ public class WizardManager {
         try {
             // 构造 ImContextRef 并绑定会话（Feishu 话题 = thread context）
             ImContextRef contextRef = ImContextRef.feishuThread(state.topicId);
-            String projectDirectory = state.selectedProject == null ? null : "/root/workspace/" + state.selectedProject;
+            String projectDirectory = state.selectedProject == null
+                ? null
+                : openCodeGateway.resolveProjectPath(state.selectedProject);
             sessionManager.saveSession(contextRef, sessionId, projectDirectory);
 
             state.step = WizardStep.COMPLETED;

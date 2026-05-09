@@ -51,6 +51,7 @@ class WizardManagerTest {
         when(openCodeGateway.listRecentSessions(anyString(), anyInt())).thenReturn(
             "📋 项目 **feishu-backend** 的最近 5 个会话:\n\n1. 重构登录模块\n   ID: `ses_abc123`\n\n"
         );
+        when(openCodeGateway.resolveProjectPath(PROJECT_NAME)).thenReturn("/root/workspace/feishu-backend");
     }
 
     // ============ 初始状态测试 ============
@@ -153,6 +154,7 @@ class WizardManagerTest {
         assertNotNull(result);
         assertTrue(result.isCompleted());
         assertEquals(SESSION_ID, result.getOpenCodeSessionId());
+        verify(openCodeGateway).resolveProjectPath(PROJECT_NAME);
         verify(sessionManager).saveSession(any(ImContextRef.class), eq(SESSION_ID), eq("/root/workspace/feishu-backend"));
     }
 
